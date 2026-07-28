@@ -1,0 +1,4 @@
+FROM qwen3.5:9b
+# Pin the context window to 32k. Odysseus also reads the "-32k" name suffix,
+# but setting it here makes the window correct for any client, not just Odysseus.
+PARAMETER num_ctx 32768
