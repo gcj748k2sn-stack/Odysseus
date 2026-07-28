@@ -41,19 +41,93 @@ _PRIVATE_NETWORKS = (
     ipaddress.ip_network("fe80::/10"),
 )
 
+# ── Two-tier SSRF classification ─────────────────────────────────────────────
+# Odysseus is local-first: a user pointing web_fetch at their own ESP32, NAS or
+# dev server on the LAN is a legitimate, intended thing to do. But the guard has
+# to keep rejecting the cloud instance-metadata range unconditionally, since
+# that is the credential-exfil vector and nobody serves real content there.
+#
+# So the address space splits in two, mirroring the tiering already used by
+# ``src/url_safety.py`` for the embedding/webhook/ntfy paths:
+#
+#   HARD  – never reachable, no override. Link-local (incl. 169.254.169.254),
+#           multicast, reserved, unspecified, and the 0.0.0.0/8 wildcard.
+#   GATED – reachable only when the caller opts in. Loopback, RFC-1918, ULA,
+#           and the internal-sounding hostname suffixes.
+_HARD_BLOCKED_NETWORKS = (
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),
+    ipaddress.ip_network("fe80::/10"),
+)
 
-def _is_private_address(addr: ipaddress._BaseAddress) -> bool:
+_GATED_PRIVATE_NETWORKS = (
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),
+)
+
+# Hostnames that must never resolve anywhere, override or not.
+_HARD_BLOCKED_HOSTS = ("metadata", "metadata.google.internal")
+# Hostnames/suffixes that only name LAN hosts — gated, not hard-blocked, so
+# `http://martha.local/` works once private targets are allowed.
+_GATED_HOSTS = ("localhost",)
+_GATED_HOST_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".intranet")
+
+_BLOCK_PRIVATE_ENV = "WEB_FETCH_BLOCK_PRIVATE_IPS"
+
+
+def _normalize(addr: ipaddress._BaseAddress) -> ipaddress._BaseAddress:
+    """Judge IPv4-mapped IPv6 (e.g. ::ffff:169.254.169.254) by the embedded v4."""
     if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
-        addr = addr.ipv4_mapped
+        return addr.ipv4_mapped
+    return addr
+
+
+def _is_hard_blocked_address(addr: ipaddress._BaseAddress) -> bool:
+    """Addresses no opt-in may ever reach."""
+    addr = _normalize(addr)
+    # The gated ranges win when the two overlap. Python reports IPv6 ``::1``
+    # as ``is_reserved``, which would otherwise put the v6 loopback in the
+    # hard tier while ``127.0.0.1`` sits in the gated one — same host, two
+    # different answers depending on which literal the user typed.
+    if any(addr in net for net in _GATED_PRIVATE_NETWORKS):
+        return False
+    return (
+        addr.is_link_local
+        or addr.is_multicast
+        or addr.is_reserved
+        or addr.is_unspecified
+        or any(addr in net for net in _HARD_BLOCKED_NETWORKS)
+    )
+
+
+def _is_gated_private_address(addr: ipaddress._BaseAddress) -> bool:
+    """Private/loopback addresses, reachable only with an explicit opt-in."""
+    addr = _normalize(addr)
     return (
         addr.is_private
         or addr.is_loopback
-        or addr.is_link_local
-        or addr.is_reserved
-        or addr.is_multicast
-        or addr.is_unspecified
-        or any(addr in net for net in _PRIVATE_NETWORKS)
+        or any(addr in net for net in _GATED_PRIVATE_NETWORKS)
     )
+
+
+def _is_private_address(addr: ipaddress._BaseAddress) -> bool:
+    """Union of both tiers — the historical, always-strict predicate."""
+    return _is_hard_blocked_address(addr) or _is_gated_private_address(addr)
+
+
+def _private_targets_allowed() -> bool:
+    """True when ``WEB_FETCH_BLOCK_PRIVATE_IPS`` is explicitly switched off.
+
+    Read per call rather than at import so a running instance picks up a
+    changed environment, and so tests can flip it with ``monkeypatch.setenv``.
+    Default is ``true``: an existing deployment keeps the strict behaviour.
+    """
+    raw = os.getenv(_BLOCK_PRIVATE_ENV, "true").strip().lower()
+    return raw in ("0", "false", "no", "off")
 
 
 def _resolve_hostname_ips(hostname: str) -> list[ipaddress._BaseAddress]:
@@ -70,47 +144,60 @@ def _resolve_hostname_ips(hostname: str) -> list[ipaddress._BaseAddress]:
     return out
 
 
-def _public_http_url(url: str) -> bool:
+def _public_http_url(url: str, *, allow_private: bool = False) -> bool:
+    """Boolean form of :func:`_resolve_public_ips`.
+
+    Deliberately a thin wrapper rather than a parallel implementation. It used
+    to be the guard itself, until #704 moved the fetch path onto
+    ``_resolve_public_ips`` and left this function behind with no callers — at
+    which point the tests asserting on it stopped covering anything real.
+    Delegating keeps the two from drifting again.
+    """
     try:
-        parsed = urlparse(url)
-        if parsed.scheme not in ("http", "https"):
-            return False
-        host = (parsed.hostname or "").strip()
-        if not host:
-            return False
-        lower = host.lower()
-        if lower in ("localhost", "metadata", "metadata.google.internal"):
-            return False
-        if lower.endswith((".local", ".localhost", ".internal", ".lan", ".intranet")):
-            return False
-        try:
-            return not _is_private_address(ipaddress.ip_address(host))
-        except ValueError:
-            pass
-        addrs = _resolve_hostname_ips(host)
-        return bool(addrs) and not any(_is_private_address(a) for a in addrs)
+        _resolve_public_ips(url, allow_private=allow_private)
+        return True
     except Exception:
         return False
 
 
-def _resolve_public_ips(url: str) -> list[ipaddress._BaseAddress]:
+def _resolve_public_ips(
+    url: str, *, allow_private: bool = False
+) -> list[ipaddress._BaseAddress]:
+    """Resolve ``url`` to the IPs it may be connected to, or raise.
+
+    ``allow_private`` opts into loopback/RFC-1918/ULA targets — the local-first
+    case (an ESP32 or dev server on the LAN). It never unlocks the hard tier:
+    link-local and the instance-metadata range stay rejected either way.
+    """
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise httpx.RequestError(f"Blocked non-public URL: {url}")
     host = (parsed.hostname or "").strip().lower()
-    if host in ("localhost", "metadata", "metadata.google.internal"):
+
+    if host in _HARD_BLOCKED_HOSTS:
         raise httpx.RequestError(f"Blocked non-public hostname: {host}")
+    if not allow_private and (
+        host in _GATED_HOSTS or host.endswith(_GATED_HOST_SUFFIXES)
+    ):
+        raise httpx.RequestError(f"Blocked non-public hostname: {host}")
+
+    def _rejected(addr: ipaddress._BaseAddress) -> bool:
+        if _is_hard_blocked_address(addr):
+            return True
+        return not allow_private and _is_gated_private_address(addr)
+
     try:
         ip = ipaddress.ip_address(host)
-        if _is_private_address(ip):
+        if _rejected(ip):
             raise httpx.RequestError(f"Blocked non-public IP literal: {host}")
         return [ip]
     except httpx.RequestError:
         raise
     except ValueError:
         pass
+
     addrs = _resolve_hostname_ips(host)
-    if not addrs or any(_is_private_address(a) for a in addrs):
+    if not addrs or any(_rejected(a) for a in addrs):
         raise httpx.RequestError(f"Blocked non-public URL: {url}")
     return addrs
 
@@ -284,17 +371,24 @@ class _CappedFetch:
 
 
 def _get_public_url(url: str, headers: dict, timeout: int, max_redirects: int = 5,
-                    max_bytes: int = None) -> "_CappedFetch":
+                    max_bytes: int = None, allow_private: bool = None) -> "_CappedFetch":
     """Capped streaming GET with SSRF-guarded, DNS-pinned manual redirects.
 
     Each hop is resolved once, validated as public, and then the actual TCP
     connection is pinned to that resolved IP. The request URL is left unchanged
     so Host and TLS SNI keep the original hostname.
+
+    ``allow_private`` (default: read from ``WEB_FETCH_BLOCK_PRIVATE_IPS``)
+    applies to the **first hop only**. A user asking for their own LAN device
+    is opting in deliberately; a public page issuing a 302 into RFC-1918 space
+    is an SSRF chain and stays blocked regardless of the setting.
     """
+    if allow_private is None:
+        allow_private = _private_targets_allowed()
     cap = min(max_bytes or WEB_FETCH_SOFT_MAX_BYTES, WEB_FETCH_HARD_MAX_BYTES)
     current = url
-    for _ in range(max_redirects + 1):
-        ips = _resolve_public_ips(current)
+    for hop in range(max_redirects + 1):
+        ips = _resolve_public_ips(current, allow_private=allow_private and hop == 0)
 
         # Force identity transfer-encoding. With gzip/deflate the wire bytes
         # and Content-Length can be a small fraction of the decoded body, so a

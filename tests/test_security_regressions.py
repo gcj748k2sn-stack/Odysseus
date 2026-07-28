@@ -1419,8 +1419,8 @@ def test_dns_rebinding_redirect_re_resolves_per_hop(monkeypatch):
 
     seen = []
 
-    def fake_resolve(url):
-        seen.append(url)
+    def fake_resolve(url, *, allow_private=False):
+        seen.append((url, allow_private))
         if "private" in url:
             raise _httpx.RequestError(f"Blocked non-public URL: {url}")
         return [_ipaddr.ip_address("93.184.216.34")]
@@ -1464,8 +1464,77 @@ def test_dns_rebinding_redirect_re_resolves_per_hop(monkeypatch):
     with _pytest.raises(_httpx.RequestError) as exc:
         content._get_public_url("http://public.example/start", headers={}, timeout=5)
     assert "non-public" in str(exc.value).lower()
-    # Both hops were validated.
-    assert seen == ["http://public.example/start", "http://private.example/secret"], seen
+    # Both hops were validated, and with the default (strict) setting neither
+    # hop is granted the private-target opt-in.
+    assert seen == [
+        ("http://public.example/start", False),
+        ("http://private.example/secret", False),
+    ], seen
+
+
+def test_private_opt_in_does_not_survive_a_redirect(monkeypatch):
+    """``allow_private`` must apply to the first hop only.
+
+    A user pointing web_fetch at their own LAN device opts in deliberately.
+    A public page answering 302 with a location in RFC-1918 space does not —
+    that is an SSRF chain, and it stays blocked even with the knob switched
+    off.
+    """
+    from src.search import content
+
+    seen = []
+
+    def fake_resolve(url, *, allow_private=False):
+        seen.append((url, allow_private))
+        if "private" in url and not allow_private:
+            raise _httpx.RequestError(f"Blocked non-public URL: {url}")
+        return [_ipaddr.ip_address("93.184.216.34")]
+
+    monkeypatch.setattr(content, "_resolve_public_ips", fake_resolve)
+
+    class _Resp:
+        status_code = 302
+        headers = {"location": "http://private.example/secret"}
+        encoding = "utf-8"
+
+        def __init__(self, url):
+            self.url = url
+
+    class _FakeStream:
+        def __init__(self, response):
+            self.response = response
+
+        def __enter__(self):
+            return self.response
+
+        def __exit__(self, *args):
+            return False
+
+    class _FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def stream(self, method, url):
+            return _FakeStream(_Resp(url))
+
+    monkeypatch.setattr(_httpx, "Client", _FakeClient)
+
+    with _pytest.raises(_httpx.RequestError) as exc:
+        content._get_public_url(
+            "http://public.example/start", headers={}, timeout=5, allow_private=True
+        )
+    assert "non-public" in str(exc.value).lower()
+    # Hop 0 carried the opt-in; hop 1 did not, so the redirect was rejected.
+    assert seen == [
+        ("http://public.example/start", True),
+        ("http://private.example/secret", False),
+    ], seen
 
 
 def test_dns_rebinding_transport_uses_public_apis(monkeypatch):
