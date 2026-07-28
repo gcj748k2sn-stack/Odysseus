@@ -34,6 +34,11 @@ logs/
 *.sqlite
 *.sqlite3
 
+# Locally-cloned SearXNG (138 MB). Contains its OWN nested .git plus a venv, so
+# `git add -A` would otherwise swallow the entire upstream tree into this repo.
+# Deployed/managed separately — see docs/qwensetup.md.
+searxng/
+
 # Node
 node_modules/
 services/node_modules/
