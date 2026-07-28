@@ -94,6 +94,22 @@ Not autosave and not the compare-and-swap — both were correct throughout. A si
 - **The title says "(Live Fetch)" on a 77-second-old cache hit** — while the body, three lines below, says *"cached ~77 seconds ago"* and the footer repeats *"This data may be cached."* The model read item 17's notice, believed it in the prose, and contradicted it in the title. A document that disagrees with itself about its own freshness is the item 3 pattern applied to provenance.
 - One thing that did *not* recur: no fabricated time span. 31e0af64 claimed "~19 hours" for what was 20 minutes; this run made no duration claim at all.
 
+**Audited from `app.db` on 2026-07-28, both runs, independently of the write-ups above.** Three of the four filed defects for 31e0af64 reproduce exactly; one does not, and the correction matters.
+
+| | 31e0af64 (07-27) | 42889f7b (07-28) |
+|---|---|---|
+| Transcription | **1 cell wrong of 120** — row `s=360`, `t=24.5` dropped | **clean, 0 of 120** |
+| Rows / columns | 40/40, ragged at one row | 40/40, uniform |
+| Sensors 2 and 3 | **absent** (`t2`,`h2`,`t3`,`h3` all missing) | present |
+| `duty: 252` as a metric | **yes** | **yes** |
+| Liveness asserted | "Current Status" | "(Live Fetch)" **on a 77 s cache hit** |
+
+- ✅ **Verified:** the dropped column (`\| 360  \| 87.4  \| 26.9 \|`), the failed self-correction (`edit_document` → *"none of the FIND blocks matched (skipped 1)"*), and the two missing sensors.
+- ⚠️ **Corrected: the time-axis error never reached the document.** This item states *"Time axis wrong by ~57×"* as one of four defects that "landed in the document anyway". The string `7.5 days of sampling` exists **only in the `thinking` channel**; the delivered document makes no duration claim at all, and neither does the chat reply. It was a real reasoning error and a real near-miss, but it was not user-visible, and this file's own rule is to record the scope. **Three defects reached the user, not four.**
+- **`full_command` is absent on 31e0af64's `edit_document`, present on 42889f7b's `create_document`** — the before/after of item 10, visible in the same query.
+
+**The theory this supports, and why it inverts the plan.** Transcription is **1 wrong cell in 240 across two runs (99.6 % correct), in one run only**. The `duty` error is **2 of 2 runs, same field, same wrong value, every digit faithfully copied from the source**. Transcription drift is real but *incidental*; field-selection is *systematic*. A diff-based checker addresses the incidental half and is structurally incapable of catching the systematic one.
+
 **Consequences for the plan.** Layer A/B is still worth building, but this run is evidence it would have caught **nothing here** — so it must ship with 42889f7b as its **negative control**, or a checker that always fires will look like it works. The value has moved toward a small **field-semantics** layer: a per-source note that `duty` is inverted and `dp` is the power figure, in the same shape as the known-facts fixture in 2b. That is the check both runs needed.
 
 **Split into two independent pieces, 2026-07-28 — do 2a first.** They share a severity and nothing else: different inputs, different mechanisms, and 2a is both cheaper and more general.
