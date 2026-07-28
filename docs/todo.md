@@ -34,7 +34,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 16 | SSRF guard tests covered an orphaned function | S4 | S | one instance fixed; **audit open** | tests |
 | 17 | ~~Cache hits are indistinguishable from live fetches~~ | S4 | XS | ✅ **fixed 2026-07-28** — `cached` + age | **live** — run 42889f7b |
 | 18 | Two CAS tests have never passed | S4 | S | open — found 2026-07-28 | n/a |
-| 19 | ~~Five tests fail on macOS only~~ | S4 | XS | ✅ fixed 2026-07-28 | **live** — M1 suite `2 failed, 5433 passed` |
+| 19 | ~~Five tests failed on macOS only~~ | S4 | XS | ✅ fixed 2026-07-28 | **live** — M1 suite, item 18 only |
 
 **Numbers are never reused.** A retired item keeps its number and a `⊘` row, because renumbering has silently rotted cross-references four times (see *Notes & constraints*). Item 2 split into 2a/2b rather than becoming 2 and 19 for the same reason.
 
@@ -45,7 +45,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 > 3. **Item 6** — unblocked now that #10 persists `full_command`, but **only for runs recorded after 2026-07-28**. Needs a fresh reproduction; the three 2026-07-27 runs cannot be re-examined.
 > 4. **Item 13** — friction, but it has obstructed debugging twice and all three cited call sites are verified unchanged. Cheaper to fix than to work around a third time.
 >
-> **Suite baseline is `2 failed, 5433 passed` on the M1** — item 18 only, both pre-existing. Item 8's active half stays parked; read its ❌ bullet before touching it.
+> **Suite: last measured `2 failed, 5588 passed` on the M1** — item 18 only, both pre-existing. ⚠️ 2a added 25 tests after that run, so the next one should read ~5613; it has not been measured. Item 8's active half stays parked — read its ❌ bullet before touching it.
 
 ---
 
@@ -54,8 +54,15 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 ### 1. ~~Autosave is reverting AI edits~~ ✅ fixed, verified live 2026-07-19
 Not autosave and not the compare-and-swap — both were correct throughout. A single tool call emitted `doc_update` **twice**, and the second delivery made the diff-mode guard restore and persist the pre-edit buffer. **20 reverts pre-fix → 0 post-fix**, across five sessions including a 154-line edit. Detail in [resolvedissues.md](resolvedissues.md), *"Autosave reverting AI edits"*.
 
-### 2. Wrong numbers in documents the user trusts — 2a transcription, 2b ground truth
-*Split 2026-07-28; the two halves are set out in the table further down this entry. Everything below was filed as one item.*
+### 2. Wrong numbers in documents the user trusts
+*Split 2026-07-28 into 2a (the document disagrees with the data it was handed) and 2b (the document disagrees with reality). **2a is built; 2b is open.** They looked like one item and share only a severity.*
+
+#### 2a. ~~Document doesn't match its source~~ ✅ built 2026-07-28 — report-only
+`src/document_fidelity.py`, surfaced in the closing summary, silent unless the turn fetched a JSON source. The acceptance gate is both recorded runs, as fixtures under `tests/fixtures/document_fidelity/`. Diagnosis, the design argument, and the two bugs the tests caught are in [resolvedissues.md](resolvedissues.md), *"The document didn't match its source"*.
+
+- ⚠️ **Tests only — not yet seen on a live turn.** 25 tests and both recorded runs; no production run has exercised it. Ask for that ESP32 document again and the closing summary should carry the warning.
+- **The finding that shaped it, worth keeping here:** across the two runs **239 of 240 cells were transcribed correctly and both documents were still wrong.** Filed as transcription; transcription was the incidental half. **A source-to-document diff cannot catch a correct value under the wrong field.**
+- ⚠️ `config/field_semantics.json` currently describes **one device**. It is a fixture, not config: every entry should come from an observed failure. An empty fixture means the semantic half silently checks nothing.
 
 #### 2b. The fact-check step inverts ground truth
 **The only S1 with no work done on it.** Two consecutive runs re-introduced cold shock on a tropical species. 009660d2 stated it outright: *"pink oysters prefer slightly cooler than other Pleurotus species during fruiting"* at 65–70°F, with *"Cool down by 3-5°F from spawn temp"*. That is backwards — *P. djamor* is the thermophilic one — and it's the failure that retired the 4B, now produced twice by the 9B. Both documents title themselves "Fact Checked & Corrected", which is the damage: wrong chamber setpoints wearing the authority of verification.
@@ -71,60 +78,6 @@ Not autosave and not the compare-and-swap — both were correct throughout. A si
 14–21°C is the *P. ostreatus* range on a tropical species, and 26°C — flagged as too warm — is squarely optimal. Asking for verification up front produced more confidently wrong numbers than not asking at all, after four source fetches. **The retrieval step is not neutral; it actively drags the answer toward the wrong species** — and item 14 is part of why.
 
 **Fix:** the ground truth is already written down in [resolvedissues.md](resolvedissues.md) ("4B retired") — colonization 24–29°C, fruiting 20–30°C **no cold shock**, RH 85–95%, CO₂ 500–800 ppm at 3–6 ACH. Make it a fixture plus a checker that flags a document contradicting it. Generalises to "assert a document doesn't contradict a known-facts file".
-
-#### 2a. ~~Document doesn't match its source~~ ✅ built 2026-07-28 — report-only
-**`src/document_fidelity.py`, surfaced through the closing summary, silent unless a JSON source is present.** Both recorded runs are the acceptance gate, as fixtures in `tests/fixtures/document_fidelity/` so it does not depend on a gitignored database. Full account in [resolvedissues.md](resolvedissues.md), *"The document didn't match its source"*. ⚠️ **Not yet seen on a live turn** — 25 tests, no production run.
-
-*Original filing, kept because the evidence is what shaped the design:*
-
-**2026-07-27 — the same severity with no retrieval involved at all.** Run 31e0af64 fetched one clean JSON document (40 history points, complete, verified byte-exact against the source) and asked for a table. No search, no fact-check, no ambiguous nouns — item 14 cannot be blamed. Four defects landed in the document anyway:
-
-- **39 of 40 rows transcribed correctly; row `s=360` lost a column** — `| 360 | 87.4 | 26.9 |`, temperature `24.5` dropped, everything shifted left.
-- **It noticed, misdiagnosed its own error, and burned a round on it.** Thinking: *"I notice there's an error at time=360 where I accidentally copied values incorrectly (t:24.5, h:87.4 swapped with dp)"* — nothing was swapped, a value was missing. It then sent `edit_document` with a FIND block matching the **correct** row it had never written. No match, no-op.
-- **Time axis wrong by ~57×, and self-contradictory:** *"~19 hours (~7.5 days of sampling)"* for 40 points at 30 s = **20 minutes**. The source field is `"s"`, seconds of uptime, with no unit in the payload. The document's column is headed "Time", unitless.
-- **A raw inverted register reported as a metric:** *"duty cycle: 252"*. 252 is the PWM value after a BC547 inversion — 255 is off. Actual power was the `dp` field, 5.1 %. Anyone reading that infers near-full power.
-- Two of three sensors absent from the document although present in the JSON.
-
-**Why this sharpens the item:** the failure is not "the model retrieves bad sources". It is that a 40-row verbatim transcription at ~6.8 tok/s is near the edge of what this model does reliably, and there is no check that the output matches the input it was handed. A row-count-plus-cell diff against the source is cheap and would have caught three of the four. Complements the known-facts checker above rather than replacing it.
-
-**2026-07-28, run 42889f7b — the first post-fix run, and it splits the item cleanly in two.** Same task shape as 31e0af64: fetch `http://192.168.0.185/api/state`, write a document. This one is fully auditable because item 10 now persists `full_command`, so the 3,024-character document the model wrote is recoverable from `app.db` — **that analysis was impossible for 31e0af64 and is the first practical payoff of item 10.**
-
-*Mechanical transcription was clean.* 40 source records → 40 table rows, uniform column count, **zero cell mismatches** across all 40×3 values, and all six sensor fields present. The dropped-column defect from 31e0af64 did **not** recur. On this evidence 2a's Layer A/B checker would have stayed silent, correctly.
-
-*The semantic defects recurred anyway:*
-
-- **`- Duty Cycle: 252` again**, exactly as in 31e0af64. 252 is the raw PWM register after a BC547 inversion — 255 is off, so this is roughly **1 % power**, while the document invites reading it as near-full. The real figure is the `dp` field, `5.1`. **This is now reproduced twice and is not a transcription error: every digit is faithfully copied from the source. It is a field-selection error, and no diff will ever catch it.**
-- **The title says "(Live Fetch)" on a 77-second-old cache hit** — while the body, three lines below, says *"cached ~77 seconds ago"* and the footer repeats *"This data may be cached."* The model read item 17's notice, believed it in the prose, and contradicted it in the title. A document that disagrees with itself about its own freshness is the item 3 pattern applied to provenance.
-- One thing that did *not* recur: no fabricated time span. 31e0af64 claimed "~19 hours" for what was 20 minutes; this run made no duration claim at all.
-
-**Audited from `app.db` on 2026-07-28, both runs, independently of the write-ups above.** Three of the four filed defects for 31e0af64 reproduce exactly; one does not, and the correction matters.
-
-| | 31e0af64 (07-27) | 42889f7b (07-28) |
-|---|---|---|
-| Transcription | **1 cell wrong of 120** — row `s=360`, `t=24.5` dropped | **clean, 0 of 120** |
-| Rows / columns | 40/40, ragged at one row | 40/40, uniform |
-| Sensors 2 and 3 | **absent** (`t2`,`h2`,`t3`,`h3` all missing) | present |
-| `duty: 252` as a metric | **yes** | **yes** |
-| Liveness asserted | "Current Status" | "(Live Fetch)" **on a 77 s cache hit** |
-
-- ✅ **Verified:** the dropped column (`\| 360  \| 87.4  \| 26.9 \|`), the failed self-correction (`edit_document` → *"none of the FIND blocks matched (skipped 1)"*), and the two missing sensors.
-- ⚠️ **Corrected: the time-axis error never reached the document.** This item states *"Time axis wrong by ~57×"* as one of four defects that "landed in the document anyway". The string `7.5 days of sampling` exists **only in the `thinking` channel**; the delivered document makes no duration claim at all, and neither does the chat reply. It was a real reasoning error and a real near-miss, but it was not user-visible, and this file's own rule is to record the scope. **Three defects reached the user, not four.**
-- **`full_command` is absent on 31e0af64's `edit_document`, present on 42889f7b's `create_document`** — the before/after of item 10, visible in the same query.
-
-**The theory this supports, and why it inverts the plan.** Transcription is **1 wrong cell in 240 across two runs (99.6 % correct), in one run only**. The `duty` error is **2 of 2 runs, same field, same wrong value, every digit faithfully copied from the source**. Transcription drift is real but *incidental*; field-selection is *systematic*. A diff-based checker addresses the incidental half and is structurally incapable of catching the systematic one.
-
-**Consequences for the plan.** Layer A/B is still worth building, but this run is evidence it would have caught **nothing here** — so it must ship with 42889f7b as its **negative control**, or a checker that always fires will look like it works. The value has moved toward a small **field-semantics** layer: a per-source note that `duty` is inverted and `dp` is the power figure, in the same shape as the known-facts fixture in 2b. That is the check both runs needed.
-
-**Split into two independent pieces, 2026-07-28 — do 2a first.** They share a severity and nothing else: different inputs, different mechanisms, and 2a is both cheaper and more general.
-
-| | Piece | What it checks | Effort |
-|---|---|---|---|
-| **2a** | Transcription diff | Output matches the input the model was *handed* — row count, then cell-by-cell | S |
-| **2b** | Known-facts fixture | Output doesn't contradict a file of settled ground truth | M |
-
-2a needs no domain knowledge, catches three of the four defects in 31e0af64, and generalises to every "turn this data into a table" turn. 2b is the one that catches cold shock on a thermophile, and its ground truth is already written down in [resolvedissues.md](resolvedissues.md) under *"4B retired"*.
-
-**Retrieval quality is not the bottleneck — folded in from the old item 15.** Roughly a third of `web_fetch` calls fail on the sites this task reaches for: `thesporedepot` HTTP 403 repeatedly across days, `shroomstop.ca` 404, `kvkwestkhasihills.nic.in` non-HTML. The model moves on correctly each time. Worth knowing when a fact-check turn ends empty-handed, but 31e0af64 failed on a single clean verified source, so **neither 2a nor 2b should wait on measuring this.**
 
 ### 3. Partial edits leave documents contradicting themselves
 Run 127d32b0: 8 edits fixed the prose and missed the summary table, leaving four CO₂ thresholds and three colonization durations in one document.
@@ -248,10 +201,8 @@ Measured across all 24 test files in the commit series: **959 passed, 2 failed**
 - **Fixing it is a design decision, not a repair.** Patching a closure means either exposing it at module scope, injecting it, or restructuring the test to drive the behaviour through the endpoint instead of the internals. The last is the option `TESTING_STANDARD.md` would favour — the other two exist only to make the patch possible.
 - ⚠️ **Do not "fix" these by deleting them.** They cover the CAS race that item 1 spent three diagnoses on: an AI edit landing between the handler's read and its write. That case genuinely needs coverage; what's broken is how the test reaches it.
 
-### 19. ~~Five tests failed on macOS only~~ ✅ fixed 2026-07-28
-Four `AF_UNIX path too long` (macOS caps `sun_path` at 104 bytes; a socket under `tmp_path` was 126) plus `test_glob_confined_e2e`, whose assertion contradicted its own comment and passed on Linux by luck. **Neither was an application bug**; no confinement hole. Detail in [resolvedissues.md](resolvedissues.md), *"Five tests failed on macOS only"*.
-
-✅ **Confirmed on the M1, 2026-07-28: `2 failed, 5433 passed, 4 skipped` in 104 s** — only item 18 remains. The count reconciles exactly (5415 passed before, +5 fixed here, +13 new tests from items 10/17 = 5433), so nothing else moved.
+### 19. ~~Five tests failed on macOS only~~ ✅ fixed 2026-07-28, verified live
+Four `AF_UNIX path too long` (macOS caps `sun_path` at 104 bytes; a socket under `tmp_path` was 126) plus `test_glob_confined_e2e`, whose assertion contradicted its own comment and passed on Linux by luck. **Neither was an application bug**; no confinement hole. Confirmed on the M1 the same day — `2 failed, 5433 passed`, item 18 only *(that count predates the upstream rebase)*. Detail in [resolvedissues.md](resolvedissues.md), *"Five tests failed on macOS only"*.
 
 ---
 
