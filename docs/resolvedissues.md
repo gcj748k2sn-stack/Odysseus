@@ -19,7 +19,7 @@ Two blind spots, one shape: `app.db` looked complete while omitting the field th
 - **Effort was filed as M and was one line plus a cap** — the data was already computed and already streamed; only the persistence dict dropped it. The estimate was stale because nobody had re-read the code since filing.
 
 ## Five tests failed on macOS only — fixed 2026-07-28 (item 19)
-The suite had never been green on the dev machine: `7 failed, 5415 passed`. **None was an application bug.** Commit `1f0e55f`.
+The suite had never been green on the dev machine: `7 failed, 5415 passed`. **None was an application bug.** Commit `1f0e55f`. ✅ **Verified on the M1 the same day: `2 failed, 5433 passed, 4 skipped` in 104 s** — item 18 only. The count reconciles exactly (5415 + 5 fixed + 13 new tests from items 10/17), so nothing else shifted under the fix.
 
 - **`AF_UNIX path too long` (4 tests).** macOS caps `sun_path` at **104 bytes** (Linux 108) and hands out a deep `$TMPDIR`, so a socket under pytest's `tmp_path` was 126 bytes; the same path under Linux `/tmp` is 74 and fits. Shared helper `tests/helpers/unix_socket.py` binds under a short root and asserts its own length.
 - **`test_glob_confined_e2e`: the assertion contradicted a comment three lines above it**, which correctly said the not-found message echoes the caller's own pattern. `tempfile.mkdtemp()` returns an unresolved `/var/…` path while the workspace is compared as `realpath` (`/private/var/…`), and `os.path.relpath` is lexical — so it ascended to `/` and descended through the **absolute** path, embedding the secret in the very pattern the test then asserts is absent. Fixed by resolving the temp root. **No confinement hole:** glob refused correctly every time.

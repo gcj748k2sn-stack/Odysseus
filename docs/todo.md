@@ -34,18 +34,18 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 16 | SSRF guard tests covered an orphaned function | S4 | S | one instance fixed; **audit open** | tests |
 | 17 | ~~Cache hits are indistinguishable from live fetches~~ | S4 | XS | ✅ **fixed 2026-07-28** — `cached` + age | tests (6) |
 | 18 | Two CAS tests have never passed | S4 | S | open — found 2026-07-28 | n/a |
-| 19 | ~~Five tests fail on macOS only~~ | S4 | XS | ✅ fixed 2026-07-28 | **length half reproduced on Linux**; symlink half by path arithmetic — **awaiting one M1 run** |
+| 19 | ~~Five tests fail on macOS only~~ | S4 | XS | ✅ fixed 2026-07-28 | **live** — M1 suite `2 failed, 5433 passed` |
 
 **Numbers are never reused.** A retired item keeps its number and a `⊘` row, because renumbering has silently rotted cross-references four times (see *Notes & constraints*). Item 2 split into 2a/2b rather than becoming 2 and 19 for the same reason.
 
-> **Next, in order.** Items 5, 10, 17 and 19 closed on 2026-07-28, so the work is committed and the record of a run is now interpretable. Ordering follows leverage.
+> **Next, in order.** Items 1, 5, 10, 17 and 19 closed on 2026-07-28, so the work is committed and the record of a run is now interpretable. Ordering follows leverage.
 >
 > 1. **Item 2a** — the transcription diff. The only S1 with fresh evidence and no work done, cheaper than 2b, and it generalises to every "turn this data into a table" turn.
 > 2. **Item 3's real gap** — `find_stale_values` has exactly one production caller, `document_tools.py:765`, inside `EditDocumentTool`; `update_document` bypasses the lint entirely. Note the interaction: item 7's live guard promises *"I'll rewrite the document in full instead of patching"*, which routes every edit failure into the one path with no lint.
 > 3. **Item 6** — unblocked now that #10 persists `full_command`, but **only for runs recorded after 2026-07-28**. Needs a fresh reproduction; the three 2026-07-27 runs cannot be re-examined.
 > 4. **Item 13** — friction, but it has obstructed debugging twice and all three cited call sites are verified unchanged. Cheaper to fix than to work around a third time.
 >
-> **First, though: run the full suite on the M1.** Items 19 and 18 both hinge on it. Expected `2 failed` (item 18 only), down from 7. Item 8's active half stays parked — read its ❌ bullet before touching it.
+> **Suite baseline is `2 failed, 5433 passed` on the M1** — item 18 only, both pre-existing. Item 8's active half stays parked; read its ❌ bullet before touching it.
 
 ---
 
@@ -220,7 +220,7 @@ Measured across all 24 test files in the commit series: **959 passed, 2 failed**
 ### 19. ~~Five tests failed on macOS only~~ ✅ fixed 2026-07-28
 Four `AF_UNIX path too long` (macOS caps `sun_path` at 104 bytes; a socket under `tmp_path` was 126) plus `test_glob_confined_e2e`, whose assertion contradicted its own comment and passed on Linux by luck. **Neither was an application bug**; no confinement hole. Detail in [resolvedissues.md](resolvedissues.md), *"Five tests failed on macOS only"*.
 
-- ⚠️ **Awaiting one M1 run.** The length half was reproduced on Linux by setting a deep `TMPDIR`; the `/private` symlink half was verified by path arithmetic only, because it needs a root-level symlink. Expected baseline afterwards: **`2 failed`** (item 18 only).
+✅ **Confirmed on the M1, 2026-07-28: `2 failed, 5433 passed, 4 skipped` in 104 s** — only item 18 remains. The count reconciles exactly (5415 passed before, +5 fixed here, +13 new tests from items 10/17 = 5433), so nothing else moved.
 
 ---
 
