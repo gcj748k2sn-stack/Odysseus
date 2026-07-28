@@ -153,14 +153,38 @@ class WebFetchTool:
                 f"{WEB_FETCH_HARD_MAX_BYTES:,} bytes.]\n\n"
             )
 
-        # The notice must lead the output so the MAX_OUTPUT_CHARS trim below can
-        # never drop it. The title is untrusted, uncapped page content, so a
-        # giant title ahead of the notice could push it out of range; keep the
-        # notice first and cap the title as a second guard.
+        # Say so when the body came from the 2h cache rather than the network.
+        # Without this the model presents a stale reading as a current one: two
+        # turns 4.5 minutes apart both reported `uptime: 91 s` from a device
+        # whose counter was running, because only the first fetch was real.
+        # Anything time-sensitive — a sensor, a status page, a queue depth —
+        # needs the age stated, and the model cannot infer it.
+        cache_note = ""
+        if result.get("cached"):
+            age = result.get("cache_age_seconds")
+            age_txt = f"{age // 60} min {age % 60} s ago" if isinstance(age, int) else "earlier"
+            cache_note = (
+                f"[served from cache, fetched {age_txt} — NOT a live reading. "
+                f"Time-sensitive values (uptime, counters, queue depths) may be stale.]\n\n"
+            )
+
+        # The notices must lead the output so the MAX_OUTPUT_CHARS trim below
+        # can never drop them. The title is untrusted, uncapped page content, so
+        # a giant title ahead of them could push them out of range; keep the
+        # notices first and cap the title as a second guard.
         if len(title) > 300:
             title = title[:300] + "..."
         header = (f"# {title}\n" if title else "") + f"Source: {url}\n\n"
-        output = size_note + header + text
+        output = size_note + cache_note + header + text
         if len(output) > MAX_OUTPUT_CHARS:
             output = output[:MAX_OUTPUT_CHARS] + "\n\n[...truncated]"
-        return {"output": output, "exit_code": 0}
+        out = {"output": output, "exit_code": 0}
+        # Carried onto the persisted tool_event so `app.db` distinguishes a
+        # cache hit from a live fetch. Previously identical in shape and
+        # exit_code, which is why reading a run back from the database produced
+        # a wrong conclusion about a device being frozen.
+        if result.get("cached"):
+            out["cached"] = True
+            out["cached_at"] = result.get("cached_at")
+            out["cache_age_seconds"] = result.get("cache_age_seconds")
+        return out

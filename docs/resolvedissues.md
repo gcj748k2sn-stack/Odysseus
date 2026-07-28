@@ -2,6 +2,25 @@
 
 Closed investigations. Setup and config live in [qwensetup.md](qwensetup.md); open items in [todo.md](todo.md).
 
+## The record of a run didn't say what happened — fixed 2026-07-28 (items 10 + 17)
+Two separate blind spots, filed separately and fixed together because they are the same failure: **`app.db` looked complete while omitting the one field that made a run interpretable.** Between them they blocked diagnosis three times and produced one wrong conclusion.
+
+**Item 10 — tool arguments were truncated to their first line.** `tool_event["command"]` is `block.content.split("\n")[0][:80]`, which for a document edit is literally `<<<FIND>>>`: enough to know a call happened, nothing about what it asked for. Document tool events now also carry `full_command`, the complete arguments, capped at 16 KB by `_cap_persisted_command()` with an in-band `…[truncated by agent_loop: N more chars]` marker.
+
+- **Persisted always, not only on failure.** The item was originally filed as "persist raw args on any conversion or parse failure", which is too narrow: c7da3649 **succeeded** — `v5, 2 edit(s)` — while silently skipping a third FIND block inside the same call. A failure-only rule would have discarded precisely the interesting case.
+- **The data already existed and was thrown away at the last step.** `full_command` was computed and streamed to the client; only the persistence dict substituted `cmd_display`. The fix is one line plus the cap, not the M-effort the item was filed at — the estimate was wrong because nobody had read the code since.
+- **Truncation is marked because an unmarked clip is worse than no record.** A replay that cannot tell a clipped payload from a complete one will faithfully reproduce a *different* call and call it a reproduction.
+
+**Item 17 — a cache hit was indistinguishable from a live fetch.** `fetch_webpage_content` caches for 2 h and returned the stored dict unchanged, so nothing in the result, the tool output or `tool_events` said whether the bytes had left the machine. Two turns 4½ minutes apart both reported `uptime: 91 s` from a device whose counter was running; read back from `app.db` the second looked like a fresh reading of a frozen device.
+
+- The served dict now carries `cached: true`, `cached_at` and `cache_age_seconds`, and `tool_events` persists them. **Absence of the flag means live.**
+- **The model is told too, not just the database.** `web_fetch` output opens with *"served from cache, fetched N min M s ago — NOT a live reading"*, ahead of the `MAX_OUTPUT_CHARS` trim so a large body cannot push the notice out of range. The original failure was the *model* presenting a cached counter as a current measurement; labelling only the record would have left that intact.
+- The served dict is a **copy**. Mutating the parsed cache payload in place would let any caller that keeps the result corrupt what the next hit returns.
+
+Tests: `tests/test_tool_event_full_command.py` (7), `tests/test_web_fetch_cache_visibility.py` (6). The cache tests write only into a temp `CONTENT_CACHE_DIR` — never the live one, since calling `fetch_webpage_content()` against the real tree once put a fabricated value in front of the model, which recorded it in a user document as a measurement.
+
+**Verified as non-regression by differential run, not by assertion.** 176 relevant test files with the change: `10 failed, 1692 passed`. The same 174 files at `HEAD` in a detached worktree: `10 failed, 1679 passed`. Identical failures, +13 being the new tests. The 10 are 8 in `test_web_fetch_size_caps.py` — which need DNS to resolve `example.com` and fail closed under the SSRF guard without it, reproduced identically at `HEAD` — plus the 2 in [todo.md](todo.md) item 18.
+
 ## Sixteen days of uncommitted work — committed 2026-07-28. The bookkeeping was wrong twice, in ways that would have lost the evidence.
 Was [todo.md](todo.md) item 5. Last commit had been `df2fad2`, 2026-07-12; the work landed as seven commits (`825bcc1`…`e216313`), 47 files. Identity set repo-locally, nothing pushed.
 

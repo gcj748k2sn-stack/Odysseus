@@ -595,7 +595,25 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
             timestamp = datetime.fromisoformat(cached_data["timestamp"])
             if datetime.now() - timestamp < timedelta(hours=2):
                 logger.debug(f"Content cache hit for URL: {url}")
-                return cached_data["data"]
+                # A cache hit used to be indistinguishable from a live fetch:
+                # same shape, same exit_code, no flag. That has already
+                # produced a wrong conclusion — two turns 4.5 minutes apart
+                # both reported `uptime: 91 s` from a device whose counter was
+                # running, and only the first had left the machine. Read back
+                # from app.db, the second looked like a fresh reading of a
+                # frozen device. Label the hit and say how old it is.
+                #
+                # Copied, not mutated in place: `cached_data["data"]` is the
+                # dict just parsed from the cache file, and callers are free to
+                # keep it. See docs/todo.md, "A cache hit is indistinguishable
+                # from a live fetch".
+                served = dict(cached_data["data"])
+                served["cached"] = True
+                served["cached_at"] = cached_data["timestamp"]
+                served["cache_age_seconds"] = int(
+                    (datetime.now() - timestamp).total_seconds()
+                )
+                return served
             else:
                 cache_file.unlink(missing_ok=True)
                 content_cache_index.pop(cache_key, None)

@@ -21,33 +21,31 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 3 | Documents contradict themselves | S1 | M | partly re-diagnosed; editor half fixed | tests |
 | 4 | ~~Retired 4B still on the research path~~ | S1 | XS | ✅ done | live |
 | 5 | ~~Uncommitted work — since 2026-07-12~~ | S2 | XS | ✅ **committed 2026-07-28** — 7 commits, 47 files | **live** |
-| 6 | Answer text lost to the reasoning channel | S2 | M | lead only — blocked on #10 | — |
+| 6 | Answer text lost to the reasoning channel | S2 | M | lead only — **#10 landed, now unblocked** | — |
 | 7 | ~~Closing summary under-reports / stays silent~~ | S3 | S | ✅ fixed | **live** — skipped-edit report, 2026-07-27 |
 | 8 | Agent gathers information, then stops | S3 | M | reporting fixed; **active half reverted** | **live** (reporting) |
 | 9 | ~~Throughput cliff: 2.84 → 0.39 tok/s~~ | — | — | ⊘ **retired — disproved by its own data** | n/a |
-| 10 | Failures aren't replayable | S4 | **XS** | open — **blocked diagnosis twice** | — |
+| 10 | ~~Failures aren't replayable~~ | S4 | XS | ✅ **fixed 2026-07-28** — `full_command` persisted | tests (7) |
 | 11 | ~~Retry-at-failure covers only document tools~~ | — | — | ⊘ **retired to a watch note — no instance** | n/a |
 | 12 | Wasted verification rounds | S4 | XS | open — still reproducing | — |
 | 13 | Terminal access-log noise | S4 | S | open — got in the way twice | — |
 | 14 | Web search derails on ambiguous common nouns | S3 | M | open — recurring | — |
 | 15 | ~~`web_fetch` failure rate on cultivation sources~~ | — | — | ⊘ **folded into 2 — premise already answered** | n/a |
 | 16 | SSRF guard tests covered an orphaned function | S4 | S | one instance fixed; **audit open** | tests |
-| 17 | Cache hits are indistinguishable from live fetches | S4 | **XS** | open — **produced a wrong conclusion** | — |
+| 17 | ~~Cache hits are indistinguishable from live fetches~~ | S4 | XS | ✅ **fixed 2026-07-28** — `cached` + age | tests (6) |
 | 18 | Two CAS tests have never passed | S4 | S | open — found 2026-07-28 | n/a |
 | 19 | ~~Five tests fail on macOS only~~ | S4 | XS | ✅ fixed 2026-07-28 | **length half reproduced on Linux**; symlink half by path arithmetic — **awaiting one M1 run** |
 
 **Numbers are never reused.** A retired item keeps its number and a `⊘` row, because renumbering has silently rotted cross-references four times (see *Notes & constraints*). Item 2 split into 2a/2b rather than becoming 2 and 19 for the same reason.
 
-> **Next, in order.** Item 5 is closed, so the work is no longer at risk and ordering can follow leverage instead of urgency.
+> **Next, in order.** Items 5, 10, 17 and 19 closed on 2026-07-28, so the work is committed and the record of a run is now interpretable. Ordering follows leverage.
 >
-> 1. **Items 10 and 17 together** — both re-scoped to XS after reading the code. #10 is roughly one line: `full_command` is already built at `agent_loop.py:4389` and already streamed at `:4405`; only the persistence dict at `:4755` substitutes the truncated `cmd_display`. #17 is similar — the read path at `content.py:591` already holds the cache timestamp. **Do these first because they are what makes everything below diagnosable**, and #10 has now blocked diagnosis twice.
-> 2. **Item 2a** — the transcription diff. The only S1 with fresh evidence and no work done, and cheaper than 2b.
-> 3. **Item 3's real gap** — `find_stale_values` has exactly one production caller, `document_tools.py:765`, inside `EditDocumentTool`. `update_document` bypasses the lint entirely. Note the interaction: item 7's live guard promises *"I'll rewrite the document in full instead of patching"*, which routes every edit failure into the one path with no lint.
+> 1. **Item 2a** — the transcription diff. The only S1 with fresh evidence and no work done, cheaper than 2b, and it generalises to every "turn this data into a table" turn.
+> 2. **Item 3's real gap** — `find_stale_values` has exactly one production caller, `document_tools.py:765`, inside `EditDocumentTool`; `update_document` bypasses the lint entirely. Note the interaction: item 7's live guard promises *"I'll rewrite the document in full instead of patching"*, which routes every edit failure into the one path with no lint.
+> 3. **Item 6** — unblocked now that #10 persists `full_command`, but **only for runs recorded after 2026-07-28**. Needs a fresh reproduction; the three 2026-07-27 runs cannot be re-examined.
 > 4. **Item 13** — friction, but it has obstructed debugging twice and all three cited call sites are verified unchanged. Cheaper to fix than to work around a third time.
 >
-> Item 6 stays blocked on #10. Item 8's active half stays parked — read its ❌ bullet before touching it.
->
-> **Item 19 is fixed** — run the suite on the M1 to confirm, and the expected baseline becomes `2 failed` (item 18 only) instead of `7 failed`. Then item 2 is the only S1 left with no work done on it — and it has fresh evidence from 2026-07-27 that the failure is transcription, not just retrieval. Item 10 still blocks diagnosis of everything else, and item 17 is its close relative: both are cases where the record of a run doesn't say what actually happened.
+> **First, though: run the full suite on the M1.** Items 19 and 18 both hinge on it. Expected `2 failed` (item 18 only), down from 7. Item 8's active half stays parked — read its ❌ bullet before touching it.
 
 ---
 
@@ -142,7 +140,7 @@ Seven commits, `825bcc1`…`e216313`, 47 files. Identity set **repo-locally** (`
 ### 6. Answer text can be lost to the reasoning channel
 Run f14a8f52, exact from `app.db`: `round_texts[0]` was 300 chars, `thinking` was a byte-for-byte 219-char **prefix** of it, and the saved message is the remaining 79 chars. The reply starts mid-list at "2.", and the model's most important question — *"1. Where is the existing HTML, CSS and JavaScript located?"* — is absent from history entirely.
 
-**This is a lead, not a diagnosis.** "The reasoning parser eats the answer" is the hypothesis [resolvedissues.md](resolvedissues.md) already retracted once; that retraction was correct for those runs. The arithmetic above shows the mechanism is real *somewhere*. Confirming it needs the raw stream, which **item 10 unlocks** — and item 10 has now blocked diagnosis twice more.
+**This is a lead, not a diagnosis.** "The reasoning parser eats the answer" is the hypothesis [resolvedissues.md](resolvedissues.md) already retracted once; that retraction was correct for those runs. The arithmetic above shows the mechanism is real *somewhere*. Confirming it needs the raw stream. ✅ **Item 10 landed 2026-07-28, so this is now unblocked** — document tool events carry `full_command`. Note the limit: only runs recorded *after* that date are replayable, so the three 2026-07-27 runs counted below cannot be re-examined this way and a fresh reproduction is needed.
 
 **Count only, 2026-07-27.** Three further runs with `round_texts` all-zero and a complete, correct prose summary sitting in `thinking`: 2ebdd27a `[0,0]`, 4eb184ae `[0,0]`, 31e0af64 `[0,0,0,0]`. Recorded as *frequency*, deliberately without a mechanism — the retraction above exists precisely because these look like misrouting and the earlier ones weren't. Worth noting the retraction is load-bearing: it stopped a re-investigation of the `/v1` thinking path on 2026-07-27, which would have been the third time down that road.
 
@@ -186,14 +184,13 @@ Recurring and now recorded as its own item, because it feeds item 2. Run eb2d0ac
 
 ## S4 — friction and blocked diagnosis
 
-### 10. Failures aren't replayable — now the top S4
-`tool_event` persists `cmd_display`, which for document tools is `block.content.split("\n")[0][:80]` — i.e. literally `<<<FIND>>>`. **This blocked diagnosis twice more on 2026-07-19**: once testing whether skipped FIND texts landed in regions the diff had rolled back, once attributing the empty-write incident.
+### 10. ~~Failures aren't replayable~~ ✅ fixed 2026-07-28
+Document tool events now carry `full_command` — the complete arguments, capped at 16 KB with an in-band truncation marker — alongside the truncated `command`. Persisted on success as well as failure. Diagnosis and the reasoning behind both choices in [resolvedissues.md](resolvedissues.md), *"The record of a run didn't say what happened"*.
 
-**Two corrections to the item as originally written, both from real data:**
-- *"Persist raw args on any conversion or parse failure" is too narrow.* The c7da3649 calls **succeeded** (`v5, 2 edit(s)`) with one edit skipped inside the same call. Under a failure-only rule nothing would be persisted and the interesting case is still lost. Persist always for document tools.
-- *The data already exists and is thrown away at the last step.* `full_command` is computed at `agent_loop.py:4389` and streamed to the client at `:4405`; only the persistence dict at `:4755` substitutes `cmd_display`. Roughly one line plus a size cap — much cheaper than the M-effort framing implies. Cap at ~16 KB with an explicit truncation marker; message metadata is currently 566 KB across 92 rows in a 2.4 MB database. *(Line numbers re-verified 2026-07-28 — they had drifted from the 4313/4326/4673 originally filed, which is why the effort estimate is now stated as XS from re-reading rather than carried over.)*
-
-Unlocks item 6 and a replay harness over history, symmetric with the editor-side one already built in `tests/tools/`.
+- **Unblocks item 6**, which needed the raw stream and had been blocked on this three times.
+- **Effort was filed as M and was actually one line plus a cap.** `full_command` was already computed and already streamed to the client; only the persistence dict substituted `cmd_display`. The estimate was stale because nobody had re-read the code since filing — the line numbers had drifted too (4313/4326/4673 → 4389/4405/4755).
+- ⚠️ **Rows written before 2026-07-28 have no `full_command` and are not replayable.** The existing history is still only as good as `<<<FIND>>>`.
+- A replay harness over history, symmetric with the editor-side one in `tests/tools/`, is now possible and is not yet built.
 
 ### 11. ~~Retry-at-failure covers only document tools~~ — retired 2026-07-28 to a watch note
 **Conditional by its own wording** — "extend *if* the same silence appears on `bash`/`web_fetch`/`manage_calendar`" — and in the nine days since filing, no instance has appeared. That is a trigger, not a task; it was drawing attention as an open item without any evidence behind it.
@@ -221,14 +218,13 @@ One instance found and fixed 2026-07-27 (see [resolvedissues.md](resolvedissues.
 - **Open:** the same shape is plausible elsewhere — `5e9b415` is not special, any refactor that moves a call site can leave one. A cheap first pass: flag module-private functions with zero non-test references. `src/webhook_manager.py`, `routes/model_routes.py` and `src/model_context.py` each carry their own `_PRIVATE_NETWORKS` copy and are the obvious places to look next.
 - Related smell from the same commit, not yet fixed: `test_web_fetch_size_caps.py` patches `content_mod.httpx.stream` while `_get_public_url` uses `httpx.Client(...).stream`. Those tests are not exercising what they claim either.
 
-### 17. A cache hit is indistinguishable from a live fetch
-`fetch_webpage_content` caches for 2 h under `sha(url + "#cap=" + budget)`. Nothing in `tool_events` distinguishes a served-from-cache result from one that left the machine — same shape, same `exit_code`, no flag.
+### 17. ~~A cache hit is indistinguishable from a live fetch~~ ✅ fixed 2026-07-28
+A served-from-cache result now carries `cached: true`, `cached_at` and `cache_age_seconds`; `tool_events` persists them and the `web_fetch` output tells the model *"served from cache, fetched N min M s ago — NOT a live reading"*. **Absence of the flag means live.** Full account in [resolvedissues.md](resolvedissues.md), *"The record of a run didn't say what happened"*.
 
-- **It has already produced a wrong conclusion.** Two turns 4½ minutes apart both reported `uptime: 91 s` from a device whose uptime counter was running; only the first fetch was real. Read from `app.db` alone, the second turn looks like a fresh reading of a frozen device.
-- **`full: true` changes the cache key**, because the budget is part of it. The same URL fetched with and without `full` uses two independent entries and can return two different bodies in one session — a second trap on top of the first.
-- Sibling of item 10: both are cases where the stored record of a run doesn't say what actually happened, and both cost diagnosis time before anyone suspects the record itself.
-- **Cheap fix:** carry `cached: true` plus the entry's `timestamp` into the tool result. Anything more (per-call bypass, shorter TTL) is optional; knowing *which* is the part that blocks diagnosis.
-- Operational note for anyone debugging this path lives in [qwensetup.md](qwensetup.md) under "`web_fetch` — what it sees, and what it silently reuses", including why you must never run `fetch_webpage_content()` against the live tree.
+- **Labelling the record alone would not have fixed the original failure** — it was the *model* reporting a cached `uptime: 91 s` as a current measurement, so the notice has to reach the model, ahead of the output trim.
+- ⚠️ **Still true and not addressed:** `full: true` changes the cache key, because the download budget is part of it. The same URL fetched with and without `full` uses two independent entries and can return two different bodies in one session. Knowing *which* entry you got is now visible; that there are two remains a trap.
+- ⚠️ Rows written before 2026-07-28 carry no flag either way.
+- Operational detail in [qwensetup.md](qwensetup.md) under "`web_fetch` — what it sees, and what it silently reuses", including why you must never run `fetch_webpage_content()` against the live tree.
 
 ### 18. Two tests in `test_document_put_version_conflict.py` have never passed
 Found 2026-07-28 while establishing a baseline before committing. `test_concurrent_ai_edit_after_read_loses_the_swap` and `test_losing_swap_does_not_leave_a_partial_version_row` both do `droutes._reserve_document_uploads` — but that function is defined at `routes/document_routes.py:82`, **nested inside `setup_document_routes()`**. It is a closure, never a module attribute, so the lookup raises `AttributeError` and can never have worked.

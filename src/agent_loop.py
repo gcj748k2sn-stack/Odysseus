@@ -3215,6 +3215,27 @@ _VERIFIER_EFFECTFUL_TOOLS = {
 }
 _VERIFIER_MAX_ROUNDS = 2  # cap re-verify cycles per turn — never loop forever
 
+# Ceiling on the raw tool arguments persisted with a document tool event.
+# Message metadata was 566 KB across 92 rows in a 2.4 MB app.db when this was
+# sized, so 16 KB per document call is affordable and covers every real edit
+# seen so far. Truncation is marked in-band: a replay must be able to tell a
+# clipped record from a complete one, or it will "reproduce" a different call
+# than the one that ran.
+_PERSISTED_COMMAND_MAX = 16384
+_PERSISTED_COMMAND_TRUNCATION_MARKER = "\n…[truncated by agent_loop: {dropped} more chars]"
+
+
+def _cap_persisted_command(command: str) -> str:
+    """Clip tool arguments for storage, marking the clip so replay can see it."""
+    if command is None:
+        return ""
+    if len(command) <= _PERSISTED_COMMAND_MAX:
+        return command
+    marker = _PERSISTED_COMMAND_TRUNCATION_MARKER.format(
+        dropped=len(command) - _PERSISTED_COMMAND_MAX
+    )
+    return command[:_PERSISTED_COMMAND_MAX] + marker
+
 
 def _build_actions_snapshot(tool_events: list, limit: int = 8000) -> str:
     """Compact record of what the agent actually did this turn, for the
@@ -5440,6 +5461,17 @@ async def stream_agent_loop(
                 "output": output_text,
                 "exit_code": result.get("exit_code"),
             }
+            # Document tools truncate `command` to the first line, which for an
+            # edit is literally "<<<FIND>>>" — enough to know a call happened
+            # and nothing about what it asked for. Keep the full arguments so a
+            # failed edit can be replayed against the stored document versions.
+            #
+            # Persist ALWAYS, not only on failure: c7da3649 SUCCEEDED with
+            # "v5, 2 edit(s)" while silently skipping a third FIND block inside
+            # the same call, and a failure-only rule would have discarded
+            # exactly that case. See docs/todo.md, "Failures aren't replayable".
+            if is_doc_tool:
+                tool_event["full_command"] = _cap_persisted_command(full_command)
             if result.get("image_url"):
                 for ik in ("image_url", "image_prompt", "image_model", "image_size", "image_quality"):
                     if result.get(ik):
@@ -5451,6 +5483,16 @@ async def stream_agent_loop(
             # this the diff shows live but vanishes from saved history.
             if result.get("diff"):
                 tool_event["diff"] = result["diff"]
+            # A cache hit and a live fetch were previously identical in the
+            # record — same shape, same exit_code — so a run read back from
+            # app.db could not be told apart. See docs/todo.md, "A cache hit is
+            # indistinguishable from a live fetch". Absence of the key means the
+            # fetch left the machine.
+            if result.get("cached"):
+                tool_event["cached"] = True
+                for _ck in ("cached_at", "cache_age_seconds"):
+                    if result.get(_ck) is not None:
+                        tool_event[_ck] = result[_ck]
             if _pending_ask_user_event:
                 # Persist the structured question with the tool event.  On a
                 # reload, chatRenderer can restore the card; a later user
