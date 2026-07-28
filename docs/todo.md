@@ -34,6 +34,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 16 | SSRF guard tests covered an orphaned function | S4 | S | one instance fixed; **audit open** | tests |
 | 17 | Cache hits are indistinguishable from live fetches | S4 | **XS** | open — **produced a wrong conclusion** | — |
 | 18 | Two CAS tests have never passed | S4 | S | open — found 2026-07-28 | n/a |
+| 19 | Five tests fail on macOS only | S4 | XS | open — fixes reasoned, **not yet run on the M1** | n/a |
 
 **Numbers are never reused.** A retired item keeps its number and a `⊘` row, because renumbering has silently rotted cross-references four times (see *Notes & constraints*). Item 2 split into 2a/2b rather than becoming 2 and 19 for the same reason.
 
@@ -44,7 +45,9 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 > 3. **Item 3's real gap** — `find_stale_values` has exactly one production caller, `document_tools.py:765`, inside `EditDocumentTool`. `update_document` bypasses the lint entirely. Note the interaction: item 7's live guard promises *"I'll rewrite the document in full instead of patching"*, which routes every edit failure into the one path with no lint.
 > 4. **Item 13** — friction, but it has obstructed debugging twice and all three cited call sites are verified unchanged. Cheaper to fix than to work around a third time.
 >
-> Item 6 stays blocked on #10. Item 8's active half stays parked — read its ❌ bullet before touching it. Then item 2 is the only S1 left with no work done on it — and it has fresh evidence from 2026-07-27 that the failure is transcription, not just retrieval. Item 10 still blocks diagnosis of everything else, and item 17 is its close relative: both are cases where the record of a run doesn't say what actually happened.
+> Item 6 stays blocked on #10. Item 8's active half stays parked — read its ❌ bullet before touching it.
+>
+> **Item 19 is XS and arguably comes first**, not on severity but because seven expected failures on every run is what stops anyone reading the summary — and reading the summary is the gate in front of all of the above. Then item 2 is the only S1 left with no work done on it — and it has fresh evidence from 2026-07-27 that the failure is transcription, not just retrieval. Item 10 still blocks diagnosis of everything else, and item 17 is its close relative: both are cases where the record of a run doesn't say what actually happened.
 
 ---
 
@@ -235,6 +238,27 @@ Measured across all 24 test files in the commit series: **959 passed, 2 failed**
 - **Third instance of the item 16 shape, and the least dangerous kind.** Here the test fails loudly. Item 16's orphan failed *green*, which is why that one is the priority. But the underlying cause is identical: a test reaching for an implementation detail that a refactor moved, with nothing checking the reference still resolves.
 - **Fixing it is a design decision, not a repair.** Patching a closure means either exposing it at module scope, injecting it, or restructuring the test to drive the behaviour through the endpoint instead of the internals. The last is the option `TESTING_STANDARD.md` would favour — the other two exist only to make the patch possible.
 - ⚠️ **Do not "fix" these by deleting them.** They cover the CAS race that item 1 spent three diagnoses on: an AI edit landing between the handler's read and its write. That case genuinely needs coverage; what's broken is how the test reaches it.
+
+### 19. Five tests fail on macOS only — the suite has never been green on the dev machine
+Found 2026-07-28 by running the full suite on the M1 for the first time: **`7 failed, 5415 passed, 4 skipped`**. Two are item 18. The other five fail *only* on macOS, for two environment reasons, and **neither is an application bug** — the code under test is correct in all five cases.
+
+**`OSError: AF_UNIX path too long` — 4 tests.** `test_cookbook_docker_access.py:65`, `test_shell_routes.py:302` (×2 params) and `:317` bind a Unix socket at `tmp_path / "docker.sock"`. macOS caps `sockaddr_un.sun_path` at **104 bytes** (Linux allows 108) and hands out a deep `$TMPDIR`, so the path is **126 bytes — 22 over**:
+
+```
+/private/var/folders/96/…/T/pytest-of-cedrik/pytest-3/test_container_opt_in_with_uni0/docker.sock
+```
+
+The same path under Linux's `/tmp` is 74 bytes and fits, which is why this has never been seen. **Fix: bind the socket in a short directory** (`tempfile.mkdtemp(dir="/tmp")` plus a short filename), not under `tmp_path`. The directory only needs to hold a socket for the length of the `with` block.
+
+**`test_workspace_confine.py::test_glob_confined_e2e` — the assertion contradicts its own comment.** The test creates a secret outside the workspace and globs a traversal pattern at it. It correctly gets `No files`, then asserts `secret not in r["output"]`. But the comment three lines above says: *"The not-found message echoes the pattern the model supplied, so the signal is the absence of a match, not the absence of the path string."* The comment is right and the assertion contradicts it.
+
+It passes on Linux by luck. `outside = tempfile.mkdtemp()` returns `/var/folders/…` unresolved, while the workspace is compared as `os.path.realpath(ws)` = `/private/var/folders/…`. `os.path.relpath` is purely lexical, so it walks up seven levels and back down through the **absolute** path — `../../../../../../../var/folders/…/secret.txt` — which necessarily contains the secret string. On Linux both paths are already canonical, so `relpath` yields `../tmpYYYY/secret.txt` and the assertion holds vacuously.
+
+**Fix: `outside = os.path.realpath(tempfile.mkdtemp())`.** Then `relpath` stays relative on both platforms and the assertion tests what it was written to test. **No confinement hole here** — glob refused correctly; it echoed back a pattern the caller already supplied, which reveals nothing.
+
+- **Both fixes are reasoned from the path arithmetic, not observed passing** — this sandbox is Linux, so the failures cannot be reproduced here and the fixes cannot be verified here either. Marked unverified until run on the M1. *(Which is the item's own lesson twice over.)*
+- **A permanently-red suite is its own hazard.** Seven expected failures on every run trains you to skim the summary, and that is how the eighth gets through. Same family as item 16's green-suite-asserting-nothing, inverted.
+- **`-m area_security` reported `654 passed` clean on this tree** while four docker-socket privilege-gate tests were failing, because the taxonomy keys off filenames: `test_shell_routes.py` → `area_routes`, `test_cookbook_docker_access.py` → `area_services`. **An area marker says what the file is called, not what it protects** — don't use the security lane as a pre-commit gate on its own.
 
 ---
 
