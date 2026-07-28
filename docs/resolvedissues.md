@@ -4,12 +4,12 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 **Trimmed 2026-07-28 from 283 lines to what still earns its keep.** The test applied to every line: *would someone about to make a decision be worse off without it?* What survived is **retractions** (wrong mechanisms recorded as findings — three separate re-investigations have been stopped by these), **traps that recur**, **ground truth**, and **the scope a fix was verified at**. What went is mechanism walkthroughs, per-run evidence tables and timings: all of it describes code that is now fixed, tested and committed, so it is re-derivable and was costing a re-read on every visit.
 
-**Where the detail went.** Everything fixed before 2026-07-28 is in the initial commit series `825bcc1`…`e216313`, whose messages carry the diagnosis; later work is in its own commit. `git log --format='%H %s' df2fad2..` then `git show <hash>`, or `git log -S<symbol>` to find the change that touched a function. **Headings here are cited by title from source comments — rename with care** (see *Notes & constraints* in [todo.md](todo.md)).
+**Where the detail went.** Everything fixed before 2026-07-28 is in the initial commit series `b700632`…`ae4fa58`, whose messages carry the diagnosis; later work is in its own commit. **List them with `git log --format='%h %s' origin/dev..HEAD`** — deliberately not `<base-hash>..`, because the base moved: these were rebased onto a rewritten upstream on 2026-07-28 and every hash in these docs changed with it. Then `git show <hash>`, or `git log -S<symbol>` to find the change that touched a function. **Headings here are cited by title from source comments — rename with care** (see *Notes & constraints* in [todo.md](todo.md)).
 
 ---
 
 ## The record of a run didn't say what happened — fixed 2026-07-28 (items 10 + 17)
-Two blind spots, one shape: `app.db` looked complete while omitting the field that made a run interpretable. Between them they blocked diagnosis three times and produced one wrong conclusion. Commit `5c7c442`.
+Two blind spots, one shape: `app.db` looked complete while omitting the field that made a run interpretable. Between them they blocked diagnosis three times and produced one wrong conclusion. Commit `5e27f6a`.
 
 - **Item 10.** `tool_event["command"]` is the first line of the arguments, which for a document edit is literally `<<<FIND>>>`. Document events now also carry `full_command`, capped at 16 KB with an in-band truncation marker.
   - **Persisted always, not only on failure.** c7da3649 *succeeded* — `v5, 2 edit(s)` — while silently skipping a third FIND block. A failure-only rule discards exactly the interesting case.
@@ -19,7 +19,7 @@ Two blind spots, one shape: `app.db` looked complete while omitting the field th
 - **Effort was filed as M and was one line plus a cap** — the data was already computed and already streamed; only the persistence dict dropped it. The estimate was stale because nobody had re-read the code since filing.
 
 ## Five tests failed on macOS only — fixed 2026-07-28 (item 19)
-The suite had never been green on the dev machine: `7 failed, 5415 passed`. **None was an application bug.** Commit `1f0e55f`. ✅ **Verified on the M1 the same day: `2 failed, 5433 passed, 4 skipped` in 104 s** — item 18 only. The count reconciles exactly (5415 + 5 fixed + 13 new tests from items 10/17), so nothing else shifted under the fix.
+The suite had never been green on the dev machine: `7 failed, 5415 passed`. **None was an application bug.** Commit `c6b9af3`. ✅ **Verified on the M1 the same day: `2 failed, 5433 passed, 4 skipped` in 104 s** — item 18 only. The count reconciles exactly (5415 + 5 fixed + 13 new tests from items 10/17), so nothing else shifted under the fix.
 
 - **`AF_UNIX path too long` (4 tests).** macOS caps `sun_path` at **104 bytes** (Linux 108) and hands out a deep `$TMPDIR`, so a socket under pytest's `tmp_path` was 126 bytes; the same path under Linux `/tmp` is 74 and fits. Shared helper `tests/helpers/unix_socket.py` binds under a short root and asserts its own length.
 - **`test_glob_confined_e2e`: the assertion contradicted a comment three lines above it**, which correctly said the not-found message echoes the caller's own pattern. `tempfile.mkdtemp()` returns an unresolved `/var/…` path while the workspace is compared as `realpath` (`/private/var/…`), and `os.path.relpath` is lexical — so it ascended to `/` and descended through the **absolute** path, embedding the secret in the very pattern the test then asserts is absent. Fixed by resolving the temp root. **No confinement hole:** glob refused correctly every time.
@@ -28,8 +28,23 @@ The suite had never been green on the dev machine: `7 failed, 5415 passed`. **No
 - ⚠️ **`-m area_security` reported `654 passed` clean while four docker-socket privilege-gate tests were failing.** The taxonomy keys off *filenames*, so `test_shell_routes.py` lands in `area_routes`. **An area marker says what a file is called, not what it protects** — don't use the security lane as a pre-commit gate on its own.
 - **A permanently-red suite is its own hazard:** seven expected failures on every run trains you to skim the summary, and that is how the eighth gets through.
 
+## Upstream rewrote history; our work was rebased, not merged — 2026-07-28
+`git status` said "behind by 4 commits, can be fast-forwarded" and that was **false** — it describes the *cached* `origin/dev` ref, which nobody had refreshed. A `git fetch` changed the answer completely:
+
+- `df2fad2`, the base everything here was built on, is **no longer reachable from `origin/dev`**. Upstream force-pushed a rewritten history.
+- The real common ancestor is `71d74290`, **1 June** — not 4 commits back, but 1939 upstream / 1916 local.
+- Of those 1916, only **13 were ours.** The other 1903 were upstream's own commits, re-authored.
+
+**`git merge origin/dev` would have been wrong** — it would try to reconcile two near-identical-but-rewritten histories. The right operation was `git rebase --onto origin/dev df2fad2 dev`: replay only the 13 commits we actually wrote, discard the rest.
+
+- **Rehearsed in a throwaway worktree first**, so the conflict count was known (4 hunks, 2 files) before the real branch was touched. A tag `pre-rebase-2026-07-28` marks the old tip; `git reset --hard pre-rebase-2026-07-28` restores it.
+- **Two of the four conflicts were upstream having independently fixed the same class of bug.** They ungated the `manage_notes` reporting block from `_ody_notes_finetune_mode` — exactly the split-gate change made here for documents — and added `_response_before_tool_summary`, which their later code reads. Resolution kept *their* ungated form and dropped ours; ours was the superseded shape.
+- **Our two headline fixes were NOT upstream** (`doc_update_emitted`, `_userDirtyDocId`, and the whole two-tier SSRF guard: 0 occurrences on `origin/dev`), so all 13 commits were still worth moving.
+- ⚠️ **The rebase surfaced a real gap the conflict resolution could not have caught.** `test_no_silent_save_is_left_unlabelled` failed afterwards: upstream had added a **new** silent-save call site in `ensureEmailDraftEnvelope` that our labelling pass predates. Labelled `Autosave (email envelope)`. **A source-text guard is what turns "their new code" into a visible failure instead of a silent hole** — the same value the write labels themselves have.
+- **Every commit hash in these docs changed.** 19 references were remapped by matching commit subjects old→new. **Cite by `origin/dev..HEAD` rather than by a base hash from now on** — a base hash is exactly what a rewrite invalidates.
+
 ## Sixteen days of uncommitted work — committed 2026-07-28
-Was item 5. Seven commits, `825bcc1`…`e216313`, 47 files, identity set repo-locally, nothing pushed.
+Was item 5. Seven commits, `b700632`…`ae4fa58`, 47 files, identity set repo-locally, nothing pushed.
 
 - **The item's own bookkeeping was the risk.** "44 files, staged" described 2026-07-19 and was never revised, so the whole 2026-07-27 session sat *unstaged* — outside the only protection the item claimed. **A count written in prose is a claim with an expiry date and no test.**
 - **`COMMIT_PLAN.sh` named no `git add` for three staged test files**, and opens with `git reset -q`, so they would have emerged untracked — the staged-but-never-committed trap described at the end of this entry, applied to the entire evidence base for items 7 and 8. The script now ends with a coverage check naming anything staged at start and missing from the new commits. **This class of error is invisible to review and trivial to detect mechanically.**
@@ -43,7 +58,7 @@ Was item 5. Seven commits, `825bcc1`…`e216313`, 47 files, identity set repo-lo
 - **General trap: for a staged-but-never-committed file, renaming or re-staging invalidates every path-based recovery route.** `hash-object -w` first, and write the hash down.
 
 ## web_fetch could not reach the LAN — fixed 2026-07-27. Two SSRF policies in one repo, and a guard whose tests tested nothing.
-`web_fetch` refused every RFC-1918 and loopback target, so reaching an ESP32 on the LAN was never possible. Commit `677c4d8`.
+`web_fetch` refused every RFC-1918 and loopback target, so reaching an ESP32 on the LAN was never possible. Commit `9f52bc3`.
 
 - **The repo held two contradicting policies.** `src/url_safety.py` (embeddings, webhooks, ntfy) is deliberately local-first; `services/search/content.py` — the only path `web_fetch` uses — was a hard lockdown with no knob. Same product, opposite defaults, no note anywhere.
 - **Fix:** two-tier classification. *Hard* (no override): link-local incl. `169.254.169.254`, multicast, reserved, unspecified, `0.0.0.0/8`, metadata hostnames. *Gated* behind `WEB_FETCH_BLOCK_PRIVATE_IPS` (**default `true`**): loopback, RFC-1918, ULA, `.local`/`.lan`/`.internal`/`.intranet`.
@@ -53,7 +68,7 @@ Was item 5. Seven commits, `825bcc1`…`e216313`, 47 files, identity set repo-lo
 - **Lesson:** the symptom said "localhost is blocked", which sounds like a dev-environment quirk. It was a product-wide policy contradiction, and the naive reading would have shipped a whitelist for `127.0.0.1` that still couldn't talk to the hardware.
 
 ## Autosave reverting AI edits — fixed 2026-07-19. It was a duplicated SSE event, not autosave and not the CAS.
-**Third write-up of this symptom and the first to find the mechanism.** A single document tool call emitted `doc_update` **twice**; the second delivery re-entered `handleDocUpdate`, hit the #2484 guard, and `exitDiffMode(true)` restored the pre-edit buffer and PUT it back under a now-fresh `base_version` — so every destructive write passed the compare-and-swap *legitimately*. Fixed in three layers (event dedupe, non-persisting AI-driven teardown, `_userDirtyDocId` required for the 409 retry). Commit `377db62`.
+**Third write-up of this symptom and the first to find the mechanism.** A single document tool call emitted `doc_update` **twice**; the second delivery re-entered `handleDocUpdate`, hit the #2484 guard, and `exitDiffMode(true)` restored the pre-edit buffer and PUT it back under a now-fresh `base_version` — so every destructive write passed the compare-and-swap *legitimately*. Fixed in three layers (event dedupe, non-persisting AI-driven teardown, `_userDirtyDocId` required for the 409 retry). Commit `5d00e49`.
 
 - **Verified live, unlike the two previous closures:** every client write in `app.db` classified as REVERT (byte-identical to an earlier version) or BLEND (matching none). **Pre-fix 20 reverts across 10 documents; post-fix 0**, over five sessions including a 154-line edit — the largest in the dataset and exactly the shape that used to revert every time.
 - **Keep the REVERT/BLEND split as a standing check.** Two different bugs with two different causes, distinguishable in one query.
@@ -63,7 +78,7 @@ Was item 5. Seven commits, `825bcc1`…`e216313`, 47 files, identity set repo-lo
   - **A guard that *writes* is not a guard.** The 2026-06-07 fix for #2484 was itself the weapon: tearing down state and persisting state are different operations, and it conflated them.
 
 ## Diff review corrupted documents — fixed 2026-07-19. The editor manufactured item 3.
-The diff-review overlay wrote documents containing **both** the pre-edit and post-edit text for the same section — twelve such regions from a *single* Accept click. Cause: an un-reviewed chunk was treated as rejected, and `_resolveChunk` persisted that reading on every click. Commit `377db62`.
+The diff-review overlay wrote documents containing **both** the pre-edit and post-edit text for the same section — twelve such regions from a *single* Accept click. Cause: an un-reviewed chunk was treated as rejected, and `_resolveChunk` persisted that reading on every click. Commit `5d00e49`.
 
 - **This is the mechanical cause of [todo.md](todo.md) item 3 in at least some runs.** "Documents contradict themselves" was filed against the model; here the model had already flagged the document as inconsistent and the editor then made it materially worse. **How much of item 3 is the model is now an open measurement, not a known quantity.**
 - **Rule:** revert a chunk only on an *explicit* rejection, and never persist a partial review. Both are standard — Monaco pairs a replacement as one mapping rather than two independent chunks, and VS Code's merge editor requires all conflicts resolved before completing. This code violated both.
@@ -71,13 +86,13 @@ The diff-review overlay wrote documents containing **both** the pre-edit and pos
 - **Not observed live.** The next review turn should produce either no `user` row or one labelled `Diff review — applied`.
 
 ## Empty document writes destroyed a document — fixed 2026-07-19. Found by causing it.
-A retry nudge telling the model to "finish the job NOW" produced `update_document` with **empty content**, wiping a 6186-character document to zero bytes: five zero-length versions in four minutes against none in the preceding 79. The nudge was reverted; the latent bug it exposed is the more valuable find — `update_document`/`create_document` accepted empty content, so *any* empty call from any cause destroyed a document. All three tools now refuse it. Commit `377db62`.
+A retry nudge telling the model to "finish the job NOW" produced `update_document` with **empty content**, wiping a 6186-character document to zero bytes: five zero-length versions in four minutes against none in the preceding 79. The nudge was reverted; the latent bug it exposed is the more valuable find — `update_document`/`create_document` accepted empty content, so *any* empty call from any cause destroyed a document. All three tools now refuse it. Commit `5d00e49`.
 
 - **Telling an idle model to act is not telling it what to do.** With nothing to write, "act now" resolved to the most destructive available call.
 - **A guard that makes the model *act* must have tests that bound what it can do, not merely assert it exists.** The tests written for the reverted nudge would have passed no matter how destructive it was. See [todo.md](todo.md) item 8 before retrying.
 
 ## Turns that did work and reported none of it — fixed 2026-07-19 (items 7 + 8)
-One wrong assumption behind two guards: **a non-empty `full_response` was taken to mean the model had said something meaningful.** It doesn't — this model opens with its intent before calling any tool, and that preamble made every end-of-turn check pass. A turn applying 4 edits reported none of them; told nothing had happened, the user asked again 16 seconds later and the repeat turn spent 162s producing nothing. Commit `377db62`.
+One wrong assumption behind two guards: **a non-empty `full_response` was taken to mean the model had said something meaningful.** It doesn't — this model opens with its intent before calling any tool, and that preamble made every end-of-turn check pass. A turn applying 4 edits reported none of them; told nothing had happened, the user asked again 16 seconds later and the repeat turn spent 162s producing nothing. Commit `5d00e49`.
 
 - **Detection is positional, not keyword-based:** text written *before* the tool ran cannot describe what the tool did. Prose is snapshotted before every tool block, not just document ones.
 - Counts accumulate across rounds — a turn with several edit rounds once reported only the last, understating 10 edits as 1.
@@ -95,7 +110,7 @@ Turns that did real work returned `content="Done."`. **Two mechanisms were recor
 - **Lesson:** the correlation in the first hypothesis was real and perfect across four runs, and still wrong. **Check the code path before recording a mechanism.**
 
 ## The document reporting path was dead code on the current model — split gate, 2026-07-18
-`_doc_tool_summary()` and the stale-value warning sat behind a gate requiring `model.startswith("odysseus-qwen3")`. `qwen3.5:9b-32k` doesn't match, so both were unreachable on the model actually in use — the "Done." fix had never once run here. Commit `377db62`.
+`_doc_tool_summary()` and the stale-value warning sat behind a gate requiring `model.startswith("odysseus-qwen3")`. `qwen3.5:9b-32k` doesn't match, so both were unreachable on the model actually in use — the "Done." fix had never once run here. Commit `5d00e49`.
 
 - **Split, not widened.** The same flag also narrows tools to five and re-enables the loop break, which would kill the unprompted `create_document` → `edit_document` self-correction. **That behaviour exists *because* the break is inert.** Reporting is safe for every model; breaking the loop is not.
 - Also closed the surfacing gap on `find_stale_values()` — the lint was already model-agnostic but rendered through the gated summary, so its findings only ever reached the logs.
@@ -108,14 +123,14 @@ Turns that did real work returned `content="Done."`. **Two mechanisms were recor
 1. ~~"The model emits malformed FIND blocks"~~ — written from the error *string* alone. The tool received nothing at all.
 2. ~~"The model emitted a bare fence header, thinking having burned the output budget"~~ — written from the stored `command: ""` field without checking how that field is populated. `command` is a first-line preview, not the argument; a successful 5-edit call stored `"<<<FIND>>>"` too. The budget claim was also wrong: 1440 output tokens against `max_tokens=4096` per round.
 
-**Actual cause:** a structured call with a misshaped argument, silently converted to an empty string — the `edit_document` branch coerced anything non-list to `[]` and dispatched `content=""`. Now `_coerce_edit_items()` accepts the shapes models actually emit, fallbacks only run when the dedicated key yielded nothing, and "received nothing" is reported separately from "markers are wrong". Commit `377db62`.
+**Actual cause:** a structured call with a misshaped argument, silently converted to an empty string — the `edit_document` branch coerced anything non-list to `[]` and dispatched `content=""`. Now `_coerce_edit_items()` accepts the shapes models actually emit, fallbacks only run when the dedicated key yielded nothing, and "received nothing" is reported separately from "markers are wrong". Commit `5d00e49`.
 
 - **Sharing one error message is what let a converter bug read as a model syntax error for a whole debugging round.**
 - **Organic runs cannot test failure paths** — after the fix, broken shapes are rare, so the end-to-end test injects one by driving the real loop with a scripted model stream. Waiting for a real failure to recur is not a test strategy.
 - **Lesson, third time in this bug family:** a mechanism from a symptom string, then another from a metadata field, neither checked against the code that produces them. **Check the *writer* of the evidence, not just the evidence.**
 
 ## "Done." on read-only turns — the document fix didn't generalise, 2026-07-19
-The bug was recorded fixed twice above; both fixes keyed off *document* tools, so every non-document turn kept falling through. Four consecutive runs produced no file at all. Now `_gathering_only_notice()` reports what ran and states plainly that nothing was created or changed. Commit `377db62`.
+The bug was recorded fixed twice above; both fixes keyed off *document* tools, so every non-document turn kept falling through. Four consecutive runs produced no file at all. Now `_gathering_only_notice()` reports what ran and states plainly that nothing was created or changed. Commit `5d00e49`.
 
 - **Only for an explicit `READ_ONLY_TOOLS` allowlist.** Guessing an unknown MCP tool is read-only could tell a user their email wasn't sent when it was — worse than the bug.
 - **Placement mattered and the first attempt got it wrong:** the guard ran before `strip_tool_blocks`, so the leftover tool fence made the turn look like it produced text. Caught by the end-to-end test, not the unit tests.
@@ -128,7 +143,7 @@ Kept only for the lesson. The first fix added `base_version` + a 409; the race r
 - **Check-then-write was never atomic.** The first fix narrowed the window from ~60 ms to same-second and read as a success.
 
 ## Active-doc turns losing edit tools on low-signal input — fixed 2026-07-18
-"yes and include sources" classified `low_signal=True, domains=[]`, went down the RAG path without `edit_document`/`update_document`, and the model created a duplicate document. `_vague_turn_keeps_active_document()` now keeps document tools on a vague or continuation turn mid-conversation with a document open. Was `knownIssues #3`. Commit `377db62`.
+"yes and include sources" classified `low_signal=True, domains=[]`, went down the RAG path without `edit_document`/`update_document`, and the model created a duplicate document. `_vague_turn_keeps_active_document()` now keeps document tools on a vague or continuation turn mid-conversation with a document open. Was `knownIssues #3`. Commit `5d00e49`.
 
 - **✅ Verified live** — and more strongly than intended: one run had the classifier still misfiring entirely, and the document tools were force-included anyway. **The guard holds even when intent classification is wrong.**
 - **Important reclassification:** the 4B in the same test had all 25 tools on all 6 rounds and *still* never called one, writing a 5,978-char essay describing corrections it never applied. That failure had been blamed on tool stripping; it is model capability, and it is what retired the 4B.
@@ -155,13 +170,13 @@ Six same-task runs, documents fact-checked against cultivation sources rather th
 - ⚠️ **"Or blank it to inherit the default" was wrong, and matters for `task_model`/`utility_model` too.** `resolve_endpoint()` keys its fallback on the **endpoint id**, not the model: a blank model with the endpoint id set reaches `_first_chat_model(enabled models)` and picks whatever the endpoint lists first; with the id unset it takes `utility_model` — here *smaller* than the 4B. **Blanking is non-deterministic at best and a downgrade at worst. Set it explicitly.**
 
 ## Thinking suppression for agent rounds — 2026-07-17
-**Key finding, which cost two failed attempts: Ollama's `/v1` OpenAI-compat endpoint silently ignores the native `think` param.** The working control is `reasoning_effort: "none"`. Odysseus streams via `/v1`, so suppression had never actually fired, and the old code comment claiming otherwise was wrong. Gated behind `agent_disable_thinking`; chat rounds always keep thinking. Commit `d29bad1`.
+**Key finding, which cost two failed attempts: Ollama's `/v1` OpenAI-compat endpoint silently ignores the native `think` param.** The working control is `reasoning_effort: "none"`. Odysseus streams via `/v1`, so suppression had never actually fired, and the old code comment claiming otherwise was wrong. Gated behind `agent_disable_thinking`; chat rounds always keep thinking. Commit `12a76ea`.
 
 - Currently **off** — thinking stays ON for the 9B. The toggle is an escape hatch.
 - **Token note, a recurring misconception: no-think does NOT use fewer prompt tokens.** Per-round growth is web_search results (~3k/search) plus the document echoing back through the replayed tool call. On fact-check turns input reaches 76–89k tokens — **the fetches, not the reasoning, are what fills the window.**
 
 ## Context-window mismatch — 2026-07-16
-The app assumed `131072` while the `-16k`/`-32k` Ollama variants serve what their name says, so trimming budgeted against a window up to 8× too large and Ollama silently truncated the prompt top — **system prompt and skills die first**. A `-16k`/`-32k` name suffix now declares the window; live endpoint reports still win. **Takes effect only after a restart.** Commit `d29bad1`.
+The app assumed `131072` while the `-16k`/`-32k` Ollama variants serve what their name says, so trimming budgeted against a window up to 8× too large and Ollama silently truncated the prompt top — **system prompt and skills die first**. A `-16k`/`-32k` name suffix now declares the window; live endpoint reports still win. **Takes effect only after a restart.** Commit `12a76ea`.
 
 ## Tooling that still exists — 2026-07-19
 - **`tests/tools/diff_model.py`** — Python port of the editor's diff engine, so diff/merge behaviour can be replayed and property-tested offline with no browser.

@@ -7267,7 +7267,14 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       _showEmailFields(doc, { applyLocalDraft: false });
     }
     clearTimeout(_autoSaveDebounce);
-    _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 800);
+    // Labelled like every other silent save: an unlabelled one writes an
+    // anonymous "Manual edit" row into document_versions, and telling a real
+    // keystroke from a machine-written envelope merge is what made the
+    // autosave data loss diagnosable at all. This call site arrived from
+    // upstream after the labelling pass, and the guard test caught it.
+    _autoSaveDebounce = setTimeout(() => {
+      saveDocument({ silent: true, reason: 'Autosave (email envelope)' });
+    }, 800);
     return true;
   }
 

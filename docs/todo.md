@@ -111,11 +111,11 @@ Run 127d32b0: 8 edits fixed the prose and missed the summary table, leaving four
 ## S2 — silent loss
 
 ### 5. ~~Everything since 2026-07-12 — uncommitted~~ ✅ committed 2026-07-28
-Seven commits, `825bcc1`…`e216313`, 47 files. Identity set repo-locally; nothing pushed. Detail — including the two bookkeeping defects that had made this item's own "everything is protected" claim false — in [resolvedissues.md](resolvedissues.md), *"Sixteen days of uncommitted work"*, which also carries the recovery commands for the two deleted files.
+Seven commits, `b700632`…`ae4fa58`, 47 files. Identity set repo-locally; nothing pushed. Detail — including the two bookkeeping defects that had made this item's own "everything is protected" claim false — in [resolvedissues.md](resolvedissues.md), *"Sixteen days of uncommitted work"*, which also carries the recovery commands for the two deleted files.
 
 **Still live:**
 
-- ⚠️ **`dev` is 4 commits behind `origin/dev`.** The tree is clean, so `git merge origin/dev` is safe. Do it before writing more code.
+- ✅ **Rebased onto the real `origin/dev`, 2026-07-28** — see [resolvedissues.md](resolvedissues.md), *"Upstream rewrote history"*. `git status` had been reporting a stale ref; the actual operation needed was a rebase, not a merge.
 - ⚠️ **`data/app.db` is in no commit and never will be** — `data/` and `*.db` are gitignored. It holds every run this file reasons about. **The `outputs/snapshots/*.tar.gz` is the only thing protecting the evidence base**, and a remote would not change that. Committing protects the code; the tarball protects the findings.
 - **Ignoring a file is not protecting it.** `git clean -fdx` deletes ignored files and nothing points at them, so an ignored file is *less* safe than an untracked one — it has lost the `??` line that would remind you it exists. `COMMIT_PLAN.sh` is left untracked-but-not-ignored for that reason.
 
@@ -193,11 +193,11 @@ Kept as a note under item 2 rather than a task: the failure rate is real and wor
 ### 16. SSRF guard tests covered an orphaned function
 One instance found and fixed 2026-07-27 (see [resolvedissues.md](resolvedissues.md), "web_fetch could not reach the LAN"); the **audit is the open part**.
 
-`_public_http_url()` in `services/search/content.py` had no production callers. Commit `5e9b415` moved the live check to `_resolve_public_ips` and left the old function behind. `tests/test_search_content_url_guards.py` — a file that exists solely to test URL guards — asserted **3 of 3** cases against the orphan; `test_web_fetch_size_caps.py:93` monkeypatched it to `lambda u: True`, a no-op. The live guard had no coverage at all, and the suite was green throughout.
+`_public_http_url()` in `services/search/content.py` had no production callers. The commit that did it is *"fix(search): pin httpx connection to resolved IP to block DNS rebinding (#704)"* — **cited by subject, not hash: it was `5e9b415` before upstream rewrote history on 2026-07-28 and is `c76d5e6a` after.** Find it with `git log -S_public_http_url -- services/search/content.py`. It moved the live check to `_resolve_public_ips` and left the old function behind. `tests/test_search_content_url_guards.py` — a file that exists solely to test URL guards — asserted **3 of 3** cases against the orphan; `test_web_fetch_size_caps.py:93` monkeypatched it to `lambda u: True`, a no-op. The live guard had no coverage at all, and the suite was green throughout.
 
 - **This is worse than dead code: it is a green test suite asserting a security property that nothing enforces.** The suite would not have caught a regression in the real guard.
 - Fixed by making the orphan a thin wrapper over `_resolve_public_ips` rather than deleting it, so the existing assertions now exercise the live path and the two cannot diverge again.
-- **Open:** the same shape is plausible elsewhere — `5e9b415` is not special, any refactor that moves a call site can leave one. A cheap first pass: flag module-private functions with zero non-test references. `src/webhook_manager.py`, `routes/model_routes.py` and `src/model_context.py` each carry their own `_PRIVATE_NETWORKS` copy and are the obvious places to look next.
+- **Open:** the same shape is plausible elsewhere — that commit is not special, any refactor that moves a call site can leave one. A cheap first pass: flag module-private functions with zero non-test references. `src/webhook_manager.py`, `routes/model_routes.py` and `src/model_context.py` each carry their own `_PRIVATE_NETWORKS` copy and are the obvious places to look next — **four independent implementations now, counting `services/search/content.py`.** Upstream also added SSRF checks to `services/memory/skill_importer.py` in the same period, independently, which is both a good sign and more surface for the same divergence.
 - Related smell from the same commit, not yet fixed: `test_web_fetch_size_caps.py` patches `content_mod.httpx.stream` while `_get_public_url` uses `httpx.Client(...).stream`. Those tests are not exercising what they claim either.
 
 ### 17. ~~A cache hit is indistinguishable from a live fetch~~ ✅ fixed 2026-07-28
