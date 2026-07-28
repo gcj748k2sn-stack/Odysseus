@@ -12,6 +12,8 @@ from types import SimpleNamespace
 
 import pytest
 
+from tests.helpers.unix_socket import bound_unix_socket
+
 from routes.shell_routes import (
     _find_line_break,
     _host_docker_access_enabled,
@@ -294,30 +296,26 @@ class TestHostDockerAccess:
     def test_socket_without_explicit_opt_in_is_disabled(
         self,
         monkeypatch,
-        tmp_path,
         flag,
     ):
-        socket_path = tmp_path / "docker.sock"
-        with socket.socket(socket.AF_UNIX) as unix_socket:
-            unix_socket.bind(str(socket_path))
+        # Not tmp_path: on macOS a socket under it exceeds the 104-byte
+        # AF_UNIX limit. See tests/helpers/unix_socket.py.
+        with bound_unix_socket() as socket_path:
             if flag is None:
                 monkeypatch.delenv("ODYSSEUS_ENABLE_HOST_DOCKER", raising=False)
             else:
                 monkeypatch.setenv("ODYSSEUS_ENABLE_HOST_DOCKER", flag)
 
-            assert _host_docker_access_enabled(str(socket_path)) is False
+            assert _host_docker_access_enabled(socket_path) is False
 
     def test_explicit_opt_in_with_unix_socket_is_enabled(
         self,
         monkeypatch,
-        tmp_path,
     ):
-        socket_path = tmp_path / "docker.sock"
-        with socket.socket(socket.AF_UNIX) as unix_socket:
-            unix_socket.bind(str(socket_path))
+        with bound_unix_socket() as socket_path:
             monkeypatch.setenv("ODYSSEUS_ENABLE_HOST_DOCKER", "true")
 
-            assert _host_docker_access_enabled(str(socket_path)) is True
+            assert _host_docker_access_enabled(socket_path) is True
 
 
 class TestPackageProbeStatus:

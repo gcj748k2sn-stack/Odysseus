@@ -34,7 +34,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 16 | SSRF guard tests covered an orphaned function | S4 | S | one instance fixed; **audit open** | tests |
 | 17 | Cache hits are indistinguishable from live fetches | S4 | **XS** | open — **produced a wrong conclusion** | — |
 | 18 | Two CAS tests have never passed | S4 | S | open — found 2026-07-28 | n/a |
-| 19 | Five tests fail on macOS only | S4 | XS | open — fixes reasoned, **not yet run on the M1** | n/a |
+| 19 | ~~Five tests fail on macOS only~~ | S4 | XS | ✅ fixed 2026-07-28 | **length half reproduced on Linux**; symlink half by path arithmetic — **awaiting one M1 run** |
 
 **Numbers are never reused.** A retired item keeps its number and a `⊘` row, because renumbering has silently rotted cross-references four times (see *Notes & constraints*). Item 2 split into 2a/2b rather than becoming 2 and 19 for the same reason.
 
@@ -47,7 +47,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 >
 > Item 6 stays blocked on #10. Item 8's active half stays parked — read its ❌ bullet before touching it.
 >
-> **Item 19 is XS and arguably comes first**, not on severity but because seven expected failures on every run is what stops anyone reading the summary — and reading the summary is the gate in front of all of the above. Then item 2 is the only S1 left with no work done on it — and it has fresh evidence from 2026-07-27 that the failure is transcription, not just retrieval. Item 10 still blocks diagnosis of everything else, and item 17 is its close relative: both are cases where the record of a run doesn't say what actually happened.
+> **Item 19 is fixed** — run the suite on the M1 to confirm, and the expected baseline becomes `2 failed` (item 18 only) instead of `7 failed`. Then item 2 is the only S1 left with no work done on it — and it has fresh evidence from 2026-07-27 that the failure is transcription, not just retrieval. Item 10 still blocks diagnosis of everything else, and item 17 is its close relative: both are cases where the record of a run doesn't say what actually happened.
 
 ---
 
@@ -256,7 +256,13 @@ It passes on Linux by luck. `outside = tempfile.mkdtemp()` returns `/var/folders
 
 **Fix: `outside = os.path.realpath(tempfile.mkdtemp())`.** Then `relpath` stays relative on both platforms and the assertion tests what it was written to test. **No confinement hole here** — glob refused correctly; it echoed back a pattern the caller already supplied, which reveals nothing.
 
-- **Both fixes are reasoned from the path arithmetic, not observed passing** — this sandbox is Linux, so the failures cannot be reproduced here and the fixes cannot be verified here either. Marked unverified until run on the M1. *(Which is the item's own lesson twice over.)*
+**Both fixed 2026-07-28. The macOS conditions were reproduced on Linux rather than reasoned about**, which is the only reason this is recorded as verified:
+
+- *`AF_UNIX`:* re-running with `TMPDIR` set to a 60-byte path (the real macOS one is 57) reproduced `OSError: AF_UNIX path too long` **on Linux**, at 130 bytes, from the old `tmp_path` pattern. The new helper then passed 33 tests under that same deep `TMPDIR`. The failure is a path-length function, so it is fully reproducible anywhere once the length is matched.
+- *`glob`:* the symlink half could not be reproduced live — it needs a **root-level** symlink (`/var` → `/private/var`) and this sandbox cannot write to `/`. Verified instead by running `os.path.relpath` over the exact path strings from the failing run: the old shape yields `../../../../../../../var/folders/…/secret.txt`, which embeds the absolute secret; with the temp root resolved it yields `../tmpmzmii5bz/secret.txt`, which does not. **The leak is in the pattern the test constructs, never in glob's output.**
+- The fix is `outside = os.path.realpath(tempfile.mkdtemp())` plus a precondition `assert outside == os.path.realpath(outside)`. **A first attempt guarded with `not os.path.isabs(rel)` and was worthless** — the leaking path is a *traversal*, not an absolute path, so `isabs` is `False` in both the broken and fixed cases. Worth keeping as a reminder that a guard which passes in the failing case is not a guard.
+- Shared helper: `tests/helpers/unix_socket.py`, `bound_unix_socket()`. It asserts its own path is under 104 bytes, so the next person to lengthen it gets a clear message instead of `OSError`.
+- **Not yet observed green on the M1** — 117 tests pass across the three files on Linux, and the length condition is reproduced, but the `/private` symlink is genuinely absent here. One host run closes it.
 - **A permanently-red suite is its own hazard.** Seven expected failures on every run trains you to skim the summary, and that is how the eighth gets through. Same family as item 16's green-suite-asserting-nothing, inverted.
 - **`-m area_security` reported `654 passed` clean on this tree** while four docker-socket privilege-gate tests were failing, because the taxonomy keys off filenames: `test_shell_routes.py` → `area_routes`, `test_cookbook_docker_access.py` → `area_services`. **An area marker says what the file is called, not what it protects** — don't use the security lane as a pre-commit gate on its own.
 

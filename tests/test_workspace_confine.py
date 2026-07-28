@@ -212,8 +212,14 @@ async def test_glob_confined_e2e(ws, admin):
     _, r = await execute_tool_block(_block("glob", json.dumps({"pattern": "found.py"})), owner="a", workspace=ws)
     assert r["exit_code"] == 0 and "found.py" in r["output"]
 
-    # a secret outside the workspace must not be discoverable via glob
-    outside = tempfile.mkdtemp()
+    # a secret outside the workspace must not be discoverable via glob.
+    # realpath, because the workspace is compared as realpath below and
+    # os.path.relpath is purely lexical: on macOS mkdtemp returns an
+    # unresolved /var/... path while realpath(ws) is /private/var/..., so
+    # relpath would walk up to the root and back down through the ABSOLUTE
+    # path, putting the secret's full path into the pattern itself.
+    # docs/todo.md item 19.
+    outside = os.path.realpath(tempfile.mkdtemp())
     secret = os.path.join(outside, "secret.txt")
     with open(secret, "w") as f:
         f.write("nope")
@@ -221,6 +227,11 @@ async def test_glob_confined_e2e(ws, admin):
     # not as a match that returns the file's path. The not-found message echoes
     # the pattern the model supplied, so the signal is the absence of a match,
     # not the absence of the path string.
+    assert outside == os.path.realpath(outside), (
+        "the temp root must be canonical, or relpath below ascends to / and "
+        "descends through the absolute path, embedding the secret in the very "
+        "pattern we then assert is absent from the output"
+    )
     rel = os.path.relpath(secret, os.path.realpath(ws))
     _, r = await execute_tool_block(_block("glob", json.dumps({"pattern": rel})), owner="a", workspace=ws)
     assert r["exit_code"] == 0 and "No files" in r["output"] and secret not in r["output"]
