@@ -2,6 +2,20 @@
 
 Closed investigations. Setup and config live in [qwensetup.md](qwensetup.md); open items in [todo.md](todo.md).
 
+## Sixteen days of uncommitted work — committed 2026-07-28. The bookkeeping was wrong twice, in ways that would have lost the evidence.
+Was [todo.md](todo.md) item 5. Last commit had been `df2fad2`, 2026-07-12; the work landed as seven commits (`825bcc1`…`e216313`), 47 files. Identity set repo-locally, nothing pushed.
+
+**The item had been sitting on one blocker — "awaiting a git identity" — while two silent defects made the "protected" claim false.**
+
+- **"44 files, staged" described 2026-07-19 and was never revised.** The entire 2026-07-27 session was *unstaged*: the two-tier SSRF guard in `services/search/content.py`, its two test files, the `.env.example` entry, every doc edit. So the sentence asserting everything was protected was itself the reason nobody checked. **A count written in prose is a claim with an expiry date and no test.** Nine days stale.
+- **`COMMIT_PLAN.sh` named no `git add` for three staged test files** — `test_dangling_promise_turn.py`, `test_doc_closing_summary_accumulates.py`, `test_document_tools_reject_empty_writes.py` — and the script opens with `git reset -q`, so they would have emerged **untracked**: the staged-but-never-committed trap below, applied to the whole evidence base for items 7 and 8. Fixed, and the script now ends with a **coverage check** that diffs "staged when I started" against "present in the new commits" and names anything left behind. This class of error is invisible to human review and trivial to detect mechanically — which is the general lesson.
+- The script also refused nothing on a second run: `git reset -q` would unstage everything, then the first `git commit` would fail on an empty index, leaving the tree *less* protected than before it ran. It now aborts when nothing is staged.
+- **Rehearsed before running.** A copy of `.git` plus a throwaway identity, pointed at the real worktree: 7 commits, 47 files, coverage clean, second run correctly refused — then verified `HEAD` was still `df2fad2` with 47 staged and no identity. **Knowing a script parses is not knowing it runs**; `bash -n` had passed on the version that silently dropped three files.
+- **A zero-byte `.git/index.lock` recurred twice during this session**, from a git process that lacked permission to unlink its own lock. The original 2026-07-18 instance blocked every git operation for 13 hours and is the likely reason nothing was committed for two weeks. It is worth checking `ls .git/index.lock` before concluding git is broken — the failure is silent and total.
+- **Two pre-existing test failures were found and recorded rather than inherited.** The commit message for the document commit had been drafted claiming "687 source-level tests pass"; the measured result across all 24 test files in the series was **959 passed, 2 failed**, both in `test_document_put_version_conflict.py`. See [todo.md](todo.md) item 18 — they have never passed. The message now states this.
+
+Deleted along the way: `llmSetup.md`, a redirect stub kept alive only by source citations, all seven of which now name entries in this file by title. Its worktree copy differed from its staged blob, so it was written to the object database with `git hash-object -w` before removal — recoverable at `93bdbbb7`.
+
 ## Turns that did work and reported none of it — fixed 2026-07-19 (items 7 + 8)
 Two guards, one wrong assumption: **`full_response` being non-empty was taken to mean the model had said something meaningful.** It doesn't. This model habitually opens with its intent — *"I'll fact-check the guide by searching for verified data…"* — before calling any tool, and that preamble made every end-of-turn check pass.
 

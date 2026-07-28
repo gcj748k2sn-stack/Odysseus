@@ -200,7 +200,9 @@ def _closing_doc_summary(
 ) -> tuple:
     """Closing line for a turn that changed a document but said nothing about it.
 
-    The model-agnostic half of the split gate (docs/todo.md #2). The finetune
+    The model-agnostic half of the split gate — docs/todo.md, "Closing summary
+    under-reports, and sometimes says nothing" (item 7; this cited **#2** until
+    2026-07-28, which is the unrelated wrong-numbers item). The finetune
     path synthesizes this at its loop break; every other model reached the end
     of the turn with an empty response and got saved as a bare "Done." by
     `routes/chat_routes.py` — no version, no edit count, no stale-value
@@ -5501,7 +5503,7 @@ async def stream_agent_loop(
                 # break, which would kill the unprompted create_document →
                 # edit_document self-correction this model does (run b5fe4ef5
                 # turn 1). Reporting is safe for everyone; breaking the loop is
-                # not. See docs/todo.md #2.
+                # not. See docs/todo.md, "Closing summary under-reports".
                 #
                 # ACCUMULATE, don't replace. A correction turn routinely runs
                 # several edit rounds, and the user needs the total, not the

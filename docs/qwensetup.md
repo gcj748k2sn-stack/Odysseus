@@ -54,6 +54,12 @@ Learned 2026-07-27 wiring an ESP32 on the LAN into a chat. Both halves cost a wo
 - Inspect: `data/cache/content/*.cache`, fields `data.url` and `timestamp`. Clear: `rm -f data/cache/content/*.cache` — takes effect immediately, **no restart**, because the read path stats the file (`content.py`, `cache_file.exists()`); `content_cache_index` is only cleanup bookkeeping.
 - ⚠️ **Never call `fetch_webpage_content()` against the live tree to test something.** It writes into the same cache the running instance reads. Doing exactly this on 2026-07-27 put a *fabricated* value into that cache, and the next chat turn served it to the model, which recorded it in a user document as a measurement. Test against a copy. The same script's `shutil.rmtree(CONTENT_CACHE_DIR)` was one permission bit away from deleting all 232 entries.
 
+## Running the test suite
+- **`./venv/bin/python -m pytest`** — the canonical invocation (`tests/README.md`). `pytest` and `pytest-asyncio` are in `requirements.txt`, so a working venv already has them; `pyproject.toml` sets `asyncio_mode = "auto"`, so async tests need no decorator plumbing.
+- Focused slices via the taxonomy markers added at collection time: `-m area_security`, `-m "area_services and sub_cookbook"`. Fast lane is `-m "not slow"`. `tests/run_focus.py` validates area names before running.
+- **Baseline as of 2026-07-28, across the 24 test files in the initial commit series: 959 passed, 2 failed.** Both failures are pre-existing and known — see [todo.md](todo.md) item 18. **Record the count when you claim a suite passes**; the previous claim in this repo's notes was "687 pass", which was neither current nor true.
+- `conftest.py` imports the app, so *every* test needs the full dependency tree — even a test that only parses source with `ast`. A missing dep surfaces as a collection-time `ImportError` in `conftest.py`, not as a failure in the test you ran. `python-multipart`, `markdown` and `nh3` are easy ones to be missing after a venv rebuild.
+
 ## Reading `data/app.db` when debugging a run
 Most of the diagnosis in [resolvedissues.md](resolvedissues.md) came from here, and two gotchas cost real time.
 
