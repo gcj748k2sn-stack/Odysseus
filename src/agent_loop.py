@@ -21,6 +21,7 @@ from src.llm_core import (
     _is_ollama_native_url,
 )
 from src.model_context import estimate_tokens
+from src.document_fidelity import check_document
 from src.settings import get_setting
 from src.prompt_security import untrusted_context_message
 from src.tool_security import blocked_tools_for_owner, plan_mode_disabled_tools
@@ -286,24 +287,28 @@ def _doc_tool_summary(info: Dict[str, Any]) -> str:
     name = f"**{title}**" if title else "the document"
     ver = f" (v{version})" if version else ""
 
+    # These two used to `return` here. They must not: the fidelity warning
+    # below applies to every tool, and both runs that motivated it used
+    # `create_document` — so an early return made the check dead exactly where
+    # it mattered. Caught by a test, not by reading.
     if tool == "create_document":
-        return f"Created {name}{ver}."
-    if tool == "suggest_document":
-        return f"Added suggestions to {name} — nothing changed until you accept them."
-
-    # update_document / edit_document
-    calls = info.get("calls") or 0
-    rounds = f" across {calls} rounds" if calls > 1 else ""
-    if applied is not None:
-        line = f"Updated {name}{ver} — {applied} edit{'s' if applied != 1 else ''} applied{rounds}"
+        line = f"Created {name}{ver}."
+    elif tool == "suggest_document":
+        line = f"Added suggestions to {name} — nothing changed until you accept them."
     else:
-        line = f"Updated {name}{ver}"
-    if skipped:
-        line += (
-            f", **{skipped} not applied** (the FIND text didn't match — "
-            f"those corrections are still missing)"
-        )
-    line += "."
+        # update_document / edit_document
+        calls = info.get("calls") or 0
+        rounds = f" across {calls} rounds" if calls > 1 else ""
+        if applied is not None:
+            line = f"Updated {name}{ver} — {applied} edit{'s' if applied != 1 else ''} applied{rounds}"
+        else:
+            line = f"Updated {name}{ver}"
+        if skipped:
+            line += (
+                f", **{skipped} not applied** (the FIND text didn't match — "
+                f"those corrections are still missing)"
+            )
+        line += "."
 
     # A correction applied in one place and left standing in another is the
     # worst outcome: the document reads as fact-checked while still
@@ -317,6 +322,20 @@ def _doc_tool_summary(info: Dict[str, Any]) -> str:
             f"{'was' if len(stale) == 1 else 'were'} corrected in one place but "
             f"still appear{'s' if len(stale) == 1 else ''} elsewhere in the document. "
             f"The document now contradicts itself; ask me to fix the remaining spots."
+        )
+
+    # Same principle one level up: the document disagrees with the data it was
+    # built from. Across two recorded runs, 239 of 240 cells were transcribed
+    # correctly and both documents were still wrong — a raw PWM register
+    # printed as a duty cycle. See docs/todo.md item 2a.
+    fidelity = info.get("fidelity") or []
+    if fidelity:
+        shown = "\n".join(f"- {f}" for f in fidelity[:4])
+        more = f"\n- (+{len(fidelity) - 4} more)" if len(fidelity) > 4 else ""
+        line += (
+            f"\n\n⚠️ **Doesn't match the source** — I checked the document "
+            f"against the data I fetched:\n{shown}{more}\n\n"
+            f"Worth reading before you rely on these numbers."
         )
     return line
 
@@ -5568,6 +5587,29 @@ async def stream_agent_loop(
                     "stale_values": result.get("stale_values") or [],
                     "calls": (_prev_info.get("calls") or 0) + 1,
                 }
+                # Does the document match the data the model was handed?
+                # Runs HERE rather than inside the document tool, because the
+                # source arrived from a web_fetch several rounds earlier and
+                # only the loop can see both. That placement also means it
+                # covers update_document, which bypasses the tool-local
+                # stale-value lint entirely (docs/todo.md item 3).
+                #
+                # Report-only. Item 8's retry nudge destroyed a 6186-character
+                # document by telling an idle model to act, and a checker that
+                # fires on a false positive would do it again.
+                try:
+                    _fidelity = check_document(
+                        result.get("content") or "", tool_events
+                    )
+                except Exception as _fid_err:  # never break a turn over a lint
+                    _fidelity = []
+                    logger.warning("document fidelity check failed: %s", _fid_err, exc_info=True)
+                if _fidelity:
+                    _ody_doc_tool_info["fidelity"] = _fidelity
+                    logger.warning(
+                        "[agent] document does not match its source (%d finding(s)): %s",
+                        len(_fidelity), "; ".join(_fidelity[:3]),
+                    )
                 # Mark where the model's prose stood before this edit landed, so
                 # end-of-turn can tell a report from a preamble.
                 _ody_doc_text_before_tool = full_response

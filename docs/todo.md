@@ -16,7 +16,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | # | Item | Sev | Effort | Status | Verified |
 |---|---|---|---|---|---|
 | 1 | ~~Autosave reverting AI edits — data loss~~ | S1 | M | ✅ fixed | **live** — 20 reverts → 0 |
-| **2a** | **Transcription doesn't match the source** | **S1** | **S** | **open — next; transcription clean in 42889f7b, semantics still wrong** | — |
+| 2a | ~~Document doesn't match its source~~ | S1 | S | ✅ **built 2026-07-28** — report-only checker | **tests (25)** — both recorded runs; needs a live turn |
 | 2b | Fact-check inverts ground truth | S1 | M | open | — |
 | 3 | Documents contradict themselves | S1 | M | partly re-diagnosed; editor half fixed | tests |
 | 4 | ~~Retired 4B still on the research path~~ | S1 | XS | ✅ done | live |
@@ -40,7 +40,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 
 > **Next, in order.** Items 1, 5, 10, 17 and 19 closed on 2026-07-28, so the work is committed and the record of a run is now interpretable. Ordering follows leverage.
 >
-> 1. **Item 2a — but rescoped by run 42889f7b (2026-07-28).** Mechanical transcription came back **clean** in that run, so the diff alone would have caught nothing; the semantic defects recurred. Build the diff *with 42889f7b as its negative control*, and put the weight on a small field-semantics fixture. See the entry.
+> 1. **Item 2b** — the known-facts checker for the pink-oyster ground truth. 2a's `config/field_semantics.json` is the same shape and can be extended rather than duplicated.
 > 2. **Item 3's real gap** — `find_stale_values` has exactly one production caller, `document_tools.py:765`, inside `EditDocumentTool`; `update_document` bypasses the lint entirely. Note the interaction: item 7's live guard promises *"I'll rewrite the document in full instead of patching"*, which routes every edit failure into the one path with no lint.
 > 3. **Item 6** — unblocked now that #10 persists `full_command`, but **only for runs recorded after 2026-07-28**. Needs a fresh reproduction; the three 2026-07-27 runs cannot be re-examined.
 > 4. **Item 13** — friction, but it has obstructed debugging twice and all three cited call sites are verified unchanged. Cheaper to fix than to work around a third time.
@@ -72,7 +72,10 @@ Not autosave and not the compare-and-swap — both were correct throughout. A si
 
 **Fix:** the ground truth is already written down in [resolvedissues.md](resolvedissues.md) ("4B retired") — colonization 24–29°C, fruiting 20–30°C **no cold shock**, RH 85–95%, CO₂ 500–800 ppm at 3–6 ACH. Make it a fixture plus a checker that flags a document contradicting it. Generalises to "assert a document doesn't contradict a known-facts file".
 
-#### 2a. Transcription doesn't match the source it was handed
+#### 2a. ~~Document doesn't match its source~~ ✅ built 2026-07-28 — report-only
+**`src/document_fidelity.py`, surfaced through the closing summary, silent unless a JSON source is present.** Both recorded runs are the acceptance gate, as fixtures in `tests/fixtures/document_fidelity/` so it does not depend on a gitignored database. Full account in [resolvedissues.md](resolvedissues.md), *"The document didn't match its source"*. ⚠️ **Not yet seen on a live turn** — 25 tests, no production run.
+
+*Original filing, kept because the evidence is what shaped the design:*
 
 **2026-07-27 — the same severity with no retrieval involved at all.** Run 31e0af64 fetched one clean JSON document (40 history points, complete, verified byte-exact against the source) and asked for a table. No search, no fact-check, no ambiguous nouns — item 14 cannot be blamed. Four defects landed in the document anyway:
 

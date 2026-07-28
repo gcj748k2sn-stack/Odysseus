@@ -1,0 +1,60 @@
+{
+  "_README": [
+    "Ground truth about fields the agent keeps misreading when it turns a JSON",
+    "payload into a document. This is a FIXTURE, not configuration: every entry",
+    "should come from an observed failure, and should say what the wrong reading",
+    "looks like so the checker can recognise it.",
+    "",
+    "Why this file exists (docs/todo.md item 2a): across two runs the agent",
+    "transcribed 239 of 240 table cells correctly and still produced a wrong",
+    "document, because it selected the wrong FIELD. Every digit of the bad value",
+    "was copied faithfully from the source, so a source-to-document diff cannot",
+    "catch it. Field meaning is not recoverable from the payload; it has to be",
+    "written down.",
+    "",
+    "Matching is per-source, keyed on a substring of the fetched URL, so a field",
+    "called 'duty' on some other device is never judged by this entry.",
+    "",
+    "  raw_register  the value is a hardware register, not a human-facing metric",
+    "  inverted      max_value means OFF (a BC547 low-side switch, here)",
+    "  prefer        the field that actually answers what the raw one looks like",
+    "  unit          declared unit; used to sanity-check derived spans",
+    "  stale_when_cached  value is a live counter, meaningless from cache"
+  ],
+
+  "sources": [
+    {
+      "match": "192.168.0.185",
+      "name": "ESP32 environment controller (martha)",
+      "fields": {
+        "duty": {
+          "raw_register": true,
+          "inverted": true,
+          "max_value": 255,
+          "prefer": "dp",
+          "note": "PWM register after a BC547 inversion: 255 is OFF, 0 is full power. Reported as 'Duty Cycle: 252' in two separate documents, which reads as near-full power and is actually about 1%."
+        },
+        "dp": {
+          "unit": "percent",
+          "note": "The real power figure. This is what 'duty cycle' should report."
+        },
+        "s": {
+          "unit": "seconds",
+          "interval": 30,
+          "note": "Seconds of uptime, not a timestamp, and the payload carries no unit. A 40-point history spans (40-1)*30 = 1170 s = 19.5 min. One run reasoned its way to '7.5 days' from these numbers."
+        },
+        "uptime": {
+          "unit": "seconds",
+          "stale_when_cached": true,
+          "note": "A running counter. Two fetches 4.5 minutes apart both reported 91 s because the second was served from cache (item 17)."
+        },
+        "t": {"unit": "celsius"},
+        "h": {"unit": "percent"},
+        "t2": {"unit": "celsius", "note": "Second sensor. Absent entirely from the 31e0af64 document."},
+        "h2": {"unit": "percent", "note": "Second sensor. Absent entirely from the 31e0af64 document."},
+        "t3": {"unit": "celsius", "note": "Third sensor. Absent entirely from the 31e0af64 document."},
+        "h3": {"unit": "percent", "note": "Third sensor. Absent entirely from the 31e0af64 document."}
+      }
+    }
+  ]
+}

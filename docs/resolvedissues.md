@@ -8,6 +8,20 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## The document didn't match its source — checker built 2026-07-28 (item 2a)
+Two runs turned one small JSON payload into a table. **239 of 240 cells were transcribed correctly and both documents were still wrong**, because the model picked the wrong *field*: `duty: 252` is a PWM register after a BC547 inversion — 255 is off, so that is about 1 % power — printed as a reportable duty cycle. Every digit is copied faithfully from the source.
+
+**That is why the obvious design was wrong.** A source-to-document diff is structurally incapable of catching it: the value is in both. The item was filed as "transcription", and transcription turned out to be the *incidental* half — one wrong cell in 240, in one run of two — while field selection was systematic, 2 of 2.
+
+- **`config/field_semantics.json` carries the weight.** Written-down facts about fields the agent keeps misreading: which are raw registers, which field actually answers the question, what the sample interval is, which values are meaningless from cache. Keyed on a substring of the **URL**, so a field called `duty` on another device is never judged by this device's entry.
+- **The diff still ships**, because the dropped column and the two absent sensors were real. It just isn't the load-bearing part.
+- **The clean run is a required test, not a nicety.** A checker with only a positive case can be a function that always fires and still look like it works — item 16's green suite asserting nothing, and item 19's `isabs` guard that was `False` in both the broken and the fixed case. `test_clean_run_reports_no_transcription_findings` is what stops that recurring here.
+- **Report-only, and pinned so by tests.** Item 8's nudge destroyed a 6186-character document by telling an idle model to act. `test_findings_never_reach_a_model_facing_path` asserts the findings appear in no prompt or tool-directive path; the call is wrapped so a failing lint cannot kill a turn.
+- **Silence is a supported outcome.** No JSON source in the turn, no findings. Most document turns are prose, and a checker that guesses trains people to ignore it.
+- **Two bugs the tests caught that reading did not.** (1) The identifier column was taken from JSON key order, so a fixture written with `sort_keys=True` made every row lookup miss — it reported the ragged table and none of the cells inside it, failing *quietly*, which is the exact failure mode the module exists to prevent. Now chosen by matching the rendered rows. (2) `_doc_tool_summary` returned early for `create_document`, so the warning was dead for the one tool both motivating runs used.
+- **Placement:** the loop, not the document tool — the source arrives from a `web_fetch` rounds earlier and only the loop sees both. That also means it covers `update_document`, which bypasses the tool-local stale-value lint (item 3).
+- ⚠️ **Verified on both recorded runs and on 25 tests; not yet on a live turn.**
+
 ## The record of a run didn't say what happened — fixed 2026-07-28 (items 10 + 17)
 Two blind spots, one shape: `app.db` looked complete while omitting the field that made a run interpretable. Between them they blocked diagnosis three times and produced one wrong conclusion. Commit `5e27f6a`.
 
