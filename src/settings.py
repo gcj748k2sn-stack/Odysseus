@@ -107,6 +107,13 @@ DEFAULT_SETTINGS = {
     "research_run_timeout_seconds": 1800,
     "agent_max_tool_calls": 0,
     "agent_max_rounds": 20,  # per-message agent step cap (clamped 1..200)
+    # Suppress Qwen (qwen3/qwq) thinking blocks in agent/tool rounds on
+    # Ollama's native /api/chat (`think: false` + `/no_think` soft-switch
+    # fallback for Ollama <0.9). Thinking otherwise eats the round's
+    # num_predict budget before any tool call is emitted (empty-round
+    # failure #9). Normal chat rounds are unaffected. Set False to let
+    # agent rounds think again.
+    "agent_disable_thinking": True,
     # Soft input-token budget for the agent loop. The DEFAULT value (6000) is the
     # "auto" sentinel: it means "scale the budget to the model's context window"
     # (#1230) — so long-context models aren't capped at 6000. Set ANY OTHER value

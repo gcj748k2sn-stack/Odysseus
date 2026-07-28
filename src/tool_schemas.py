@@ -10,6 +10,7 @@ tool parsing / execution logic.
 
 import json
 import logging
+import re
 from typing import Optional
 
 from src.agent_tools import ToolBlock, TOOL_TAGS
@@ -1335,6 +1336,86 @@ def _decode_loose_json_string(value: str) -> str:
     return "".join(out)
 
 
+_EDIT_MARKUP_RE = re.compile(r"<<<\s*FIND\s*>>>", re.IGNORECASE)
+
+
+def _maybe_json(value):
+    """Decode a JSON-encoded string argument.
+
+    Local models routinely double-encode nested arguments — `"edits":
+    "[{\\"find\\": ...}]"` — so the value arrives as a string where a list is
+    expected. Returned unchanged when it isn't JSON.
+    """
+    if not isinstance(value, str):
+        return value
+    s = value.strip()
+    if not s or s[0] not in "[{":
+        return value
+    try:
+        return json.loads(s)
+    except (ValueError, TypeError):
+        return value
+
+
+def _coerce_edit_items(args: dict, list_key: str) -> tuple:
+    """Normalize the shapes models actually emit for edit/suggest_document.
+
+    Run b5fe4ef5 (2026-07-18) turned a document correction into a silent no-op
+    because this conversion accepted exactly ONE shape — a well-formed `edits`
+    list — and coerced everything else to `[]`, producing an empty content
+    string that was then dispatched. The tool reported "No valid <<<FIND>>>
+    blocks found", which reads like a syntax error from the model but was in
+    fact an argument the converter threw away. The document was never touched.
+
+    Accepted here:
+      - `{list_key: [{find, replace}, ...]}`          — the canonical shape
+      - `{list_key: {find, replace}}`                 — single dict, not a list
+      - `{list_key: "[{...}]"}`                       — double-encoded JSON
+      - `{list_key: "<<<FIND>>>..."}`                 — raw markup in the arg
+      - `{content|text|body: "<<<FIND>>>..."}`        — markup under another key
+      - `{find: ..., replace: ...}`                   — pair hoisted to top level
+      - a list of markup strings under `list_key`
+
+    Returns `(items, raw_markup)`. `raw_markup` is pre-formed FIND/REPLACE text
+    to pass through untouched; when it is set, `items` is empty.
+    """
+    raw_parts = []
+    items = []
+
+    def _take(value):
+        """Sort one value into markup / dict / nested-list."""
+        value = _maybe_json(value)
+        if isinstance(value, str):
+            if _EDIT_MARKUP_RE.search(value):
+                raw_parts.append(value.strip())
+            return
+        if isinstance(value, dict):
+            items.append(value)
+            return
+        if isinstance(value, (list, tuple)):
+            for entry in value:
+                _take(entry)
+
+    if list_key in args:
+        _take(args[list_key])
+
+    # Markup parked under a generic key. Only consulted when the dedicated key
+    # yielded nothing, so a well-formed call is never second-guessed.
+    if not items and not raw_parts:
+        for key in ("content", "text", "body", "edits", "changes"):
+            if key in args and key != list_key:
+                _take(args[key])
+                if items or raw_parts:
+                    break
+
+    # A single edit hoisted to the top level instead of wrapped in a list.
+    if not items and not raw_parts:
+        if any(str(args.get(k) or "").strip() for k in ("find", "old", "old_string")):
+            items.append(args)
+
+    return items, "\n".join(p for p in raw_parts if p)
+
+
 def _repair_document_function_args(tool_type: str, arguments: str) -> Optional[dict]:
     """Salvage obvious malformed document tool args from local model wrappers.
 
@@ -1456,29 +1537,41 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
         parts.append(args.get("content", ""))
         content = "\n".join(parts)
     elif tool_type == "edit_document":
-        blocks = []
-        edits = args.get("edits", [])
-        if not isinstance(edits, list):
-            edits = []
-        for edit in edits:
-            if not isinstance(edit, dict):
-                continue
-            blocks.append(
-                f'<<<FIND>>>\n{edit.get("find", "")}\n<<<REPLACE>>>\n{edit.get("replace", "")}\n<<<END>>>'
-            )
-        content = "\n".join(blocks)
+        edits, raw_markup = _coerce_edit_items(args, "edits")
+        if raw_markup:
+            content = raw_markup
+        else:
+            blocks = []
+            for edit in edits:
+                find = edit.get("find", edit.get("old", edit.get("old_string", "")))
+                replace = edit.get("replace", edit.get("new", edit.get("new_string", "")))
+                blocks.append(f'<<<FIND>>>\n{find}\n<<<REPLACE>>>\n{replace}\n<<<END>>>')
+            content = "\n".join(blocks)
+        if not content.strip():
+            # Deliberately NOT `return None`. Returning None drops the block,
+            # and a dropped block is invisible: the round ends with no tool
+            # event and no text, which is exactly how run b5fe4ef5 turned a
+            # correction request into a silent "Done." Let it dispatch — the
+            # empty-content branch in EditDocumentTool reports what actually
+            # went wrong, and the failure lands in tool_events where both the
+            # model and the log can see it.
+            logger.warning(f"edit_document call carried no usable edits: {args!r}")
     elif tool_type == "suggest_document":
-        blocks = []
-        suggestions = args.get("suggestions", [])
-        if not isinstance(suggestions, list):
-            suggestions = []
-        for s in suggestions:
-            if not isinstance(s, dict):
-                continue
-            blocks.append(
-                f'<<<FIND>>>\n{s.get("find", "")}\n<<<SUGGEST>>>\n{s.get("replace", "")}\n<<<REASON>>>\n{s.get("reason", "")}\n<<<END>>>'
-            )
-        content = "\n".join(blocks)
+        suggestions, raw_markup = _coerce_edit_items(args, "suggestions")
+        if raw_markup:
+            content = raw_markup
+        else:
+            blocks = []
+            for s in suggestions:
+                find = s.get("find", s.get("old", s.get("old_string", "")))
+                replace = s.get("replace", s.get("new", s.get("new_string", "")))
+                blocks.append(
+                    f'<<<FIND>>>\n{find}\n<<<SUGGEST>>>\n{replace}\n'
+                    f'<<<REASON>>>\n{s.get("reason", "")}\n<<<END>>>'
+                )
+            content = "\n".join(blocks)
+        if not content.strip():
+            logger.warning(f"suggest_document call carried no usable suggestions: {args!r}")
     elif tool_type == "update_document":
         content = args.get("content", "")
     elif tool_type == "search_chats":

@@ -1,6 +1,7 @@
 # src/constants.py
 """Application-wide constants and configuration values."""
 import os
+from typing import Optional
 
 from src.runtime_paths import get_app_root, get_default_data_dir
 
@@ -109,14 +110,43 @@ DEFAULT_TEMPERATURE = 1.0
 DEFAULT_MAX_TOKENS = 0
 
 
+# Actual port the ASGI server is bound to, observed at runtime (first
+# request's ASGI scope["server"]). Beats the APP_PORT/7000 guess: when the
+# server is started via `uvicorn app:app --port N` neither env var is set,
+# and the hard-coded 7000 fallback collides with macOS AirPlay Receiver
+# (ControlCenter listens on 7000 and answers 403 to loopback tool calls).
+_runtime_bind_port: Optional[int] = None
+
+
+def set_runtime_bind_port(port: int) -> None:
+    """Record the server's real bound port once it is observable.
+
+    Also refreshes the module-level ``_INTERNAL_BASE`` copies frozen at
+    import time in the tools layer, so already-imported tool modules pick
+    up the corrected base on their next call.
+    """
+    global _runtime_bind_port
+    if not port or _runtime_bind_port == port:
+        return
+    _runtime_bind_port = int(port)
+    import sys
+    base = internal_api_base()
+    for mod_name in ("src.tools._common", "src.tool_implementations"):
+        mod = sys.modules.get(mod_name)
+        if mod is not None and hasattr(mod, "_INTERNAL_BASE"):
+            mod._INTERNAL_BASE = base
+
+
 def internal_api_base() -> str:
     """Base URL for in-process loopback calls to Odysseus's own API.
 
     Agent tools and background jobs reach admin-gated routes by calling the
     running server over HTTP. Resolution order:
       1. ODYSSEUS_INTERNAL_BASE  - explicit override (e.g. behind a TLS proxy).
-      2. APP_PORT                - http://127.0.0.1:$APP_PORT (docker-compose).
-      3. Fallback http://127.0.0.1:7000 - legacy default.
+      2. Runtime-observed bind port (set_runtime_bind_port) - the port the
+         server is actually listening on.
+      3. APP_PORT                - http://127.0.0.1:$APP_PORT (docker-compose).
+      4. Fallback http://127.0.0.1:7000 - legacy default.
 
     127.0.0.1 (not "localhost") avoids IPv6/DNS ambiguity for a strictly-local
     call. Without this, loopback tools fail with "All connection attempts
@@ -125,4 +155,6 @@ def internal_api_base() -> str:
     override = os.environ.get("ODYSSEUS_INTERNAL_BASE")
     if override:
         return override.rstrip("/")
+    if _runtime_bind_port:
+        return f"http://127.0.0.1:{_runtime_bind_port}"
     return f"http://127.0.0.1:{os.environ.get('APP_PORT', '7000')}"

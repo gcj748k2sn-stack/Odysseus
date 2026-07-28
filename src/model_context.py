@@ -7,6 +7,7 @@ Provides token estimation for context usage tracking.
 
 import ipaddress
 import logging
+import re
 import sys
 from typing import Dict, List, Optional, Tuple
 
@@ -316,6 +317,24 @@ def _lookup_known(model: str) -> Optional[int]:
     return best_ctx
 
 
+# Local model variants created with an explicit num_ctx are conventionally
+# named with the window as a suffix ("qwen3.5:4b-16k", created via
+# `PARAMETER num_ctx 16384`). Ollama reports neither /slots nor a context
+# field on /v1/models, so without this the known-models table wins and the
+# app budgets against the architecture max (131k+) while the server actually
+# truncates at the modelfile's num_ctx — silently eating the prompt TOP
+# (system prompt + skills) on long agent turns. Verified 2026-07-16:
+# `ollama show qwen3.5:4b-16k` → num_ctx 16384, server log n_ctx_slot=16384,
+# UI showed 131,072.
+_NAME_CTX_SUFFIX_RE = re.compile(r"[-_](\d+)k$")
+
+
+def _ctx_from_name_suffix(model: str) -> Optional[int]:
+    """Context window declared in the model name ("...-16k" → 16384)."""
+    m = _NAME_CTX_SUFFIX_RE.search((model or "").lower().strip())
+    return int(m.group(1)) * 1024 if m else None
+
+
 def _model_ctx_from_entry(m: dict) -> Optional[int]:
     """Extract a positive context window from one /models catalog entry.
 
@@ -473,6 +492,16 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
         return result, True
     if api_ctx:
         return api_ctx, True
+    # Local endpoint, nothing reported: a "-16k"-style name suffix is the
+    # user's declared num_ctx for this variant — it must beat the known-models
+    # table, which holds the architecture max, not the served window.
+    _suffix_ctx = _ctx_from_name_suffix(model)
+    if _suffix_ctx and is_local_endpoint(endpoint_url):
+        logger.info(
+            f"Model name suffix declares context window for {model}: "
+            f"{_suffix_ctx} (overrides known table{f' {known}' if known else ''})"
+        )
+        return _suffix_ctx, True
     if known:
         logger.info(f"Using known context window for {model}: {known}")
         return known, True

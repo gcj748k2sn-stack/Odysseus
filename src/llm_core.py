@@ -617,8 +617,13 @@ def _build_ollama_payload(
     stream: bool = False,
     tools: Optional[List[Dict]] = None,
     num_ctx: Optional[int] = None,
+    think: Optional[bool] = None,
 ) -> Dict:
     """Build the JSON payload for Ollama's /api/chat endpoint.
+
+    ``think`` toggles hybrid-reasoning models' thinking block (Ollama ≥0.9
+    top-level param). Only emitted when explicitly set — Ollama errors on
+    a `think` param for models without the thinking capability.
 
     ``num_ctx`` sets the input context window. Ollama defaults to 2048
     when the option is omitted, so a model with a larger advertised
@@ -645,6 +650,8 @@ def _build_ollama_payload(
         payload["options"] = options
     if tools:
         payload["tools"] = tools
+    if think is not None:
+        payload["think"] = think
     return payload
 
 
@@ -1266,6 +1273,37 @@ def _supports_thinking(model: str) -> bool:
         return False
     m = model.lower()
     return any(p in m for p in _THINKING_MODEL_PATTERNS)
+
+
+# Qwen hybrid-reasoning models (Qwen3 family, QwQ). Deliberately narrower than
+# _THINKING_MODEL_PATTERNS: Ollama rejects a `think` param for models without
+# the thinking capability, so only send it where we know it's supported.
+_QWEN_THINKING_PATTERNS = ("qwen3", "qwq")
+
+
+def _is_qwen_thinking_model(model: str) -> bool:
+    if not model:
+        return False
+    m = model.lower()
+    return any(p in m for p in _QWEN_THINKING_PATTERNS)
+
+
+def _agent_thinking_disabled() -> bool:
+    """Setting gate for suppressing Qwen thinking in agent/tool rounds.
+
+    Configurable via Settings / data/settings.json ("agent_disable_thinking",
+    default True). When on, agent rounds on Ollama's native /api/chat send
+    `think: false` for Qwen thinking models plus the `/no_think` soft switch
+    as a fallback for pre-0.9 Ollama, so the round budget (num_predict) goes
+    to tool calls and visible output instead of a <think> block (#9
+    empty-round failure). Does not affect the /v1 compat path, which
+    suppresses thinking unconditionally for tool-call parsing reasons.
+    """
+    try:
+        from src.settings import get_setting
+        return bool(get_setting("agent_disable_thinking", True))
+    except Exception:
+        return True
 
 def _normalize_mistral_content(content):
     """Mistral returns content as a structured array when reasoning is on:
@@ -2055,9 +2093,17 @@ async def llm_call_async(
         if max_tokens and max_tokens > 0:
             tok_key = "max_completion_tokens" if _uses_max_completion_tokens(model) else "max_tokens"
             payload[tok_key] = max_tokens
-        # Suppress thinking for qwen3/gemma4 on Ollama /v1 — same as stream_llm.
+        # Suppress thinking for thinking models on Ollama /v1 — same as
+        # stream_llm. `think` is ignored by stock Ollama /v1 (kept for compat
+        # forks); the working control is reasoning_effort:"none", sent for
+        # Qwen thinking models only (narrow gate — Ollama may reject it on
+        # non-thinking models). These non-stream calls are internal utility
+        # requests (naming, summaries), so no setting gate: thinking is pure
+        # token waste here.
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
+            if _is_qwen_thinking_model(model):
+                payload["reasoning_effort"] = "none"
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
         _apply_local_cache_affinity(payload, url, session_id)
@@ -2190,9 +2236,26 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         h = {"Content-Type": "application/json"}
         if headers:
             h.update(headers)
+        # Agent/tool rounds (tools passed) on Qwen thinking models: suppress
+        # the <think> block so the round budget goes to tool calls and visible
+        # output instead of reasoning that can eat the whole num_predict
+        # (empty-round failure #9). Chat rounds (no tools) keep thinking.
+        # Gated by the "agent_disable_thinking" setting (default on).
+        _no_think = bool(tools) and _is_qwen_thinking_model(model) and _agent_thinking_disabled()
+        if _no_think:
+            # Fallback for Ollama <0.9, which silently ignores `think`:
+            # Qwen3's documented soft switch in the system prompt.
+            if messages_copy and messages_copy[0].get("role") == "system":
+                messages_copy = (
+                    [{**messages_copy[0], "content": (messages_copy[0].get("content") or "") + "\n/no_think"}]
+                    + messages_copy[1:]
+                )
+            else:
+                messages_copy = [{"role": "system", "content": "/no_think"}] + messages_copy
         payload = _build_ollama_payload(
             model, messages_copy, temperature, max_tokens,
             stream=True, tools=tools, num_ctx=get_context_length(url, model),
+            think=False if _no_think else None,
         )
     elif provider == "chatgpt-subscription":
         target_url = _normalize_chatgpt_subscription_url(url)
@@ -2223,11 +2286,21 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         # (high / medium / low / none); default "high".
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
-        # For Ollama's OpenAI-compat /v1 endpoint with thinking models (qwen3,
-        # gemma4, etc.), suppress thinking so tool calls aren't swallowed inside
-        # <think> blocks. Ollama /v1 accepts "think": false as a top-level param.
+        # For Ollama's OpenAI-compat /v1 endpoint with thinking models,
+        # suppress thinking so tool calls aren't swallowed inside <think>
+        # blocks. NOTE: /v1 does NOT accept the native `think` param — it is
+        # silently ignored (the earlier comment claiming otherwise was wrong;
+        # confirmed against docs.ollama.com/api/openai-compatibility). The
+        # supported control is `reasoning_effort: "none"`. `think` is kept for
+        # any compat forks that do honour it; it's a no-op on stock Ollama.
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
+            # Only for Qwen thinking models (narrow gate: Ollama may reject
+            # reasoning_effort on models without the thinking capability,
+            # e.g. gemma3 which matches the broad pattern list) and only in
+            # agent/tool rounds, per the agent_disable_thinking setting.
+            if tools and _is_qwen_thinking_model(model) and _agent_thinking_disabled():
+                payload["reasoning_effort"] = "none"
         _apply_local_cache_affinity(payload, url, session_id)
         _apply_local_generation_stability(payload, target_url, model)
         _scrub_openai_chat_tool_reasoning(payload, target_url, model)

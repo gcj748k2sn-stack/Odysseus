@@ -163,3 +163,173 @@ class TestThinkSuppression:
             monkeypatch, "http://127.0.0.1:11435/v1/chat/completions", "qwen3:14b"
         )
         assert payload.get("think") is False
+
+
+# ---------------------------------------------------------------------------
+# Native /api/chat agent rounds — think:false + /no_think for Qwen w/ tools
+# ---------------------------------------------------------------------------
+
+_TOOLS = [{"type": "function", "function": {"name": "web_search", "parameters": {}}}]
+
+
+def _capture_native_payload(monkeypatch, model, *, tools=None, setting=True):
+    """Run stream_llm against the native Ollama URL and capture the payload."""
+    import src.settings as settings_mod
+
+    client = _FakeClient()
+    monkeypatch.setattr(llm_core, "_get_http_client", lambda: client)
+    monkeypatch.setattr(llm_core, "_is_host_dead", lambda u: False)
+    monkeypatch.setattr(llm_core, "note_model_activity", lambda *a, **k: None)
+    monkeypatch.setattr(llm_core, "_clear_host_dead", lambda *a, **k: None)
+    monkeypatch.setattr(llm_core, "get_context_length", lambda u, m: 32768)
+    monkeypatch.setattr(
+        settings_mod, "get_setting",
+        lambda key, default=None: setting if key == "agent_disable_thinking" else default,
+    )
+
+    async def run():
+        return [c async for c in llm_core.stream_llm(
+            "http://127.0.0.1:11434/api/chat", model,
+            [{"role": "system", "content": "You are an agent."},
+             {"role": "user", "content": "hi"}],
+            tools=tools,
+        )]
+
+    asyncio.run(run())
+    return client.captured_payload
+
+
+class TestNativeAgentThinkSuppression:
+    """Agent rounds (tools passed) on native /api/chat suppress Qwen thinking."""
+
+    def test_qwen_agent_round_gets_think_false(self, monkeypatch):
+        payload = _capture_native_payload(monkeypatch, "qwen3:14b", tools=_TOOLS)
+        assert payload.get("think") is False
+
+    def test_qwen_agent_round_gets_no_think_soft_switch(self, monkeypatch):
+        """Fallback for Ollama <0.9: /no_think appended to the system message."""
+        payload = _capture_native_payload(monkeypatch, "qwen3:14b", tools=_TOOLS)
+        sys_msg = payload["messages"][0]
+        assert sys_msg["role"] == "system"
+        assert sys_msg["content"].endswith("/no_think")
+
+    def test_qwen_chat_round_keeps_thinking(self, monkeypatch):
+        """No tools = normal chat round — thinking stays on."""
+        payload = _capture_native_payload(monkeypatch, "qwen3:14b", tools=None)
+        assert "think" not in payload
+        assert "/no_think" not in payload["messages"][0]["content"]
+
+    def test_non_qwen_agent_round_untouched(self, monkeypatch):
+        """Ollama errors on `think` for non-thinking models — must not be sent."""
+        payload = _capture_native_payload(monkeypatch, "llama3.2:3b", tools=_TOOLS)
+        assert "think" not in payload
+        assert "/no_think" not in payload["messages"][0]["content"]
+
+    def test_setting_off_disables_suppression(self, monkeypatch):
+        payload = _capture_native_payload(
+            monkeypatch, "qwen3:14b", tools=_TOOLS, setting=False,
+        )
+        assert "think" not in payload
+        assert "/no_think" not in payload["messages"][0]["content"]
+
+    def test_qwq_agent_round_gets_think_false(self, monkeypatch):
+        payload = _capture_native_payload(monkeypatch, "qwq:32b", tools=_TOOLS)
+        assert payload.get("think") is False
+
+
+class TestQwenModelDetection:
+    def test_qwen3_variants(self):
+        assert llm_core._is_qwen_thinking_model("qwen3:14b")
+        assert llm_core._is_qwen_thinking_model("Qwen3.5-27B")
+        assert llm_core._is_qwen_thinking_model("qwq:32b")
+
+    def test_non_thinking_qwen_excluded(self):
+        """qwen2.5 has no thinking capability — Ollama rejects a think param."""
+        assert not llm_core._is_qwen_thinking_model("qwen2.5:7b")
+
+    def test_other_models_excluded(self):
+        assert not llm_core._is_qwen_thinking_model("gemma3:12b")
+        assert not llm_core._is_qwen_thinking_model("llama3.2:3b")
+        assert not llm_core._is_qwen_thinking_model("")
+
+
+class TestBuildPayloadThinkParam:
+    def test_think_false_emitted(self):
+        p = llm_core._build_ollama_payload("qwen3:14b", [], 0.7, 100, think=False)
+        assert p["think"] is False
+
+    def test_think_omitted_by_default(self):
+        p = llm_core._build_ollama_payload("qwen3:14b", [], 0.7, 100)
+        assert "think" not in p
+
+
+# ---------------------------------------------------------------------------
+# /v1 compat path — reasoning_effort:"none" (think is ignored by stock Ollama)
+# ---------------------------------------------------------------------------
+
+def _capture_v1_payload(monkeypatch, model, *, tools=None, setting=True):
+    import src.settings as settings_mod
+
+    client = _FakeClient()
+    monkeypatch.setattr(llm_core, "_get_http_client", lambda: client)
+    monkeypatch.setattr(llm_core, "_is_host_dead", lambda u: False)
+    monkeypatch.setattr(llm_core, "note_model_activity", lambda *a, **k: None)
+    monkeypatch.setattr(llm_core, "_clear_host_dead", lambda *a, **k: None)
+    monkeypatch.setattr(llm_core, "get_context_length", lambda u, m: 32768)
+    monkeypatch.setattr(
+        settings_mod, "get_setting",
+        lambda key, default=None: setting if key == "agent_disable_thinking" else default,
+    )
+
+    async def run():
+        return [c async for c in llm_core.stream_llm(
+            "http://127.0.0.1:11434/v1/chat/completions", model,
+            [{"role": "user", "content": "hi"}],
+            tools=tools,
+        )]
+
+    asyncio.run(run())
+    return client.captured_payload
+
+
+class TestV1ReasoningEffortSuppression:
+    """Ollama /v1 silently ignores `think`; reasoning_effort:"none" is the
+    documented control (docs.ollama.com/api/openai-compatibility). Sent for
+    Qwen thinking models in agent/tool rounds, gated by the setting."""
+
+    def test_qwen_agent_round_gets_reasoning_effort_none(self, monkeypatch):
+        payload = _capture_v1_payload(monkeypatch, "qwen3.5:4b-32k", tools=_TOOLS)
+        assert payload.get("reasoning_effort") == "none"
+        assert payload.get("think") is False  # legacy field kept
+
+    def test_qwen_chat_round_keeps_thinking(self, monkeypatch):
+        payload = _capture_v1_payload(monkeypatch, "qwen3.5:4b-32k", tools=None)
+        assert "reasoning_effort" not in payload
+
+    def test_setting_off_disables_reasoning_effort(self, monkeypatch):
+        payload = _capture_v1_payload(
+            monkeypatch, "qwen3.5:4b-32k", tools=_TOOLS, setting=False,
+        )
+        assert "reasoning_effort" not in payload
+
+    def test_gemma_never_gets_reasoning_effort(self, monkeypatch):
+        """gemma matches the broad thinking-pattern list but Ollama may reject
+        reasoning_effort on non-thinking gemma variants — must not be sent."""
+        payload = _capture_v1_payload(monkeypatch, "gemma3:12b", tools=_TOOLS)
+        assert "reasoning_effort" not in payload
+
+    def test_openai_endpoint_never_gets_reasoning_effort(self, monkeypatch):
+        client = _FakeClient()
+        monkeypatch.setattr(llm_core, "_get_http_client", lambda: client)
+        monkeypatch.setattr(llm_core, "_is_host_dead", lambda u: False)
+        monkeypatch.setattr(llm_core, "note_model_activity", lambda *a, **k: None)
+        monkeypatch.setattr(llm_core, "_clear_host_dead", lambda *a, **k: None)
+
+        async def run():
+            return [c async for c in llm_core.stream_llm(
+                "https://api.openai.com/v1/chat/completions", "qwen3:14b",
+                [{"role": "user", "content": "hi"}], tools=_TOOLS,
+            )]
+
+        asyncio.run(run())
+        assert "reasoning_effort" not in client.captured_payload

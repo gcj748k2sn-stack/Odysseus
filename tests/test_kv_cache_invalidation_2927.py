@@ -340,6 +340,75 @@ async def test_run_post_response_tasks_does_not_fire_extraction_concurrently(mon
     assert calls == {"memory": 1, "skill": 1}
 
 
+@pytest.mark.asyncio
+async def test_auto_name_is_queued_through_sequential_gate(monkeypatch):
+    """Auto-name is a side LLM call too: it must be queued FIRST through the
+    sequential gate with memory/skill extraction, not fired bare via
+    _spawn_bg where it races the main completion (issue #2927 follow-up —
+    auto-name was the only un-gated background call)."""
+    chat_helpers = _install_chat_helpers_stubs(monkeypatch)
+
+    mem_extractor_mod = types.ModuleType("services.memory.memory_extractor")
+    calls = {"memory": 0, "skill": 0, "auto-name": 0}
+
+    async def fake_extract_and_store(*a, **k):
+        calls["memory"] += 1
+
+    mem_extractor_mod.extract_and_store = fake_extract_and_store
+    monkeypatch.setitem(sys.modules, "services.memory.memory_extractor", mem_extractor_mod)
+
+    skill_extractor_mod = types.ModuleType("services.memory.skill_extractor")
+
+    async def fake_maybe_extract_skill(*a, **k):
+        calls["skill"] += 1
+
+    skill_extractor_mod.maybe_extract_skill = fake_maybe_extract_skill
+    monkeypatch.setitem(sys.modules, "services.memory.skill_extractor", skill_extractor_mod)
+
+    task_endpoint_mod = types.ModuleType("src.task_endpoint")
+    task_endpoint_mod.resolve_task_endpoint = lambda url, model, headers, owner=None: (url, model, headers)
+    monkeypatch.setitem(sys.modules, "src.task_endpoint", task_endpoint_mod)
+
+    async def fake_auto_name(session_manager, sess):
+        calls["auto-name"] += 1
+
+    monkeypatch.setattr(chat_helpers, "auto_name_session", fake_auto_name)
+    monkeypatch.setattr(chat_helpers, "needs_auto_name", lambda name: True)
+
+    captured_jobs = {}
+
+    async def fake_sequential_runner(session_id, jobs, max_wait_s=120.0):
+        captured_jobs["names"] = [name for name, _ in jobs]
+        for _, job in jobs:
+            await job
+
+    monkeypatch.setattr(chat_helpers, "_run_extraction_jobs_sequentially", fake_sequential_runner)
+
+    sess = SimpleNamespace(
+        endpoint_url="http://localhost:1234/v1",
+        model="test-model",
+        headers={},
+        history=[object()] * 8,
+        name="Chat: placeholder",
+    )
+    session_manager = SimpleNamespace(save_sessions=lambda: None)
+
+    chat_helpers.run_post_response_tasks(
+        sess, session_manager, "sess-Z", "hello", "hi there", None,
+        {"auto_memory": True, "auto_skills": True}, memory_manager=MagicMock(), memory_vector=MagicMock(),
+        webhook_manager=None,
+        agent_rounds=3, agent_tool_calls=3, skills_manager=MagicMock(), owner="tester",
+        extract_skills=True,
+    )
+
+    await asyncio.sleep(0.05)
+
+    # Auto-name rides the same sequential gate, prepended so the sidebar
+    # title lands before the slower extraction calls.
+    assert captured_jobs.get("names") == ["auto-name", "memory", "skill"]
+    assert calls == {"memory": 1, "skill": 1, "auto-name": 1}
+
+
 # --------------------------------------------------------------------------- #
 # 4. Stable session identifier in the outgoing payload to OpenAI-compatible
 #    (local) endpoints
