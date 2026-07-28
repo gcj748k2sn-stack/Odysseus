@@ -30,6 +30,14 @@ class DocumentUpdate(BaseModel):
     content: str
     summary: Optional[str] = None
     force_version: bool = False
+    # Optimistic-concurrency guard: the version_count the client's content is
+    # based on. If the server has moved past it (e.g. an AI tool wrote a new
+    # version), the PUT is rejected with 409 instead of silently overwriting
+    # the newer content. See docs/resolvedissues.md, "Autosave reverting AI
+    # edits" — where this guard is also shown NOT to have been the cause of
+    # that data loss (a duplicated doc_update event was); it passed the CAS
+    # legitimately. Keep it anyway: it is the only lost-update guard here.
+    base_version: Optional[int] = None
 
 class DocumentPatch(BaseModel):
     title: Optional[str] = None

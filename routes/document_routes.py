@@ -637,14 +637,39 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 or _looks_like_email_document(doc.current_content or "", doc.title or "")
                 or _looks_like_email_document(req.content or "", doc.title or "")
             )
+            update_values: Dict[str, Any] = {}
             if is_email_doc:
                 incoming_content = _coerce_email_document_content(doc.current_content or "", req.content)
-                doc.language = "email"
+                update_values["language"] = "email"
 
             # Skip if content is identical unless the caller explicitly wants
             # a checkpoint version from the current editor state.
             if doc.current_content == incoming_content and not req.force_version:
                 return _doc_to_dict(doc)
+
+            # Lost-update guard: reject stale writes. Without this, a browser
+            # autosave holding a cached copy PUTs it back over a newer AI edit
+            # ~60ms after the edit lands, recorded as source="user" (observed
+            # 2026-07-18: v3 user == v1 content, 60-70ms after v2 ai). The
+            # client resolves a 409 by refetching and reconciling.
+            #
+            # This early check is an optimization only — it rejects obviously
+            # stale writes before doing any work. It is NOT sufficient on its
+            # own: it compares against a value SELECTed at the top of the
+            # handler, so an AI edit committing between that read and our write
+            # slips straight through (observed again 2026-07-18 07:49:02 — v5
+            # clobbered v4 within the same second). The authoritative guard is
+            # the compare-and-swap below.
+            base_version = doc.version_count
+            if req.base_version is not None and req.base_version != base_version:
+                raise HTTPException(
+                    409,
+                    detail={
+                        "error": "version_conflict",
+                        "current_version": base_version,
+                        "base_version": req.base_version,
+                    },
+                )
 
             _reserve_document_uploads(user, incoming_content)
             _assert_pdf_marker_upload_owned(request, incoming_content, user, upload_handler)
@@ -670,7 +695,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     coalesced = True
 
             if not coalesced:
-                new_ver = doc.version_count + 1
+                new_ver = base_version + 1
                 ver = DocumentVersion(
                     id=str(uuid.uuid4()),
                     document_id=doc_id,
@@ -679,10 +704,41 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     summary=req.summary or "Manual edit",
                     source="user",
                 )
-                doc.version_count = new_ver
                 db.add(ver)
+            else:
+                new_ver = base_version
 
-            doc.current_content = incoming_content
+            # Compare-and-swap. The version_count filter makes the check and the
+            # write a single statement, so a concurrent AI edit that commits
+            # after our SELECT can no longer slip between them: it bumps
+            # version_count, our WHERE stops matching, and 0 rows are affected.
+            # Anything already staged in this transaction (the DocumentVersion
+            # insert above, or the coalesced in-place edit) is discarded by the
+            # rollback, so a losing write leaves no trace.
+            update_values["current_content"] = incoming_content
+            update_values["version_count"] = new_ver
+            matched = (
+                db.query(Document)
+                .filter(Document.id == doc_id, Document.version_count == base_version)
+                .update(update_values, synchronize_session=False)
+            )
+            if not matched:
+                db.rollback()
+                current = db.query(Document.version_count).filter(Document.id == doc_id).scalar()
+                logger.info(
+                    "[doc] PUT lost the compare-and-swap for %s (base=%s current=%s) — "
+                    "concurrent write won, rejecting as 409",
+                    doc_id, base_version, current,
+                )
+                raise HTTPException(
+                    409,
+                    detail={
+                        "error": "version_conflict",
+                        "current_version": current,
+                        "base_version": base_version,
+                    },
+                )
+
             db.commit()
             db.refresh(doc)
             return _doc_to_dict(doc)

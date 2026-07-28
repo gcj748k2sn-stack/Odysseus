@@ -39,6 +39,17 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   let _emailRichbodySaveDebounce = null;
   const _EMAIL_LOCAL_DRAFT_PREFIX = 'odysseus.email.replyDraft.v1:';
 
+  // Id of the document the user has actually typed into since its last
+  // successful sync. Set ONLY from real DOM `input` events, which the browser
+  // does not fire for programmatic `textarea.value = ...` assignments — so this
+  // distinguishes "the user edited this" from "some code path put content in
+  // the editor". saveDocument's 409 handler needs that distinction: its
+  // "newest user intent wins" retry deliberately overwrites the server, and
+  // must not be reachable by content the user never typed (docs/todo.md item 1,
+  // where a diff-restored pre-edit buffer took that branch and clobbered v7).
+  let _userDirtyDocId = null;
+  function _markUserDirty() { if (activeDocId) _userDirtyDocId = activeDocId; }
+
   // Diff mode state
   let _diffModeActive = false;
   let _diffOldContent = null;
@@ -2542,12 +2553,13 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   function _scheduleEmailRichbodySave() {
     _persistEmailLocalDraftSoon();
     clearTimeout(_emailRichbodySaveDebounce);
-    _emailRichbodySaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 2500);
+    _emailRichbodySaveDebounce = setTimeout(() => { saveDocument({ silent: true, reason: 'Autosave (email body)' }); }, 2500);
   }
   function _wireEmailRichbody(rich) {
     if (rich._wired) { _syncEmailRichbody(rich); return; }
     rich._wired = true;
     rich.addEventListener('input', () => {
+      _markUserDirty();
       _syncEmailRichbody(rich);
       _scheduleEmailRichbodySave();
     });
@@ -3191,7 +3203,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     if (added) {
       _renderComposeAttachments();
       clearTimeout(_autoSaveDebounce);
-      _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 800);
+      _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true, reason: 'Autosave' }); }, 800);
     }
   }
 
@@ -3286,7 +3298,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   function _afterOdysseusAttachmentsAdded(count, label) {
     _renderComposeAttachments();
     clearTimeout(_autoSaveDebounce);
-    _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 800);
+    _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true, reason: 'Autosave' }); }, 800);
     if (uiModule) uiModule.showToast(count > 1 ? `Attached ${count} items` : `Attached ${label || 'item'}`);
   }
 
@@ -3515,7 +3527,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     clearTimeout(_autoTitleDebounce);
     _autoTitleDebounce = setTimeout(() => autoTitleFromContent(ta.value), 600);
     clearTimeout(_autoSaveDebounce);
-    _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 800);
+    _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true, reason: 'Autosave' }); }, 800);
   }
 
   function _insertMarkdownImages(uploadedFiles) {
@@ -4069,6 +4081,41 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     return ids;
   }
 
+  function _detachActiveEmailForBackground(docId) {
+    if (!docId || !docs.has(docId)) return null;
+    saveCurrentToMap();
+    const doc = docs.get(docId);
+    const snapshot = { id: docId, doc: { ...doc } };
+    const wasActive = activeDocId === docId;
+    if (wasActive) saveDocument({ silent: true, reason: 'Autosave (doc closed)' }).catch(() => {});
+
+    const visibleBefore = _visibleDocIdsForCurrentSession();
+    const idx = visibleBefore.indexOf(docId);
+    docs.delete(docId);
+    if (wasActive) activeDocId = null;
+
+    if (wasActive) {
+      const remaining = visibleBefore.filter(id => id !== docId && docs.has(id));
+      const nextId = remaining[idx] || remaining[idx - 1] || remaining[0] || null;
+      if (nextId) {
+        switchToDoc(nextId);
+      } else {
+        closePanel();
+      }
+    }
+    renderTabs();
+    _syncDocIndicator();
+    return snapshot;
+  }
+
+  function _restoreDetachedEmailDoc(snapshot) {
+    if (!snapshot || !snapshot.id || !snapshot.doc) return;
+    if (!docs.has(snapshot.id)) docs.set(snapshot.id, snapshot.doc);
+    _ensureDocPaneMounted();
+    switchToDoc(snapshot.id);
+    _syncDocIndicator();
+  }
+
   function _closeWithoutDeleting(deleteDoc = false) {
     if (!activeDocId) return;
     if (deleteDoc) {
@@ -4077,7 +4124,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     // Save the current state to the doc first so it persists in the library
     saveCurrentToMap();
     if (!deleteDoc) {
-      saveDocument({ silent: true }).catch(() => {});
+      saveDocument({ silent: true, reason: 'Autosave (doc closed)' }).catch(() => {});
     }
     docs.delete(activeDocId);
     const remaining = Array.from(docs.keys());
@@ -4612,7 +4659,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const doc = docs.get(docId);
     const hasContent = doc && doc.content && doc.content.trim().length > 0;
     if (hasContent) {
-      saveDocument({ silent: true }).catch(() => {});
+      saveDocument({ silent: true, reason: 'Autosave (doc detached)' }).catch(() => {});
       if (toast && uiModule) uiModule.showToast('Document closed');
     } else {
       fetch(`${API_BASE}/api/document/${docId}`, { method: 'DELETE' }).catch(() => {});
@@ -4688,7 +4735,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       setTimeout(() => autoTitleFromContent(content), 300);
       // Auto-save
       clearTimeout(_autoSaveDebounce);
-      _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 2000);
+      _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true, reason: 'Autosave' }); }, 2000);
     } catch (e) {
       console.error('Failed to auto-create document from input:', e);
     } finally {
@@ -5562,11 +5609,12 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     }
     ['doc-email-to', 'doc-email-cc', 'doc-email-bcc', 'doc-email-subject'].forEach(id => {
       document.getElementById(id)?.addEventListener('input', () => {
+        _markUserDirty();
         _syncEmailHeaderSummary();
         saveCurrentToMap();
         _persistEmailLocalDraftSoon();
         clearTimeout(_autoSaveDebounce);
-        _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 800);
+        _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true, reason: 'Autosave (email header)' }); }, 800);
       });
       document.getElementById(id)?.addEventListener('focus', () => _setEmailHeaderCollapsed(false, { manual: false }));
     });
@@ -5642,7 +5690,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         _syncEmailHeaderSummary();
         saveCurrentToMap();
         clearTimeout(_autoSaveDebounce);
-        _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 800);
+        _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true, reason: 'Autosave' }); }, 800);
       });
     });
 
@@ -5822,6 +5870,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const pre = document.getElementById('doc-editor-highlight');
     if (ta && pre) {
       ta.addEventListener('input', () => {
+        _markUserDirty();
         // Typing invalidates any pinned selection highlight
         if (_selections.length) clearSelection();
         // Auto-create a document if user types/pastes with no active doc.
@@ -5850,7 +5899,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         clearTimeout(_autoTitleDebounce);
         _autoTitleDebounce = setTimeout(() => autoTitleFromContent(ta.value), 600);
         clearTimeout(_autoSaveDebounce);
-        _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 2000);
+        _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true, reason: 'Autosave' }); }, 2000);
         const doc = activeDocId && docs.get(activeDocId);
         if (doc && doc.language === 'email') _persistEmailLocalDraftSoon();
       });
@@ -7063,7 +7112,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         if (d) d.content = typed;
         syncHighlighting();
         clearTimeout(_autoSaveDebounce);
-        _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 800);
+        _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true, reason: 'Autosave' }); }, 800);
       }
       textarea = document.getElementById('doc-editor-textarea');
       if (textarea) textarea.focus();
@@ -7135,7 +7184,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       if (textarea) await _streamEmailBodyText(textarea, body);
     }
     clearTimeout(_autoSaveDebounce);
-    _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true }); }, 800);
+    _autoSaveDebounce = setTimeout(() => { saveDocument({ silent: true, reason: 'Autosave' }); }, 800);
   }
 
   function _buildEmailContentFromFields(fields, body) {
@@ -7392,6 +7441,9 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       title: doc.title || '',
       language: doc.language || '',
       content: doc.current_content || doc.content || '',
+      // Last content known to match the server — lets autosave skip no-op
+      // saves and detect real user edits on version conflicts (409).
+      lastSyncedContent: doc.current_content || doc.content || '',
       version: doc.version_count || 1,
       sessionId: sessionId || doc.session_id,
       userSetLanguage: !!doc.language,
@@ -8248,7 +8300,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
    *  follow-up batch) can keep adding edits while the user reviews; the count
    *  and "n of m" header update on the fly. */
   export function handleDocSuggestions(data) {
-    if (_diffModeActive) exitDiffMode(true);
+    if (_diffModeActive) exitDiffMode(true, { persist: false });
     if (!data.suggestions || !data.suggestions.length) return;
 
     if (!isOpen) openPanel();
@@ -8572,7 +8624,10 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
   /** Enter diff mode — show line-level diff for review */
   function enterDiffMode(oldContent, newContent) {
-    if (_diffModeActive) exitDiffMode(true);
+    // A newer AI edit is superseding the pending one. Abandon the old diff
+    // without persisting — restoring-and-saving here would PUT pre-edit content
+    // over the edit we are about to render.
+    if (_diffModeActive) exitDiffMode(true, { persist: false });
 
     _diffModeActive = true;
     _diffOldContent = oldContent;
@@ -8793,9 +8848,22 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
     _updateDiffStatus();
 
-    // Persist partial progress so refresh doesn't lose individually-resolved chunks
+    // Update the editor buffer only — do NOT write to the server mid-review.
+    //
+    // This previously saved on every click, "to persist partial progress so
+    // refresh doesn't lose individually-resolved chunks". The cost was far
+    // higher than the benefit: because an un-reviewed chunk rendered as its OLD
+    // side, one Accept click PUT a document in which every change the user had
+    // not yet looked at was rolled back. Observed in production — doc 92f3b2a0
+    // v3, a single accept click that resurrected twelve pre-edit sections and
+    // left the document asserting both versions of each (docs/todo.md item 3's
+    // "documents contradict themselves", manufactured by the editor).
+    //
+    // A review is a transaction: it commits when it completes, below. Mirrors
+    // VS Code's merge editor, which updates the buffer and deliberately leaves
+    // the file on disk untouched until the merge is completed. Losing an
+    // in-progress review to a refresh is the correct trade.
     _applyResolvedChunksToTextarea();
-    saveDocument({ silent: true });
 
     if (_diffUnresolvedCount === 0) {
       setTimeout(() => exitDiffMode(false), 300);
@@ -8805,8 +8873,18 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     }
   }
 
-  /** Compute current content from old + resolved chunk decisions; unresolved chunks
-   *  default to the original (rejected) until the user decides. Updates textarea. */
+  /** Compute current content from the chunk decisions taken so far.
+   *
+   *  Only an EXPLICIT rejection reverts a chunk. An un-reviewed chunk keeps the
+   *  new (AI) side, because that is what the server already holds — so the
+   *  preview matches reality and "I haven't looked at this yet" can never be
+   *  silently recorded as "I rejected this".
+   *
+   *  The previous default was the opposite, and it is what corrupted documents:
+   *  line-level LCS splits a rewritten block into separate delete and insert
+   *  chunks, so leaving the delete un-reviewed restored the old text while the
+   *  neighbouring insert supplied the new — leaving BOTH in the document. Doc
+   *  92f3b2a0 v3 shows twelve such regions from a single Accept click. */
   function _applyResolvedChunksToTextarea() {
     const textarea = document.getElementById('doc-editor-textarea');
     if (!textarea) return;
@@ -8826,11 +8904,11 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
           else chunkNew.push(entries[i].line);
           i++;
         }
-        // Resolved+accepted → use new; resolved+rejected OR unresolved → keep old
-        if (chunk && chunk.resolved && chunk.accepted) {
-          result.push(...chunkNew);
-        } else {
+        // Explicitly rejected → revert to old. Accepted OR not yet reviewed → new.
+        if (chunk && chunk.resolved && !chunk.accepted) {
           result.push(...chunkOld);
+        } else {
+          result.push(...chunkNew);
         }
       }
     }
@@ -8850,7 +8928,28 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   }
 
   /** Exit diff mode and apply resolved changes */
-  function exitDiffMode(discard) {
+  /** Tear down diff mode.
+   *
+   *  `discard` = reject-all (restore `_diffOldContent`) vs. apply the resolved
+   *  chunks. `persist` controls whether the result is written back to the
+   *  server — it MUST be false whenever the teardown is driven by the AI rather
+   *  than by the user.
+   *
+   *  Why: enterDiffMode leaves the textarea holding the PRE-edit content while
+   *  the docs map and the server have already moved to the post-edit version.
+   *  A discard therefore restores content that is strictly older than the
+   *  server's, and persisting it is a lost update — it passes the compare-and-
+   *  swap legitimately, because the base_version is the fresh one. That is
+   *  exactly how three sets of AI edits were destroyed (docs/todo.md item 1): a
+   *  duplicated doc_update re-entered handleDocUpdate, the guard at the top
+   *  fired exitDiffMode(true), and the pre-edit buffer was PUT back ~80ms after
+   *  the edit landed, recorded as source="user" / "Manual edit".
+   *
+   *  A user pressing Reject-All still persists — that is a real intent to undo
+   *  the AI's edit. An AI-driven teardown persists nothing; the pending review
+   *  is simply abandoned and the server keeps the newer content.
+   */
+  function exitDiffMode(discard, { persist = true } = {}) {
     if (!_diffModeActive) return;
     _diffModeActive = false;
     const acceptedAnyDiffChunk = !discard && _diffChunks.some(chunk => chunk && chunk.resolved && chunk.accepted);
@@ -8860,7 +8959,10 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const wrap = document.getElementById('doc-editor-wrap');
     if (wrap) wrap.classList.remove('diff-mode');
 
-    if (discard) {
+    if (!persist) {
+      // Abandon: drop the overlay and the diff state, touch neither the
+      // textarea nor the server. The caller is about to render newer content.
+    } else if (discard) {
       // Reject all — restore original content
       if (textarea) textarea.value = _diffOldContent || '';
     } else {
@@ -8886,10 +8988,14 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
             else chunkNew.push(entries[i].line);
             i++;
           }
-          if (chunk && chunk.accepted) {
-            result.push(...chunkNew);
-          } else {
+          // Same rule as the live preview: only an explicit rejection reverts.
+          // Reject-All resolves every chunk, so that path is unaffected; this
+          // only changes what happens to a chunk the user never decided on,
+          // which must not be silently discarded.
+          if (chunk && chunk.resolved && !chunk.accepted) {
             result.push(...chunkOld);
+          } else {
+            result.push(...chunkNew);
           }
         }
       }
@@ -8916,7 +9022,12 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
     syncHighlighting();
     updateLineNumbers(textarea ? textarea.value : '');
-    saveDocument({ silent: true });
+    if (persist) {
+      saveDocument({
+        silent: true,
+        reason: discard ? 'Diff review — rejected all' : 'Diff review — applied',
+      });
+    }
     if (acceptedAnyDiffChunk) {
       const lang = ((docs.get(activeDocId)?.language) || document.getElementById('doc-language-select')?.value || '').toLowerCase();
       if (lang === 'markdown') {
@@ -8941,7 +9052,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     if (textarea && sugg.find && textarea.value.includes(sugg.find)) {
       textarea.value = textarea.value.replace(sugg.find, sugg.replace);
       syncHighlighting();
-      saveDocument({ silent: true });
+      saveDocument({ silent: true, reason: 'Diff suggestion applied' });
     }
   }
 
@@ -8976,7 +9087,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     if (textarea && sugg.find && textarea.value.includes(sugg.find)) {
       textarea.value = textarea.value.replace(sugg.find, sugg.replace);
       syncHighlighting();
-      saveDocument({ silent: true });
+      saveDocument({ silent: true, reason: 'Diff suggestion accepted' });
     }
 
     // Animate card out
@@ -9400,7 +9511,18 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   }
 
   /** Save manual edits */
-  export async function saveDocument({ silent = false, forceVersion = false } = {}) {
+  let _conflictRetry = false;
+  /** Persist the editor's current content.
+   *
+   *  `reason` labels WHICH client path produced the write. Every client write
+   *  lands as source="user" / "Manual edit", so typing, a queued autosave, a
+   *  diff-review click and a diff teardown were indistinguishable in
+   *  `document_versions` — which is why diagnosing the revert (docs/todo.md item 1)
+   *  and the blend rows took a replay harness instead of one SQL query. The
+   *  label is carried in `summary`, so it also shows up in the version history
+   *  panel. Keep the strings short and human-readable; users read them.
+   */
+  export async function saveDocument({ silent = false, forceVersion = false, reason = null } = {}) {
     if (!activeDocId) return;
     const textarea = document.getElementById('doc-editor-textarea');
     if (!textarea) return;
@@ -9408,6 +9530,17 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     saveCurrentToMap();
     const localDoc = docs.get(savingDocId);
     const contentToSave = localDoc?.content ?? textarea.value;
+
+    // Nothing changed since the last server sync → skip the PUT entirely.
+    // Guards against a queued autosave re-uploading a stale cached copy over
+    // a newer server-side AI edit (lost-update revert). See
+    // docs/resolvedissues.md, "Autosave reverting AI edits".
+    if (
+      !forceVersion
+      && localDoc
+      && typeof localDoc.lastSyncedContent === 'string'
+      && contentToSave === localDoc.lastSyncedContent
+    ) return;
 
     try {
       const res = await fetch(`${API_BASE}/api/document/${savingDocId}`, {
@@ -9417,9 +9550,66 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         body: JSON.stringify({
           content: contentToSave,
           force_version: !!forceVersion,
-          summary: forceVersion ? 'Saved version' : undefined,
+          summary: forceVersion ? 'Saved version' : (reason || undefined),
+          // Optimistic-concurrency base: server 409s if it has moved past this.
+          base_version: localDoc?.version ?? null,
         }),
       });
+      if (res.status === 409) {
+        // Server has a newer version (usually an AI edit). Never overwrite it
+        // with our stale copy — refetch and reconcile.
+        let fresh = null;
+        try {
+          const fres = await fetch(`${API_BASE}/api/document/${savingDocId}`, { credentials: 'same-origin' });
+          if (fres.ok) fresh = await fres.json();
+        } catch (_) {}
+        if (!fresh) {
+          if (!silent && uiModule) uiModule.showError('Document changed on server — save skipped');
+          return;
+        }
+        const d = docs.get(savingDocId);
+        // Diverging from lastSyncedContent is necessary but NOT sufficient to
+        // call this a user edit: any code path that writes the textarea
+        // programmatically diverges too. Require a real `input` event on this
+        // document as well, or the retry below becomes a way to resurrect
+        // content the user never typed — which is how a diff-restored pre-edit
+        // buffer overwrote a newer AI edit (docs/todo.md item 1, v8).
+        const contentDiverged = !d || typeof d.lastSyncedContent !== 'string'
+          ? true
+          : contentToSave !== d.lastSyncedContent;
+        const userTyped = contentDiverged && _userDirtyDocId === savingDocId;
+        if (d) d.version = fresh.version_count || 1;
+        if (!userTyped) {
+          // Stale write (queued autosave, or an editor buffer the user never
+          // touched) — adopt the server's (AI-edited) state.
+          if (_userDirtyDocId === savingDocId) _userDirtyDocId = null;
+          if (d) {
+            d.content = fresh.current_content || '';
+            d.lastSyncedContent = fresh.current_content || '';
+          }
+          if (
+            activeDocId === savingDocId
+            && (d?.language || '').toLowerCase() !== 'email'
+            && !_diffModeActive
+          ) {
+            const ta = document.getElementById('doc-editor-textarea');
+            if (ta) { ta.value = fresh.current_content || ''; syncHighlighting(); }
+            const badge409 = document.getElementById('doc-version-badge');
+            if (badge409) { const _v = fresh.version_count || 1; badge409.textContent = `v${_v}`; badge409.style.display = _v > 1 ? '' : 'none'; }
+          }
+          _syncDocIndicator();
+          return;
+        }
+        // Real user edits on a stale base: retry once on top of the fresh
+        // version (deliberate overwrite — newest user intent wins).
+        if (!_conflictRetry) {
+          _conflictRetry = true;
+          try { await saveDocument({ silent, forceVersion }); } finally { _conflictRetry = false; }
+        } else if (!silent && uiModule) {
+          uiModule.showError('Document changed on server — save skipped');
+        }
+        return;
+      }
       if (res.status === 404) {
         if (silent && localDoc?.language === 'email') {
           return;
@@ -9444,7 +9634,11 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       if (docs.has(savingDocId)) {
         docs.get(savingDocId).version = doc.version_count || 1;
         docs.get(savingDocId).content = contentToSave;
+        docs.get(savingDocId).lastSyncedContent = contentToSave;
       }
+      // The user's typing is now on the server; anything that diverges from
+      // here on is not user intent until they type again.
+      if (_userDirtyDocId === savingDocId) _userDirtyDocId = null;
       _syncDocIndicator();
       if (!silent && uiModule) uiModule.showToast(forceVersion ? 'New version saved' : 'Document saved');
     } catch (e) {
@@ -10305,9 +10499,13 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     // open on the current one, streamDocOpen reassigns activeDocId below; if the
     // stale diff isn't cleared first, a later exitDiffMode applies the old doc's
     // content to the new one and overwrites it (issue #2467). activeDocId still
-    // points at the previously-active doc here, so exitDiffMode(true) restores
-    // and saves THAT doc — same guard handleDocUpdate/switchToDoc use.
-    if (_diffModeActive) exitDiffMode(true);
+    // points at the previously-active doc here, so the teardown is scoped to
+    // THAT doc — same guard handleDocUpdate uses.
+    //
+    // persist:false — this teardown is AI-driven, not a user reject-all. The
+    // previous doc's textarea still holds ITS pre-edit buffer; saving that back
+    // is the lost update in docs/todo.md item 1.
+    if (_diffModeActive) exitDiffMode(true, { persist: false });
     // If already streaming a doc, reuse it (don't create a second temp doc)
     if (_streamDocId && docs.has(_streamDocId)) {
       const existing = docs.get(_streamDocId);
@@ -10571,6 +10769,10 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
   /** Handle SSE doc_update event from AI */
   export function handleDocUpdate(data) {
+    // An AI edit just landed server-side: kill any queued autosave — it holds
+    // pre-edit content and would PUT it back over the new version (the 60ms
+    // "user" revert seen in document_versions).
+    clearTimeout(_autoSaveDebounce);
     const streamingId = streamDocFinalize();
     // Discard any pending AI-edit diff before this update changes the active
     // document. The diff state (_diffModeActive/_diffOldContent/...) is a
@@ -10578,10 +10780,17 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     // opened; if we switch documents without clearing it, a later tab switch or
     // Accept/Reject-All flushes the stale diff's content into the now-active
     // doc and silently overwrites it (issue #2467). activeDocId still points at
-    // the previously-active doc here, so exitDiffMode(true) restores and saves
-    // THAT doc before we reassign activeDocId below — mirroring switchToDoc()
-    // and enterDiffMode().
-    if (_diffModeActive) exitDiffMode(true);
+    // the previously-active doc here, so the teardown is scoped to THAT doc
+    // before we reassign activeDocId below — mirroring streamDocOpen() and
+    // enterDiffMode().
+    //
+    // persist:false is load-bearing. With persist:true this line WAS the data
+    // loss in docs/todo.md item 1: a duplicated doc_update re-entered this function,
+    // the guard restored the pre-edit buffer and PUT it back under the fresh
+    // base_version, destroying the edit that had landed ~80ms earlier. The
+    // duplicate emission is fixed in agent_loop.py; this makes the guard safe
+    // even if any path double-delivers again.
+    if (_diffModeActive) exitDiffMode(true, { persist: false });
     let docId = data.doc_id;
     let newContent = data.content || '';
 
@@ -10689,6 +10898,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     if (isExistingDoc) {
       const doc = docs.get(docId);
       doc.content = newContent;
+      doc.lastSyncedContent = newContent;
       doc.version = data.version || doc.version;
       if (data.title) doc.title = data.title;
       if (data.language) doc.language = data.language;
@@ -10698,6 +10908,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         title: data.title || '',
         language: data.language || '',
         content: newContent,
+        lastSyncedContent: newContent,
         version: data.version || 1,
         sessionId: sessionModule?.getCurrentSessionId() || '',
       });

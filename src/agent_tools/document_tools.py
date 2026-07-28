@@ -226,6 +226,63 @@ def parse_edit_blocks(content: str) -> list:
         edits.append({"find": m.group(1), "replace": m.group(2)})
     return edits
 
+# Measured values a correction typically targets: a number (or numeric range)
+# glued to a unit. Deliberately narrow — matching bare integers would flag
+# every list marker and heading number in the document.
+_MEASURED_VALUE_RE = re.compile(
+    r"\d+(?:[.,]\d+)?\s*(?:[-–—/]\s*\d+(?:[.,]\d+)?\s*)?"
+    r"(?:°\s*[CF]|℃|℉|%|ppm|lux|hours?|hrs?|days?|weeks?|months?)",
+    re.IGNORECASE,
+)
+
+
+def _normalize_value(raw: str) -> str:
+    """Canonical form so '15–20 °C', '15-20°C' and '15 - 20°c' compare equal."""
+    out = raw.lower()
+    out = re.sub(r"[–—]", "-", out)          # en/em dash -> hyphen
+    out = out.replace("℃", "°c").replace("℉", "°f")
+    out = re.sub(r"\s+", "", out)
+    out = out.replace(",", ".")
+    return out
+
+
+def find_stale_values(applied_pairs: List[tuple], final_content: str) -> List[str]:
+    """Values that an edit changed away from but which still survive elsewhere.
+
+    The failure this exists to catch (observed 2026-07-18, run 127d32b0): the
+    model corrected the CO2 figure in one table cell to "500-800 ppm" and left
+    the cell immediately beside it reading "below 0.4%" — the document ended up
+    carrying four different CO2 thresholds and reading as freshly fact-checked.
+    A half-corrected document is worse than an uncorrected one, because the
+    surviving errors now look verified.
+
+    Exact-FIND rescanning cannot catch that: the two cells are different
+    strings. So instead compare at the level of *measured values* — pull the
+    number+unit tokens out of FIND, drop any the REPLACE kept, and report those
+    that are still somewhere in the finished document.
+    """
+    if not applied_pairs:
+        return []
+
+    surviving = {_normalize_value(m.group()) for m in _MEASURED_VALUE_RE.finditer(final_content)}
+    if not surviving:
+        return []
+
+    stale: List[str] = []
+    seen: set = set()
+    for find_text, replace_text in applied_pairs:
+        old_vals = {_normalize_value(m.group()): m.group()
+                    for m in _MEASURED_VALUE_RE.finditer(find_text or "")}
+        kept = {_normalize_value(m.group())
+                for m in _MEASURED_VALUE_RE.finditer(replace_text or "")}
+        for norm, display in old_vals.items():
+            if norm in kept or norm not in surviving or norm in seen:
+                continue
+            seen.add(norm)
+            stale.append(display.strip())
+    return stale
+
+
 def parse_suggest_blocks(content: str) -> list:
     """Parse <<<FIND>>>...<<<SUGGEST>>>...<<<REASON>>>...<<<END>>> blocks."""
     suggestions = []
@@ -390,6 +447,20 @@ class CreateDocumentTool:
                 return {"error": "Cannot create document in another user's session"}
             _owner = _sess.owner if _sess else None
 
+            # An empty create leaves a phantom "Untitled" document in the
+            # library that the user then has to find and delete. Run 8c80cf8d
+            # produced two of them in twelve seconds while the model was
+            # thrashing. Cheap to refuse, and the error tells it what to do.
+            if not (content or "").strip():
+                logger.warning("create_document: refused an empty document")
+                return {
+                    "error": (
+                        "create_document received no content — the call carried no "
+                        "document text at all, so no document was created. Send the "
+                        "document body as the tool content."
+                    )
+                }
+
             missing_id = _missing_document_upload(_owner, content)
             if missing_id:
                 return {
@@ -463,6 +534,29 @@ class UpdateDocumentTool:
             if not doc:
                 return {"error": "No documents exist to update"}
 
+            # An empty update is never a legitimate instruction — it can only
+            # destroy. Run 8c80cf8d: the model called update_document with no
+            # content and a 6186-character document became zero bytes, with the
+            # old text recoverable only from document_versions. edit_document
+            # has refused empty content since 2026-07-18; this path never did.
+            #
+            # Deliberately checked BEFORE the email coercion, which would
+            # otherwise rebuild an empty body into a valid-looking header block.
+            if not (content or "").strip():
+                logger.warning(
+                    "update_document: refused an empty write to %s (%d chars would have been lost)",
+                    target_id, len(doc.current_content or ""),
+                )
+                return {
+                    "error": (
+                        "update_document received no content — the call carried no "
+                        "document text at all, and an empty update would erase the "
+                        "document. Nothing was changed. Re-send the FULL new document "
+                        "text as the tool content, or use edit_document to change "
+                        "specific passages."
+                    )
+                }
+
             is_email_doc = doc.language == "email" or _looks_like_email_document(doc.current_content or "", doc.title or "")
             new_content = _coerce_email_document_content(doc.current_content or "", content) if is_email_doc else content.strip()
             if is_email_doc:
@@ -523,7 +617,32 @@ class EditDocumentTool:
 
         edits = parse_edit_blocks(content)
         if not edits:
-            return {"error": "No valid <<<FIND>>>...<<<REPLACE>>>...<<<END>>> blocks found"}
+            # Empty content and unparseable content are different failures and
+            # need different messages. Run b5fe4ef5 (2026-07-18) hit the empty
+            # case via a structured call whose `edits` argument the converter
+            # discarded; the shared "no valid blocks" text read as a syntax
+            # error the model never made, so its retry reproduced the same
+            # broken call and the document was never touched.
+            if not (content or "").strip():
+                return {
+                    "error": (
+                        "edit_document received no content — the call carried no "
+                        "FIND/REPLACE blocks at all. Retry by writing the edit as a "
+                        "fenced block:\n"
+                        "```edit_document\n<<<FIND>>>\nexact existing text\n"
+                        "<<<REPLACE>>>\nnew text\n<<<END>>>\n```"
+                    ),
+                    "exit_code": 1,
+                }
+            return {
+                "error": (
+                    "No valid <<<FIND>>>...<<<REPLACE>>>...<<<END>>> blocks found. "
+                    "Each edit needs all three markers, each on its own line, in that "
+                    "order. Check that <<<REPLACE>>> and <<<END>>> are present and "
+                    "spelled exactly."
+                ),
+                "exit_code": 1,
+            }
 
         db = SessionLocal()
         try:
@@ -586,11 +705,13 @@ class EditDocumentTool:
             updated_content = doc.current_content
             applied = 0
             skipped = 0
+            _applied_pairs: List[tuple] = []
             for edit in edits:
                 _find = edit["find"]
                 if _find in updated_content:
                     updated_content = updated_content.replace(_find, edit["replace"], 1)
                     applied += 1
+                    _applied_pairs.append((_find, edit["replace"]))
                 else:
                     # Defensive: the active-doc context shows a "N\t" line-number
                     # gutter for reference. Weaker models sometimes copy that prefix
@@ -602,6 +723,7 @@ class EditDocumentTool:
                     if _stripped != _find and _stripped in updated_content:
                         updated_content = updated_content.replace(_stripped, edit["replace"], 1)
                         applied += 1
+                        _applied_pairs.append((_stripped, edit["replace"]))
                         logger.info("edit_document: matched after stripping line-number gutter from FIND")
                     else:
                         logger.warning(f"edit_document: FIND text not found, skipping: {_find[:80]!r}")
@@ -640,6 +762,13 @@ class EditDocumentTool:
             db.add(ver)
             db.commit()
 
+            _stale = find_stale_values(_applied_pairs, updated_content)
+            if _stale:
+                logger.warning(
+                    "edit_document: corrected values still present elsewhere in %s: %s",
+                    target_id, ", ".join(_stale[:8]),
+                )
+
             return {
                 "action": "edit",
                 "doc_id": target_id,
@@ -649,6 +778,7 @@ class EditDocumentTool:
                 "version": new_ver,
                 "applied": applied,
                 "skipped": skipped,
+                "stale_values": _stale,
             }
         except Exception as e:
             db.rollback()
