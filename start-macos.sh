@@ -157,6 +157,16 @@ if "$VENV_PY" -m pip show chromadb-client >/dev/null 2>&1; then
     "$VENV_PY" -m pip install --force-reinstall chromadb
 fi
 
+# ddgs powers the DuckDuckGo search fallback (see requirements-optional.txt;
+# the code does `from ddgs import DDGS`). It's not in requirements.txt, so a
+# venv rebuild silently drops it — re-ensure it on every launch. Note: the old
+# `duckduckgo-search` package does NOT provide the `ddgs` module.
+if ! "$VENV_PY" -c 'import ddgs' >/dev/null 2>&1; then
+    echo "▶ Installing ddgs (DuckDuckGo search fallback)…"
+    "$VENV_PY" -m pip install --quiet ddgs || \
+        echo "  ⚠ Couldn't install ddgs — DDG search will use HTML scraping (flaky)."
+fi
+
 # 4. First-run setup: creates data dirs and prints an initial admin password
 #    the first time (idempotent — does nothing if already set up). Suppress its
 #    manual run hint — we launch the server ourselves just below.
@@ -210,6 +220,22 @@ elif [ -x "$CHROMA_BIN" ]; then
     CHROMA_PID=$!
 else
     echo "▶ ChromaDB CLI not found in venv; skipping (tool index will be degraded)."
+fi
+
+# SearXNG — primary web-search provider. The app reads SEARXNG_INSTANCE from
+# .env (default http://localhost:8080). start-searxng.sh is idempotent: the
+# first run clones SearXNG + builds its own venv (~2 min), later runs just
+# (re)start the server. It runs via nohup, so it survives Ctrl+C here. Probe
+# first so an already-healthy instance isn't restarted; non-fatal on failure —
+# search falls back to DuckDuckGo.
+if [ -x "$REPO_DIR/searxng/start-searxng.sh" ]; then
+    if curl -s --max-time 2 "http://localhost:8080/search?q=test&format=json" | grep -q '"results"'; then
+        echo "▶ SearXNG already running on localhost:8080 — using it."
+    else
+        echo "▶ Starting SearXNG on localhost:8080…"
+        "$REPO_DIR/searxng/start-searxng.sh" || \
+            echo "  ⚠ SearXNG didn't start — web search falls back to DuckDuckGo. Log: searxng/searxng.log"
+    fi
 fi
 
 # 5. Launch. Bind to loopback by default; opt into LAN/Tailscale with

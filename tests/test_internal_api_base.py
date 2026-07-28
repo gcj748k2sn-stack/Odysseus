@@ -7,9 +7,13 @@ import pytest
 import core.constants as cc
 
 
+import src.constants as sc
+
+
 def _base(monkeypatch, **env):
     for k in ("ODYSSEUS_INTERNAL_BASE", "APP_PORT"):
         monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(sc, "_runtime_bind_port", None)
     for k, v in env.items():
         monkeypatch.setenv(k, v)
     return cc.internal_api_base()
@@ -32,6 +36,48 @@ def test_explicit_override_wins_and_is_stripped(monkeypatch):
 def test_uses_127_not_localhost(monkeypatch):
     # 127.0.0.1 avoids IPv6/DNS ambiguity for the strictly-local loopback.
     assert "localhost" not in _base(monkeypatch)
+
+
+def test_runtime_bind_port_beats_app_port_and_fallback(monkeypatch):
+    # The port the server is actually bound to (observed from the ASGI scope)
+    # beats the APP_PORT guess and the legacy 7000 fallback — 7000 is macOS
+    # AirPlay Receiver, which answers 403 to loopback tool calls.
+    _base(monkeypatch, APP_PORT="7860")  # clears env + runtime port
+    sc.set_runtime_bind_port(8123)
+    assert cc.internal_api_base() == "http://127.0.0.1:8123"
+
+
+def test_explicit_override_beats_runtime_bind_port(monkeypatch):
+    _base(monkeypatch, ODYSSEUS_INTERNAL_BASE="https://proxy.example")
+    sc.set_runtime_bind_port(8123)
+    assert cc.internal_api_base() == "https://proxy.example"
+
+
+def test_runtime_bind_port_rebinds_frozen_tool_base(monkeypatch):
+    # src/tools/_common.py freezes _INTERNAL_BASE at import; the setter must
+    # refresh it (tool call sites import it function-locally at call time).
+    import src.tools._common as common
+    import src.tool_implementations as facade
+    _base(monkeypatch)
+    monkeypatch.setattr(common, "_INTERNAL_BASE", "http://127.0.0.1:7000")
+    monkeypatch.setattr(facade, "_INTERNAL_BASE", "http://127.0.0.1:7000")
+    sc.set_runtime_bind_port(8123)
+    assert common._INTERNAL_BASE == "http://127.0.0.1:8123"
+    assert facade._INTERNAL_BASE == "http://127.0.0.1:8123"
+
+
+def test_record_bound_port_reads_asgi_server_scope(monkeypatch):
+    from core import middleware as mw
+    _base(monkeypatch)
+    monkeypatch.setattr(mw, "_bound_port_recorded", False)
+
+    class _Req:
+        scope = {"server": ("127.0.0.1", 8123)}
+
+    mw._record_bound_port(_Req())
+    assert cc.internal_api_base() == "http://127.0.0.1:8123"
+    # One-shot: later requests don't re-record.
+    assert mw._bound_port_recorded is True
 
 
 def test_no_hardcoded_loopback_left_in_call_sites():

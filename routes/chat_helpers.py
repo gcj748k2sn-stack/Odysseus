@@ -1282,6 +1282,14 @@ def run_post_response_tasks(
                 owner=owner,
             )))
 
+    # Auto-name is a "side" LLM call too — queue it with memory/skill
+    # extraction so it waits for the stream-idle gate instead of racing the
+    # main conversation for the local backend's processing slots (issue
+    # #2927; auto-name was the only un-gated background call). Prepend it:
+    # it's quick and user-visible (sidebar title), so it should run first.
+    if needs_auto_name(sess.name):
+        _extraction_jobs.insert(0, ("auto-name", auto_name_session(session_manager, sess)))
+
     if _extraction_jobs:
         _spawn_bg(_run_extraction_jobs_sequentially(session_id, _extraction_jobs))
 
@@ -1296,6 +1304,4 @@ def run_post_response_tasks(
             "user_message": message, "response": full_response[:2000],
         })
 
-    # Auto-name
-    if needs_auto_name(sess.name):
-        _spawn_bg(auto_name_session(session_manager, sess))
+    # Auto-name: queued above with the other background LLM jobs.

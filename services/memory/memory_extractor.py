@@ -550,8 +550,9 @@ async def audit_memories(
             max_tokens=16384,
             headers=headers,
             # Bound the call so the Tidy whirlpool can't spin indefinitely on a
-            # slow/large generation.
-            timeout=120,
+            # slow/large generation. 120 was too tight for local reasoning models
+            # (thinking tokens + large memory list exceeded it on every attempt).
+            timeout=600,
         )
 
         # Parse the JSON list, tolerating reasoning-model noise: <think> blocks,

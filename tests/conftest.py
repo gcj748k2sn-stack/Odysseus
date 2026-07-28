@@ -54,6 +54,12 @@ if "src.database" not in sys.modules:
     _db = types.ModuleType("src.database")
     _db.SessionLocal = MagicMock()
     _db.ModelEndpoint = MagicMock()
+    # Document/DocumentVersion are imported lazily *inside* the document tool
+    # methods, so a test that never reaches a query still fails at the import
+    # line without them (e.g. edit_document's argument-validation branches,
+    # which return before touching the session).
+    _db.Document = MagicMock()
+    _db.DocumentVersion = MagicMock()
     sys.modules["src.database"] = _db
 
 # Pre-import core.models before test_agent_loop.py's module-level stubs

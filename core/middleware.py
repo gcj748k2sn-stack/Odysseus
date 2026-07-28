@@ -56,10 +56,31 @@ def require_admin(request: Request):
         raise HTTPException(403, "Admin only")
 
 
+# One-shot: record the port the ASGI server is actually bound to so
+# internal_api_base() stops guessing (the hard-coded 7000 fallback collides
+# with macOS AirPlay Receiver, which answers 403 to loopback tool calls).
+_bound_port_recorded = False
+
+
+def _record_bound_port(request: Request) -> None:
+    global _bound_port_recorded
+    if _bound_port_recorded:
+        return
+    _bound_port_recorded = True
+    try:
+        server = request.scope.get("server")  # (host, port) of the listening socket
+        if server and server[1]:
+            from src.constants import set_runtime_bind_port
+            set_runtime_bind_port(int(server[1]))
+    except Exception:
+        pass
+
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     """Add standard security headers to all responses."""
 
     async def dispatch(self, request: Request, call_next) -> Response:
+        _record_bound_port(request)
         # Generate a per-request nonce for inline scripts
         nonce = secrets.token_hex(16)
         request.state.csp_nonce = nonce
