@@ -51,17 +51,8 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 
 ## S1 — wrong output the user trusts
 
-### 1. ~~Autosave is reverting AI edits~~ ✅ fixed and verified live 2026-07-19
-**Not autosave, and not the compare-and-swap** — both behaved correctly throughout. A single document tool call emitted `doc_update` **twice**; the second delivery re-entered `handleDocUpdate`, hit the #2484 guard, and `exitDiffMode(true)` restored the pre-edit buffer and PUT it back under the now-fresh `base_version`, so the destructive write passed CAS legitimately. Full diagnosis and the three-layer fix in [resolvedissues.md](resolvedissues.md).
-
-**Verified properly, unlike the two previous times this was closed.** Every client-side write in `app.db` was classified:
-
-| Era | REVERT (byte-identical to an earlier version) | BLEND (matches no stored version) |
-|---|---|---|
-| pre-fix | **20**, across 10 documents and several days | 1 |
-| post-fix | **0** | 2 → then fixed separately, see item 3 |
-
-Five consecutive post-fix sessions, including one edit changing 154 lines — the largest qualifying edit in the dataset and exactly the shape that used to revert every time.
+### 1. ~~Autosave is reverting AI edits~~ ✅ fixed, verified live 2026-07-19
+Not autosave and not the compare-and-swap — both were correct throughout. A single tool call emitted `doc_update` **twice**, and the second delivery made the diff-mode guard restore and persist the pre-edit buffer. **20 reverts pre-fix → 0 post-fix**, across five sessions including a 154-line edit. Detail in [resolvedissues.md](resolvedissues.md), *"Autosave reverting AI edits"*.
 
 ### 2. Wrong numbers in documents the user trusts — 2a transcription, 2b ground truth
 *Split 2026-07-28; the two halves are set out in the table further down this entry. Everything below was filed as one item.*
@@ -120,22 +111,13 @@ Run 127d32b0: 8 edits fixed the prose and missed the summary table, leaving four
 ## S2 — silent loss
 
 ### 5. ~~Everything since 2026-07-12 — uncommitted~~ ✅ committed 2026-07-28
-Seven commits, `825bcc1`…`e216313`, 47 files. Identity set **repo-locally** (`git config --local`), so nothing reached a global config; nothing pushed. Full account — including the two bookkeeping defects that had made this item's own "everything is protected" claim false — in [resolvedissues.md](resolvedissues.md), *"Sixteen days of uncommitted work"*.
+Seven commits, `825bcc1`…`e216313`, 47 files. Identity set repo-locally; nothing pushed. Detail — including the two bookkeeping defects that had made this item's own "everything is protected" claim false — in [resolvedissues.md](resolvedissues.md), *"Sixteen days of uncommitted work"*, which also carries the recovery commands for the two deleted files.
 
-**Still live, and not closed by the commit:**
+**Still live:**
 
-- ⚠️ **Branch `dev` is 4 commits behind `origin/dev`.** The tree is clean now, so `git merge origin/dev` is safe. Do it before writing more code, not after.
-- ⚠️ **`data/app.db` is in no commit and never will be** — `data/` and `*.db` are both gitignored. It holds every run this file reasons about: the 20 reverts, the `round_texts` arithmetic, the cache-hit contradiction. **`outputs/snapshots/odysseus-restorepoint-*.tar.gz` is the only thing protecting the evidence base**, and pushing to a remote would not change that. Committing protects the code; the tarball protects the findings.
-- **Ignoring a file is not protecting it.** `git clean -fdx` deletes ignored files and nothing points at them, so an ignored file is *less* safe than an untracked one — it has lost the `??` line that would remind you it exists. Only a commit makes content recoverable by path. `COMMIT_PLAN.sh` is therefore left untracked-but-not-ignored: it is obsolete now that it has run, and it stays visible rather than silently deletable.
-- **A stale zero-byte `.git/index.lock` blocks every git operation, silently.** The 2026-07-18 instance ran for 13 hours and is the likely reason two weeks went uncommitted; two more appeared on 2026-07-28 from a process that could not unlink its own lock. **Check `ls .git/index.lock` before believing git itself is broken.**
-- ✅ `searxng/` gitignored — 138 MB with a nested upstream `.git` plus its own venv, one `git add -A` from being swallowed. Audited before staging: no credentials, no personal paths, `data/` already excluded.
-
-**Recovering the two files deleted as superseded.** Both were staged-but-never-committed, which is the fragile state:
-
-- `llmSetup.md`, 2026-07-28: `git cat-file -p 93bdbbb7 > docs/llmSetup.md` (24 lines, the mapping-table version). Its worktree copy differed from its staged blob — `746a08ef`, an older 7-line stub — so `git hash-object -w` was run on it *first*; otherwise deleting it would have destroyed the only copy anyone had read. It survived only as a redirect for source citations, and **its stated exit condition undercounted them by two**: seven citations existed, not five. Delete a redirect by grepping, not by trusting the count written inside it.
-- `KNOWN_ISSUES_debug.md`, 2026-07-27: `git cat-file -p b570b679 > KNOWN_ISSUES_debug.md` (62 lines, the pre-trim body). The obvious command does **not** work — it was renamed with `git mv` before deletion, so `git show :KNOWN_ISSUES_debug.md` returns nothing, and `git rm --cached` then dropped that index entry too. `git fsck --lost-found` misses it as well, because a stale index generation still references it.
-
-  **General trap: for a staged-but-never-committed file, renaming or re-staging invalidates every path-based recovery route, and there is no commit to fall back on.** Run `hash-object -w` before deleting, and write the hash down.
+- ⚠️ **`dev` is 4 commits behind `origin/dev`.** The tree is clean, so `git merge origin/dev` is safe. Do it before writing more code.
+- ⚠️ **`data/app.db` is in no commit and never will be** — `data/` and `*.db` are gitignored. It holds every run this file reasons about. **The `outputs/snapshots/*.tar.gz` is the only thing protecting the evidence base**, and a remote would not change that. Committing protects the code; the tarball protects the findings.
+- **Ignoring a file is not protecting it.** `git clean -fdx` deletes ignored files and nothing points at them, so an ignored file is *less* safe than an untracked one — it has lost the `??` line that would remind you it exists. `COMMIT_PLAN.sh` is left untracked-but-not-ignored for that reason.
 
 ### 6. Answer text can be lost to the reasoning channel
 Run f14a8f52, exact from `app.db`: `round_texts[0]` was 300 chars, `thinking` was a byte-for-byte 219-char **prefix** of it, and the saved message is the remaining 79 chars. The reply starts mid-list at "2.", and the model's most important question — *"1. Where is the existing HTML, CSS and JavaScript located?"* — is absent from history entirely.
@@ -235,32 +217,10 @@ Measured across all 24 test files in the commit series: **959 passed, 2 failed**
 - **Fixing it is a design decision, not a repair.** Patching a closure means either exposing it at module scope, injecting it, or restructuring the test to drive the behaviour through the endpoint instead of the internals. The last is the option `TESTING_STANDARD.md` would favour — the other two exist only to make the patch possible.
 - ⚠️ **Do not "fix" these by deleting them.** They cover the CAS race that item 1 spent three diagnoses on: an AI edit landing between the handler's read and its write. That case genuinely needs coverage; what's broken is how the test reaches it.
 
-### 19. Five tests fail on macOS only — the suite has never been green on the dev machine
-Found 2026-07-28 by running the full suite on the M1 for the first time: **`7 failed, 5415 passed, 4 skipped`**. Two are item 18. The other five fail *only* on macOS, for two environment reasons, and **neither is an application bug** — the code under test is correct in all five cases.
+### 19. ~~Five tests failed on macOS only~~ ✅ fixed 2026-07-28
+Four `AF_UNIX path too long` (macOS caps `sun_path` at 104 bytes; a socket under `tmp_path` was 126) plus `test_glob_confined_e2e`, whose assertion contradicted its own comment and passed on Linux by luck. **Neither was an application bug**; no confinement hole. Detail in [resolvedissues.md](resolvedissues.md), *"Five tests failed on macOS only"*.
 
-**`OSError: AF_UNIX path too long` — 4 tests.** `test_cookbook_docker_access.py:65`, `test_shell_routes.py:302` (×2 params) and `:317` bind a Unix socket at `tmp_path / "docker.sock"`. macOS caps `sockaddr_un.sun_path` at **104 bytes** (Linux allows 108) and hands out a deep `$TMPDIR`, so the path is **126 bytes — 22 over**:
-
-```
-/private/var/folders/96/…/T/pytest-of-cedrik/pytest-3/test_container_opt_in_with_uni0/docker.sock
-```
-
-The same path under Linux's `/tmp` is 74 bytes and fits, which is why this has never been seen. **Fix: bind the socket in a short directory** (`tempfile.mkdtemp(dir="/tmp")` plus a short filename), not under `tmp_path`. The directory only needs to hold a socket for the length of the `with` block.
-
-**`test_workspace_confine.py::test_glob_confined_e2e` — the assertion contradicts its own comment.** The test creates a secret outside the workspace and globs a traversal pattern at it. It correctly gets `No files`, then asserts `secret not in r["output"]`. But the comment three lines above says: *"The not-found message echoes the pattern the model supplied, so the signal is the absence of a match, not the absence of the path string."* The comment is right and the assertion contradicts it.
-
-It passes on Linux by luck. `outside = tempfile.mkdtemp()` returns `/var/folders/…` unresolved, while the workspace is compared as `os.path.realpath(ws)` = `/private/var/folders/…`. `os.path.relpath` is purely lexical, so it walks up seven levels and back down through the **absolute** path — `../../../../../../../var/folders/…/secret.txt` — which necessarily contains the secret string. On Linux both paths are already canonical, so `relpath` yields `../tmpYYYY/secret.txt` and the assertion holds vacuously.
-
-**Fix: `outside = os.path.realpath(tempfile.mkdtemp())`.** Then `relpath` stays relative on both platforms and the assertion tests what it was written to test. **No confinement hole here** — glob refused correctly; it echoed back a pattern the caller already supplied, which reveals nothing.
-
-**Both fixed 2026-07-28. The macOS conditions were reproduced on Linux rather than reasoned about**, which is the only reason this is recorded as verified:
-
-- *`AF_UNIX`:* re-running with `TMPDIR` set to a 60-byte path (the real macOS one is 57) reproduced `OSError: AF_UNIX path too long` **on Linux**, at 130 bytes, from the old `tmp_path` pattern. The new helper then passed 33 tests under that same deep `TMPDIR`. The failure is a path-length function, so it is fully reproducible anywhere once the length is matched.
-- *`glob`:* the symlink half could not be reproduced live — it needs a **root-level** symlink (`/var` → `/private/var`) and this sandbox cannot write to `/`. Verified instead by running `os.path.relpath` over the exact path strings from the failing run: the old shape yields `../../../../../../../var/folders/…/secret.txt`, which embeds the absolute secret; with the temp root resolved it yields `../tmpmzmii5bz/secret.txt`, which does not. **The leak is in the pattern the test constructs, never in glob's output.**
-- The fix is `outside = os.path.realpath(tempfile.mkdtemp())` plus a precondition `assert outside == os.path.realpath(outside)`. **A first attempt guarded with `not os.path.isabs(rel)` and was worthless** — the leaking path is a *traversal*, not an absolute path, so `isabs` is `False` in both the broken and fixed cases. Worth keeping as a reminder that a guard which passes in the failing case is not a guard.
-- Shared helper: `tests/helpers/unix_socket.py`, `bound_unix_socket()`. It asserts its own path is under 104 bytes, so the next person to lengthen it gets a clear message instead of `OSError`.
-- **Not yet observed green on the M1** — 117 tests pass across the three files on Linux, and the length condition is reproduced, but the `/private` symlink is genuinely absent here. One host run closes it.
-- **A permanently-red suite is its own hazard.** Seven expected failures on every run trains you to skim the summary, and that is how the eighth gets through. Same family as item 16's green-suite-asserting-nothing, inverted.
-- **`-m area_security` reported `654 passed` clean on this tree** while four docker-socket privilege-gate tests were failing, because the taxonomy keys off filenames: `test_shell_routes.py` → `area_routes`, `test_cookbook_docker_access.py` → `area_services`. **An area marker says what the file is called, not what it protects** — don't use the security lane as a pre-commit gate on its own.
+- ⚠️ **Awaiting one M1 run.** The length half was reproduced on Linux by setting a deep `TMPDIR`; the `/private` symlink half was verified by path arithmetic only, because it needs a root-level symlink. Expected baseline afterwards: **`2 failed`** (item 18 only).
 
 ---
 
@@ -277,5 +237,6 @@ Settled. Recorded so they don't get re-litigated.
 
   **All 37 item references were audited on 2026-07-27; the three that had rotted share a shape.** Every reference *within* this file that survived is **reciprocal** — #6↔#10, #7↔#8, #2↔#14 each name the other, so renumbering one would have visibly broken the pair. All three broken ones were **one-directional, `resolvedissues.md` → here**, with no named back-reference to notice the drift. So: a cross-file citation that nothing points back at is the fragile kind. Either make it reciprocal or cite the entry by title.
 - **The 2026-07-27 reference audit covered the four docs and not the code — and the code had rotted too.** "All 37 item references were audited" meant *within* the docs. Extending the same audit to source and tests on 2026-07-28 found a fourth broken reference of the identical one-directional shape: `tests/test_doc_report_gate_split.py` cited `docs/todo.md #2` **three times** for the closing-summary reporting path, which is #7 — #2 is the unrelated fact-check inversion. Also normalised seven `TODO.md item N` citations in `static/js/document.js` (the file is `docs/todo.md`; the mismatch is invisible on a case-insensitive macOS volume and breaks on Linux/CI). **Source comments are cross-references too, and there are more of them than there are in these files.** Grep `--include=*.py --include=*.js` for `todo.md` before renumbering, not just the four docs.
+- **What a closed entry is worth keeping for.** [resolvedissues.md](resolvedissues.md) was trimmed 283 → 175 lines on 2026-07-28 against one test: *would someone about to make a decision be worse off without this line?* **Retractions, recurring traps, ground truth, and the scope a fix was verified at** pass it — three separate re-investigations have been stopped by a retraction in that file. **Mechanism walkthroughs, evidence tables and timings do not**: they describe code that is now fixed, tested and committed, so they are re-derivable from `git show` and were costing a re-read on every visit. **Closing an item means moving the conclusion there and cutting the narrative, not appending to it.**
 - **On guards that write.** A guard that only *reports* can be shipped on test evidence. A guard that makes the model *act* can destroy data, and its tests must bound what it can do, not merely assert it exists. Item 8's reverted nudge passed every test written for it.
 - **A "superseded" banner does not retire a document — deleting the prose does.** `KNOWN_ISSUES_debug.md` carried a banner from 2026-07-18 stating that its leading theory (the reasoning parser eating the answer) was wrong, with a pointer to the retraction. On 2026-07-27 an agent read that banner and then argued from the body underneath it anyway, proposing to re-investigate the `/v1` thinking path — the third trip down a road two retractions exist to close. **Prose that reads like a live finding will be treated as one, however it is framed.** The file was emptied and then removed; its content survives as a loose object, recoverable with the `git cat-file` command in item 5 — **not** "in the git index", as this line claimed until 2026-07-28, which item 5's own recovery note directly contradicts. Corollary for this file: when an item is retracted, cut the reasoning, keep the conclusion.
