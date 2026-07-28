@@ -16,7 +16,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | # | Item | Sev | Effort | Status | Verified |
 |---|---|---|---|---|---|
 | 1 | ~~Autosave reverting AI edits — data loss~~ | S1 | M | ✅ fixed | **live** — 20 reverts → 0 |
-| **2a** | **Transcription doesn't match the source** | **S1** | **S** | **open — next** | — |
+| **2a** | **Transcription doesn't match the source** | **S1** | **S** | **open — next; transcription clean in 42889f7b, semantics still wrong** | — |
 | 2b | Fact-check inverts ground truth | S1 | M | open | — |
 | 3 | Documents contradict themselves | S1 | M | partly re-diagnosed; editor half fixed | tests |
 | 4 | ~~Retired 4B still on the research path~~ | S1 | XS | ✅ done | live |
@@ -25,14 +25,14 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 7 | ~~Closing summary under-reports / stays silent~~ | S3 | S | ✅ fixed | **live** — skipped-edit report, 2026-07-27 |
 | 8 | Agent gathers information, then stops | S3 | M | reporting fixed; **active half reverted** | **live** (reporting) |
 | 9 | ~~Throughput cliff: 2.84 → 0.39 tok/s~~ | — | — | ⊘ **retired — disproved by its own data** | n/a |
-| 10 | ~~Failures aren't replayable~~ | S4 | XS | ✅ **fixed 2026-07-28** — `full_command` persisted | tests (7) |
+| 10 | ~~Failures aren't replayable~~ | S4 | XS | ✅ **fixed 2026-07-28** — `full_command` persisted | **live** — run 42889f7b |
 | 11 | ~~Retry-at-failure covers only document tools~~ | — | — | ⊘ **retired to a watch note — no instance** | n/a |
 | 12 | Wasted verification rounds | S4 | XS | open — still reproducing | — |
 | 13 | Terminal access-log noise | S4 | S | open — got in the way twice | — |
 | 14 | Web search derails on ambiguous common nouns | S3 | M | open — recurring | — |
 | 15 | ~~`web_fetch` failure rate on cultivation sources~~ | — | — | ⊘ **folded into 2 — premise already answered** | n/a |
 | 16 | SSRF guard tests covered an orphaned function | S4 | S | one instance fixed; **audit open** | tests |
-| 17 | ~~Cache hits are indistinguishable from live fetches~~ | S4 | XS | ✅ **fixed 2026-07-28** — `cached` + age | tests (6) |
+| 17 | ~~Cache hits are indistinguishable from live fetches~~ | S4 | XS | ✅ **fixed 2026-07-28** — `cached` + age | **live** — run 42889f7b |
 | 18 | Two CAS tests have never passed | S4 | S | open — found 2026-07-28 | n/a |
 | 19 | ~~Five tests fail on macOS only~~ | S4 | XS | ✅ fixed 2026-07-28 | **live** — M1 suite `2 failed, 5433 passed` |
 
@@ -40,7 +40,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 
 > **Next, in order.** Items 1, 5, 10, 17 and 19 closed on 2026-07-28, so the work is committed and the record of a run is now interpretable. Ordering follows leverage.
 >
-> 1. **Item 2a** — the transcription diff. The only S1 with fresh evidence and no work done, cheaper than 2b, and it generalises to every "turn this data into a table" turn.
+> 1. **Item 2a — but rescoped by run 42889f7b (2026-07-28).** Mechanical transcription came back **clean** in that run, so the diff alone would have caught nothing; the semantic defects recurred. Build the diff *with 42889f7b as its negative control*, and put the weight on a small field-semantics fixture. See the entry.
 > 2. **Item 3's real gap** — `find_stale_values` has exactly one production caller, `document_tools.py:765`, inside `EditDocumentTool`; `update_document` bypasses the lint entirely. Note the interaction: item 7's live guard promises *"I'll rewrite the document in full instead of patching"*, which routes every edit failure into the one path with no lint.
 > 3. **Item 6** — unblocked now that #10 persists `full_command`, but **only for runs recorded after 2026-07-28**. Needs a fresh reproduction; the three 2026-07-27 runs cannot be re-examined.
 > 4. **Item 13** — friction, but it has obstructed debugging twice and all three cited call sites are verified unchanged. Cheaper to fix than to work around a third time.
@@ -83,6 +83,18 @@ Not autosave and not the compare-and-swap — both were correct throughout. A si
 - Two of three sensors absent from the document although present in the JSON.
 
 **Why this sharpens the item:** the failure is not "the model retrieves bad sources". It is that a 40-row verbatim transcription at ~6.8 tok/s is near the edge of what this model does reliably, and there is no check that the output matches the input it was handed. A row-count-plus-cell diff against the source is cheap and would have caught three of the four. Complements the known-facts checker above rather than replacing it.
+
+**2026-07-28, run 42889f7b — the first post-fix run, and it splits the item cleanly in two.** Same task shape as 31e0af64: fetch `http://192.168.0.185/api/state`, write a document. This one is fully auditable because item 10 now persists `full_command`, so the 3,024-character document the model wrote is recoverable from `app.db` — **that analysis was impossible for 31e0af64 and is the first practical payoff of item 10.**
+
+*Mechanical transcription was clean.* 40 source records → 40 table rows, uniform column count, **zero cell mismatches** across all 40×3 values, and all six sensor fields present. The dropped-column defect from 31e0af64 did **not** recur. On this evidence 2a's Layer A/B checker would have stayed silent, correctly.
+
+*The semantic defects recurred anyway:*
+
+- **`- Duty Cycle: 252` again**, exactly as in 31e0af64. 252 is the raw PWM register after a BC547 inversion — 255 is off, so this is roughly **1 % power**, while the document invites reading it as near-full. The real figure is the `dp` field, `5.1`. **This is now reproduced twice and is not a transcription error: every digit is faithfully copied from the source. It is a field-selection error, and no diff will ever catch it.**
+- **The title says "(Live Fetch)" on a 77-second-old cache hit** — while the body, three lines below, says *"cached ~77 seconds ago"* and the footer repeats *"This data may be cached."* The model read item 17's notice, believed it in the prose, and contradicted it in the title. A document that disagrees with itself about its own freshness is the item 3 pattern applied to provenance.
+- One thing that did *not* recur: no fabricated time span. 31e0af64 claimed "~19 hours" for what was 20 minutes; this run made no duration claim at all.
+
+**Consequences for the plan.** Layer A/B is still worth building, but this run is evidence it would have caught **nothing here** — so it must ship with 42889f7b as its **negative control**, or a checker that always fires will look like it works. The value has moved toward a small **field-semantics** layer: a per-source note that `duty` is inverted and `dp` is the power figure, in the same shape as the known-facts fixture in 2b. That is the check both runs needed.
 
 **Split into two independent pieces, 2026-07-28 — do 2a first.** They share a severity and nothing else: different inputs, different mechanisms, and 2a is both cheaper and more general.
 
