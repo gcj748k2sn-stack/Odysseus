@@ -22,7 +22,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 2b | ~~Fact-check inverts ground truth~~ | S1 | M | ✅ built 2026-07-28 — report-only | **live** — fb5525eb |
 | 3 | Documents contradict themselves | S1 | M | detection live; **prevention open** | **live** (lint) |
 | 4 | ~~Retired 4B still on the research path~~ | S1 | XS | ✅ done | live |
-| 5 | ~~Uncommitted work — since 2026-07-12~~ | S2 | XS | ✅ committed 2026-07-28 | **live** |
+| 5 | Uncommitted work — **recurred 2026-07-29, broke `HEAD`** | S2 | XS | ✅ re-committed 2026-07-29 (5 commits) | fixed — **clean-clone run owed** |
 | 6 | ~~Answer text lost to the reasoning channel~~ | S2 | S | ✅ fixed 2026-07-28 — a save-path regex | **tests (15)** |
 | 7 | ~~Closing summary under-reports / stays silent~~ | S3 | S | ✅ fixed | **live — both branches** |
 | 8 | Agent gathers information, then stops | S3 | M | reporting fixed; **active half reverted** | **live** / tests (zero-tool) |
@@ -118,6 +118,28 @@ Seven commits, 47 files, rebased onto the real `origin/dev`. Detail and the reco
 
 - ⚠️ **`data/app.db` is in no commit and never will be** — `data/` and `*.db` are gitignored, and it holds every run this file reasons about. **The `outputs/snapshots/*.tar.gz` is the only thing protecting the evidence base.** Committing protects the code; the tarball protects the findings.
 - **Ignoring a file is not protecting it.** `git clean -fdx` deletes ignored files and nothing points at them — an ignored file is *less* safe than an untracked one, having lost the `??` line that would remind you it exists.
+
+#### ⚠️ RE-OPENED 2026-07-29 — it recurred within hours of being closed, and this time it broke `HEAD`
+The 2026-07-28 commit swept up everything *up to that morning*. **Everything built later the same day went untracked**, and the row above still read *✅ committed — verified **live***, so nothing pointed at it.
+
+**`src/agent_loop.py` is committed and its line 25 is `from src.known_facts import check_document`. `src/known_facts.py` was untracked.** A fresh clone of `dev` could not import the core agent module: the app would not start, and the committed `tests/test_non_document_tool_report.py` could not even be collected. **The branch was 19 commits ahead of `origin/dev` in that state.** `git clean -fd` would have deleted `known_facts.py` outright.
+
+What the docs claimed was done, against what git held, on 2026-07-29:
+
+| item | recorded as | actually |
+|---|---|---|
+| 2b known-facts checker | ✅ built, **live** fb5525eb | `src/known_facts.py` + fixture untracked |
+| 6 reasoning-channel loss | ✅ fixed, tests (15) | `routes/chat_helpers.py` modified, tests untracked |
+| 21 suppressed warnings | ✅ fixed, tests (13) | tests untracked |
+| 20 rule pins | tests | untracked |
+| 8 zero-tool hole | ✅ closed | tests untracked |
+| 9b timeout 300→900 | ✅ raised | `src/settings.py` modified |
+| — | the working rules every session reads | **`CLAUDE.md` had never been committed** |
+
+- **Fixed in five commits on 2026-07-29**, the first of which (`0173fc8d`) exists only to make `HEAD` importable again. Verified after: **1,369 first-party imports across `src/`, `routes/`, `core/`, `services/` and `app.py`, every target resolves**, and `import src.agent_loop` succeeds.
+- ⚠️ **A green suite did not catch this and could not have.** Every test run happened in a working tree where the untracked files were present on disk. **The suite tests the tree, not the commit** — nothing in it would have failed until someone cloned. The check that finds it is the import sweep above, or `git status`, and neither is part of any gate.
+- **`✅ fixed` in this file means "it works on this machine", not "it is in the repository".** Both times, the drift began the moment an item was marked done. **Before writing ✅ on anything that added a file, run `git status`** — a new module, fixture directory or test file is untracked by default and no amount of local green tells you otherwise.
+- **The re-close is deliberately weaker than the first one.** Verified: `HEAD` imports and the import graph resolves. **Not** verified: that a clean clone passes the suite, which needs the M1 and `git clone /path/to/odysseus /tmp/x && cd /tmp/x && ./venv/bin/python -m pytest`. Until that runs, this row says *fixed*, not *verified live*.
 
 ### 6. ~~Answer text can be lost to the reasoning channel~~ ✅ fixed 2026-07-28
 **It was never the stream. It was a regex in the save path** — `_normalize_thinking` in `routes/chat_helpers.py` split by *position*, keeping the last line and moving the rest out of the message, on any answer opening with `"I need "`, `"The user "` and five similar phrases. Two instances in 65 recorded turns; one lost 675 of 705 characters. Full account: [resolvedissues.md](resolvedissues.md), *"The save path decided which half of the answer was thinking"*.

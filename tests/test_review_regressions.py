@@ -4,12 +4,45 @@ import importlib
 import json
 import sys
 import types
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
 
 from src.preset_manager import PresetManager
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _fake_core_package():
+    """A stand-in for `core` whose UNSTUBBED submodules still resolve from disk.
+
+    The stubs below replace `core` so importing the real package — which pulls
+    sqlalchemy, pyotp and the database engine through `core/__init__.py` — is
+    not needed to test a route module. That part is sound. **Setting
+    ``__path__ = []`` is not:** it makes every submodule the stub does not
+    explicitly list unreachable, so the test silently encodes today's import
+    list of the module under test.
+
+    It rotted on 2026-07-28. `routes/model_routes.py` imports
+    `core.log_safety.redact_url`, which no stub listed, and **six tests in this
+    file failed with `ModuleNotFoundError: No module named 'core.log_safety'`**
+    — pointing at a file that exists, is committed, and imports fine anywhere
+    else. The failure names the symptom and hides the cause.
+
+    Pointing `__path__` at the real `core/` fixes the class rather than the
+    instance: explicitly stubbed submodules still win (they are in
+    `sys.modules`, which is consulted first), and anything else loads normally.
+    A new `core.*` import in a route no longer breaks unrelated tests.
+
+    ⚠️ **The same `__path__ = []` pattern is in five other test files** — see
+    `test_the_empty_path_trap_is_documented_where_it_still_exists` below. They
+    have not bitten yet, which is exactly what this one looked like on 07-27.
+    """
+    core_mod = types.ModuleType("core")
+    core_mod.__path__ = [str(_REPO_ROOT / "core")]
+    return core_mod
 
 
 class _FakeColumn:
@@ -71,8 +104,7 @@ def _default_chat_endpoint():
 
 
 def _install_model_route_import_stubs(monkeypatch):
-    core_mod = types.ModuleType("core")
-    core_mod.__path__ = []
+    core_mod = _fake_core_package()
     db_mod = types.ModuleType("core.database")
     db_mod.SessionLocal = lambda: _FakeDb([])
     db_mod.ModelEndpoint = _FakeModelEndpoint
@@ -105,8 +137,7 @@ def _install_model_route_import_stubs(monkeypatch):
 
 def _install_core_auth_stub(monkeypatch):
     """Install the narrow auth surface needed by tool-policy tests."""
-    core_mod = types.ModuleType("core")
-    core_mod.__path__ = []
+    core_mod = _fake_core_package()
     auth_mod = types.ModuleType("core.auth")
     auth_mod.AuthManager = MagicMock()
     core_mod.auth = auth_mod
@@ -117,8 +148,7 @@ def _install_core_auth_stub(monkeypatch):
 
 def _install_core_middleware_stub(monkeypatch):
     """Install the narrow middleware surface needed by loopback tool tests."""
-    core_mod = types.ModuleType("core")
-    core_mod.__path__ = []
+    core_mod = _fake_core_package()
     middleware_mod = types.ModuleType("core.middleware")
     middleware_mod.INTERNAL_TOOL_HEADER = "X-Internal-Tool"
     middleware_mod.INTERNAL_TOOL_TOKEN = "test-token"
@@ -1427,3 +1457,77 @@ def test_visible_models_empty_cached_returns_empty(monkeypatch):
 
     result = _visible_models([], None)
     assert result == []
+
+
+# ── The stub-package trap itself ────────────────────────────────────────────
+# docs/todo.md item 16's shape, a fourth time: a test harness that encodes the
+# import list of the code it exercises, and fails confusingly when that list
+# grows. These two tests pin the fix and bound how far it reaches.
+
+def test_an_unstubbed_core_submodule_still_imports_under_the_stubs(monkeypatch):
+    """The regression itself, reduced to one assertion.
+
+    `core.log_safety` is deliberately NOT stubbed by
+    `_install_model_route_import_stubs`. Under the old `__path__ = []` this
+    raised `ModuleNotFoundError` and took six unrelated tests with it.
+
+    ⚠️ **The `delitem` is what makes this a test.** Without it the first
+    version of this passed with `__path__ = []` still in place, because
+    `core.log_safety` was already in `sys.modules` from an earlier import and
+    `sys.modules` is consulted before `__path__` is ever used — so it asserted
+    the cache, not the resolution. **Verified by reverting the fix and watching
+    this fail**, which the version without `delitem` did not.
+    """
+    _install_model_route_import_stubs(monkeypatch)
+    monkeypatch.delitem(sys.modules, "core.log_safety", raising=False)
+    importlib.invalidate_caches()
+
+    from core.log_safety import redact_url
+
+    assert callable(redact_url)
+
+
+def test_stubbed_core_submodules_still_win_over_the_real_ones(monkeypatch):
+    """The fix must not quietly undo the stubbing it exists to preserve.
+
+    Pointing `__path__` at the real `core/` would be a regression if it let the
+    real `core.database` load — that is what the stub is avoiding, and loading
+    it drags in sqlalchemy and the engine. `sys.modules` is consulted before
+    `__path__`, so the stub still wins; this asserts it rather than trusting it.
+    """
+    _install_model_route_import_stubs(monkeypatch)
+    importlib.invalidate_caches()
+
+    from core.database import ModelEndpoint
+
+    assert ModelEndpoint is _FakeModelEndpoint
+
+
+def test_the_empty_path_trap_is_documented_where_it_still_exists():
+    """An inventory, not a gate — it must not fail as those files are fixed.
+
+    Five other test files build fake packages with `__path__ = []`. None has
+    bitten yet, which is precisely what this file looked like the day before it
+    did. Recorded so the next person to see `ModuleNotFoundError: No module
+    named '<real, committed file>'` recognises it in one read instead of
+    investigating the module.
+    """
+    known = {
+        "tests/test_api_chat_security.py": "core",
+        "tests/test_builtin_mcp_bg_tasks.py": "core",
+        "tests/test_builtin_mcp_npx_cache.py": "core",
+        "tests/test_security_regressions.py": "core, services, services.search",
+        "tests/test_services_research_low_quality_sources.py": "services, services.research",
+    }
+    still_empty = {
+        path for path in known
+        if "__path__ = []" in (_REPO_ROOT / path).read_text(encoding="utf-8")
+    }
+    # This file must be clean; the others are merely listed.
+    assert "__path__ = []" not in (
+        _REPO_ROOT / "tests/test_review_regressions.py"
+    ).read_text(encoding="utf-8").split('"""')[2]
+    assert still_empty <= set(known), (
+        "A new file adopted the __path__ = [] pattern — add it to `known` and "
+        "read the docstring on _fake_core_package before copying it."
+    )

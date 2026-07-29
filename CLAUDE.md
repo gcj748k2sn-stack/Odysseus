@@ -188,4 +188,13 @@ helper mechanics in [`tests/README.md`](tests/README.md). Read those. Additions:
 - **Ignoring a file is not protecting it.** `data/app.db` is gitignored and
   holds every run the docs reason about; `git clean -fdx` would take it. The
   snapshot tarball is what protects the evidence base.
+- **A green suite says nothing about what is committed — it tests the tree, not
+  the commit.** On 2026-07-29 `src/agent_loop.py` was committed while
+  `src/known_facts.py`, which it imports at module top, was untracked: `HEAD`
+  could not import, the branch was 19 commits ahead of origin, and every test
+  had always run in a tree where the file happened to exist. **Before writing
+  "fixed" on anything that ADDED a file, run `git status`** — new modules,
+  fixtures and test files are untracked by default. The mechanical check is a
+  sweep of every first-party `from (src|routes|core|services)... import`
+  against the files on disk; it takes seconds and it is what found this.
 - Conventional Commits, per [`CONTRIBUTING.md`](CONTRIBUTING.md).
