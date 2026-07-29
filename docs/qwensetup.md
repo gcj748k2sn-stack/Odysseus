@@ -57,7 +57,7 @@ Learned 2026-07-27 wiring an ESP32 on the LAN into a chat. Both halves cost a wo
 ## Running the test suite
 - **`./venv/bin/python -m pytest`** — the canonical invocation (`tests/README.md`). `pytest` and `pytest-asyncio` are in `requirements.txt`, so a working venv already has them; `pyproject.toml` sets `asyncio_mode = "auto"`, so async tests need no decorator plumbing.
 - Focused slices via the taxonomy markers added at collection time: `-m area_security`, `-m "area_services and sub_cookbook"`. Fast lane is `-m "not slow"`. `tests/run_focus.py` validates area names before running.
-- **Last measured on the M1, 2026-07-29: `2 failed, 5738 passed, 4 skipped` in 122 s — 5,744 collected.** Both failures are [todo.md](todo.md) item 18 and neither is an application bug. Taken after that day's 27 local commits and the 11 upstream commits merged into them. *(2026-07-28 gave 5588 passed; an earlier run the same day gave 5433, before ~1939 upstream commits arrived.)*
+- **Last measured on the M1, 2026-07-29 21:2x: `2 failed, 5768 passed, 4 skipped` in 109 s — 5,774 collected.** Both failures are [todo.md](todo.md) item 18 and neither is an application bug. ⚠️ **Run in the working tree, which held item 29's 16 uncommitted tests** — `HEAD` after `4a2dfdd0` is `5,758` collected / `5,752` passed. *(Earlier the same day: 5738/5744. 2026-07-28 gave 5588; an earlier run that day gave 5433, before ~1939 upstream commits arrived.)*
 - ⚠️ **This is a measurement; the line it replaced was a prediction of ~5694/5711 and was 33 low** — upstream kept adding tests in between. **Re-measure and rewrite this line rather than adjusting it.** A count in prose is a claim with an expiry date and no test, and this file has carried a wrong one before: an earlier claim of "687 pass" was neither current nor true, and a 24-file subset measured on Linux gave "959 passed, 2 failed" while hiding all five macOS failures. *(The "~5613" that once stood here counted test functions, not collected cases — a parametrized test is one function and three cases.)*
 - ⚠️ **A green suite here says nothing about what is committed.** `rootdir` is your working tree, where untracked files are present on disk; that is exactly how a committed `src/agent_loop.py` importing an untracked `src/known_facts.py` stayed green ([todo.md](todo.md) item 5). The separate check is `git clone ~/odysseus /tmp/x` and a first-party import sweep over the clone — seconds, no venv needed.
 - ⚠️ **An agent in the Linux sandbox cannot run this suite at all.** `venv/` is a macOS/homebrew tree whose interpreter is a broken symlink from anywhere else, so a sandboxed agent falls back to system `python3 --noconftest` and gets environmental failures that look real. Any count it reports is per-file, not a suite result. See [`CLAUDE.md`](../CLAUDE.md).
@@ -77,7 +77,9 @@ Most of the diagnosis in [resolvedissues.md](resolvedissues.md) came from here, 
 > the originals; keeping the copy outside the tree is what puts it beyond reach
 > of any git command.
 >
-> - **Latest: `~/odysseus-snapshots/odysseus-evidence-2026-07-29.tar.gz`.**
+> - **Latest: `~/odysseus-snapshots/odysseus-evidence-2026-07-29.tar.gz`, 1,429,813 bytes,
+>   taken 21:36 CEST with the app down.** Holds `app.db`, `app.log` and `app.log.1`;
+>   hashes taken before the copy verified `OK` on all three afterwards.
 > - Verify: `tar xzf …tar.gz && cd evidence-2026-07-29 && sha256sum -c SHA256SUMS.snapshot`
 >   checks the archive. `SHA256SUMS.source` holds the same hashes under
 >   repo-relative paths — run `sha256sum -c SHA256SUMS.source` **from the repo
