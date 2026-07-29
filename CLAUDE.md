@@ -167,6 +167,27 @@ helper mechanics in [`tests/README.md`](tests/README.md). Read those. Additions:
   above passed with the bug still in place, because the module was already
   cached from an earlier import. `monkeypatch.delitem(sys.modules, ...)` is what
   turned it into a test. **Revert the fix and watch it fail before believing it.**
+- **A test fixture's LOCATION can be load-bearing, and moving it can make the
+  test vacuous.** `test_chat_helpers.py` builds fixtures in the repo root, which
+  looks like litter and isn't: `DATA_DIR` is `<repo>/data`, so a repo-root path
+  is outside every entry in `_tool_path_roots()`, and that is the only reason
+  the test's `tool_path_extra_roots` patch discriminates. Under `tmp_path` —
+  which lives in `$TMPDIR` or `/tmp`, both already on the allowlist — every
+  assertion still passes and the patch stops mattering. **`test_extra_roots_opt_in`
+  in `test_tool_path_confinement.py` has that defect today** (todo.md item 25).
+  **Before moving a fixture, run the function it is confined by and see whether
+  the new location satisfies it on its own.** Reading the test cannot show this.
+- **If you replace a roots/allowlist helper in a test, `os.path.realpath` what
+  you hand it.** The real `_tool_path_roots()` normalises its own inputs; a
+  `lambda: [str(tmp_path)]` skips that, and on macOS `$TMPDIR` is under the
+  `/var` → `/private/var` symlink — so the test fails on macOS and passes on
+  Linux. That is the item 19 class, re-manufactured by the fix for a different bug.
+- **`ignore_errors=True` is a silent failure by design.** `shutil.rmtree(root,
+  ignore_errors=True)` in a `finally` reads as "cleanup is handled" and means
+  "cleanup may or may not have happened, and you will not be told". A sandboxed
+  run cannot delete under the mount, so four fixture directories accumulated in
+  the repo root, unignored, showing as untracked in every `git status` — the one
+  check item 5 depends on. **A cleanup that cannot fail cannot tell you it failed.**
 - **Two pre-existing failures** in `test_document_put_version_conflict.py` —
   they patch a closure. Don't delete them; they cover a real CAS race.
 - **The `area_*` markers key off filenames, not subject matter.** `-m

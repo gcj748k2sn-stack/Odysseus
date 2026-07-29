@@ -22,7 +22,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 2b | ~~Fact-check inverts ground truth~~ | S1 | M | ✅ built 2026-07-28 — report-only | **live** — fb5525eb |
 | 3 | Documents contradict themselves | S1 | M | detection live; **prevention open** | **live** (lint) |
 | 4 | ~~Retired 4B still on the research path~~ | S1 | XS | ✅ done | live |
-| 5 | Uncommitted work — **recurred 2026-07-29, broke `HEAD`** | S2 | XS | ✅ re-committed 2026-07-29 (5 commits) | fixed — **clean-clone run owed** |
+| 5 | ~~Uncommitted work — recurred, broke `HEAD`~~ | S2 | XS | ✅ closed 2026-07-29 | **verified — clean clone, 5738 passed** |
 | 6 | ~~Answer text lost to the reasoning channel~~ | S2 | S | ✅ fixed 2026-07-28 — a save-path regex | **tests (15)** |
 | 7 | ~~Closing summary under-reports / stays silent~~ | S3 | S | ✅ fixed | **live — both branches** |
 | 8 | Agent gathers information, then stops | S3 | M | reporting fixed; **active half reverted** | **live** / tests (zero-tool) |
@@ -42,7 +42,9 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 21 | ~~Three S1 warnings suppressed when the model wrote a summary~~ | S1 | XS | ✅ **fixed 2026-07-28** | tests (13) |
 | 22 | ~~Documents never stream into the editor on this setup~~ | S4 | — | ⊘ **retired — disproved 2026-07-28** | n/a |
 | 23 | Finished answers delivered in the reasoning channel | S2 | ? | open — **found 2026-07-29** | **live** — 374d57b7 |
-| 24 | ~~Cloned documents were all named "Untitled"~~ | S4 | XS | ✅ fixed 2026-07-29 | — **needs one clone** |
+| 24 | ~~Cloned documents were all named "Untitled"~~ | S4 | XS | ✅ fixed 2026-07-29 | **live** — both paths, 2026-07-29 |
+| 25 | A path-confinement test passes without the thing it tests | S4 | XS | **confirmed**; fix open | **confirmed on macOS** |
+| 26 | Test litter in the repo root, hidden by `ignore_errors=True` | S4 | XS | open — **found 2026-07-29** | reproduced |
 
 **Numbers are never reused.** A retired item keeps its number and a `⊘` row, because renumbering has silently rotted cross-references four times (see *Notes & constraints*). Item 2 split into 2a/2b, and 9 into 9/9b, rather than taking new numbers, for the same reason.
 
@@ -59,11 +61,13 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 > 5. **Item 13** — friction, but it has obstructed debugging twice. ⚠️ *Two of the three cited call sites re-verified 2026-07-28; `start-macos.sh:292` is now a bare `uvicorn` CLI invocation with no log flag, which is a different fix shape from a `logging.Filter` on a `uvicorn.run` kwarg.*
 >
 > **Owed verifications, not investigations.** Each is one run and closes a row that currently overstates itself:
-> **item 5** — a clean-clone suite run on the M1, still the only check that would have caught the broken `HEAD`, and it blocks pushing 19 commits; **item 11** — one turn using a non-document tool; **item 24** and *"Open in new chat"* — one clone each, both **unverified because this repo has no JS test harness**; **item 9b** — three deliberately long runs, since nothing since the raise has been long enough to test it.
+> **item 11** — one turn using a non-document tool; **item 2a** — one ESP32 document with the editor cleared; **item 9b** — three deliberately long *rounds*. ⚠️ *9b is no longer untested and the evidence points the wrong way: a single round ran **448.7 s** on 2026-07-28 23:38 at `timeout=900` and completed, where the old 300 s cap would have killed it — but it logged `text_chars=0 tool_calls=0`, so that silence was **not** a tool-call payload being generated.* ⚠️ **Do not cite the 457 s turn of 2026-07-29 18:06 as a second data point** — it was 8 rounds, longest 140.5 s, and the timeout is per-read inactivity *within* a round. `response_time` is a turn; `elapsed` is a round; **conflating them is how this item was misread the first time.**
+>
+> **Closed 2026-07-29 by running them:** item 5 (clean clone, `2 failed, 5738 passed`, 2,930 imports resolved), item 24 and *"Open in new chat"* (two clones, both carried the source title), item 25 (macOS run confirms the vacuity).
 >
 > **Closed and off this list:** item 11 (2026-07-28, built), item 22 (2026-07-28, disproved and retired), item 24 (2026-07-29, fixed).
 >
-> **Suite: last measured `2 failed, 5588 passed` on the M1** — item 18 only, both pre-existing. ⚠️ **Unmeasured on the M1 since.** Additions since: 2a +27, item 6 +15, 2b +34, items 8/9b +20, item 20 +12, item 21 +13, item 11 +20, item 16's stub fix +3. **A sandboxed `--collect-only` on 2026-07-29 counts 5,708, plus 3 in `test_mcp_memory_owner_scope.py` which needs the `mcp` package → 5,711 collected.** ⚠️ **Collected is not passed, and a Linux sandbox is not the M1** — treat this as the shape to expect, not a target. Item 8's active half stays parked — read its ❌ bullet first.
+> **Suite: measured `2 failed, 5738 passed, 4 skipped` in 122 s on the M1, 2026-07-29** — 5,744 collected, item 18 only, both pre-existing. Taken after the 27 local commits and the 11 upstream commits merged that day. ⚠️ **Run in the working tree (`rootdir: /Users/cedrik/odysseus`), so it says nothing about what is committed** — the clean-clone run item 5 owes is a different question and is still open. *(The `5,711` predicted from a sandboxed `--collect-only` was 33 low; upstream added tests in between. Replace this line with a measurement, never a prediction.)* Item 8's active half stays parked — read its ❌ bullet first.
 
 ---
 
@@ -112,6 +116,7 @@ Run 127d32b0: 8 edits fixed the prose and missed the summary table, leaving four
 
 - **Detection exists** (`find_stale_values()`), surfacing fixed 2026-07-18. **Prevention doesn't** — the model is never asked to fix what the lint finds.
 - **Gap:** the lint runs only inside `EditDocumentTool`. A full `update_document` rewrite bypasses it entirely.
+- ⚠️ **The interaction with item 7 was filed as a theory and was OBSERVED END TO END on 2026-07-29, session d16f7a83.** Turn 1: four `edit_document` calls, every FIND block rejected, item 7's guard fires — *"I'll rewrite the document in full instead of patching individual passages."* Turn 2: the model does exactly that, `update_document`, **v5 written with no consistency lint at any point.** The guard is honest, the promise is reasonable, and it routes each edit failure into the one write path with no checking. **Any fix here has to cover `update_document`, or item 7's success makes item 3 worse.**
 - **How much is the model is an open measurement, not a known quantity** — the editor was manufacturing part of it.
 
 ### 4. ~~The retired 4B is still live on the research path~~ ✅ done 2026-07-19
@@ -119,35 +124,21 @@ Run 127d32b0: 8 edits fixed the prose and missed the summary table, leaving four
 
 ## S2 — silent loss
 
-### 5. ~~Everything since 2026-07-12 — uncommitted~~ ✅ committed 2026-07-28
-Seven commits, 47 files, rebased onto the real `origin/dev`. Detail and the recovery commands for two deleted files: [resolvedissues.md](resolvedissues.md), *"Sixteen days of uncommitted work"* and *"Upstream rewrote history"*.
+### 5. ~~Uncommitted work~~ ✅ closed 2026-07-29 — **verified from a clean clone**
+Closed twice: committed 2026-07-28, recurred within hours and broke `HEAD`, re-committed and **verified by cloning**. Full account, including the recurrence and the recovery commands: [resolvedissues.md](resolvedissues.md), *"Sixteen days of uncommitted work"*, *"Upstream rewrote history"*. What stays here is the part that keeps costing sessions.
 
 - ⚠️ **`data/app.db` is in no commit and never will be** — `data/` and `*.db` are gitignored, and it holds every run this file reasons about. **A snapshot tarball is the only thing protecting the evidence base.** Committing protects the code; the tarball protects the findings.
   - ❌ ~~"The `outputs/snapshots/*.tar.gz` is the only thing protecting the evidence base"~~ — **corrected 2026-07-29. That path named a file that did not exist.** No `outputs/snapshots/` directory was in the repo and no `*.tar.gz` was anywhere on disk; it had pointed at an agent scratchpad, which is cleared between sessions. **For an unknown period the evidence base was protected by nothing, while this line said otherwise** — and `app.log` had already rotated on 2026-07-28, putting 17–28 July two rotations from deletion. **A snapshot inside an agent's working folder is not a snapshot.**
   - ✅ **Snapshot taken 2026-07-29 to `~/odysseus-snapshots/`, outside the repo** so no git command can reach it. Hash-verified before and after the copy, with a negative control; procedure and caveats in [qwensetup.md](qwensetup.md), *"Reading `data/app.db` when debugging a run"*.
 - **Ignoring a file is not protecting it.** `git clean -fdx` deletes ignored files and nothing points at them — an ignored file is *less* safe than an untracked one, having lost the `??` line that would remind you it exists.
 
-#### ⚠️ RE-OPENED 2026-07-29 — it recurred within hours of being closed, and this time it broke `HEAD`
-The 2026-07-28 commit swept up everything *up to that morning*. **Everything built later the same day went untracked**, and the row above still read *✅ committed — verified **live***, so nothing pointed at it.
+✅ **Verification scope, 2026-07-29 — this is what "closed" means here.** A clone of `dev` into `/tmp`, a fresh venv, and the full suite: **`2 failed, 5738 passed, 4 skipped` in 122.05 s**, byte-identical to the working-tree run, plus **2,930 first-party imports, 0 unresolved**. The two failures are item 18. **`HEAD` is complete and runnable; nothing untracked was load-bearing.**
 
-**`src/agent_loop.py` is committed and its line 25 is `from src.known_facts import check_document`. `src/known_facts.py` was untracked.** A fresh clone of `dev` could not import the core agent module: the app would not start, and the committed `tests/test_non_document_tool_report.py` could not even be collected. **The branch was 19 commits ahead of `origin/dev` in that state.** `git clean -fd` would have deleted `known_facts.py` outright.
-
-What the docs claimed was done, against what git held, on 2026-07-29:
-
-| item | recorded as | actually |
-|---|---|---|
-| 2b known-facts checker | ✅ built, **live** fb5525eb | `src/known_facts.py` + fixture untracked |
-| 6 reasoning-channel loss | ✅ fixed, tests (15) | `routes/chat_helpers.py` modified, tests untracked |
-| 21 suppressed warnings | ✅ fixed, tests (13) | tests untracked |
-| 20 rule pins | tests | untracked |
-| 8 zero-tool hole | ✅ closed | tests untracked |
-| 9b timeout 300→900 | ✅ raised | `src/settings.py` modified |
-| — | the working rules every session reads | **`CLAUDE.md` had never been committed** |
-
-- **Fixed in five commits on 2026-07-29**, the first of which (`0173fc8d`) exists only to make `HEAD` importable again. Verified after: **1,369 first-party imports across `src/`, `routes/`, `core/`, `services/` and `app.py`, every target resolves**, and `import src.agent_loop` succeeds.
-- ⚠️ **A green suite did not catch this and could not have.** Every test run happened in a working tree where the untracked files were present on disk. **The suite tests the tree, not the commit** — nothing in it would have failed until someone cloned. The check that finds it is the import sweep above, or `git status`, and neither is part of any gate.
-- **`✅ fixed` in this file means "it works on this machine", not "it is in the repository".** Both times, the drift began the moment an item was marked done. **Before writing ✅ on anything that added a file, run `git status`** — a new module, fixture directory or test file is untracked by default and no amount of local green tells you otherwise.
-- **The re-close is deliberately weaker than the first one.** Verified: `HEAD` imports and the import graph resolves. **Not** verified: that a clean clone passes the suite, which needs the M1 and `git clone /path/to/odysseus /tmp/x && cd /tmp/x && ./venv/bin/python -m pytest`. Until that runs, this row says *fixed*, not *verified live*.
+- ⚠️ **A green suite in the working tree cannot close this item, and that is the entire point.** Every earlier run had the untracked files present on disk. **The suite tests the tree, not the commit.** The 2026-07-29 recurrence — a committed `src/agent_loop.py` importing an untracked `src/known_facts.py`, so a fresh clone could not import the core module — stayed invisible through a full green suite and would have until someone cloned.
+- **`✅ fixed` in this file means "it works on this machine", not "it is in the repository".** Both times the drift began the moment an item was marked done. **Before writing ✅ on anything that ADDED a file, run `git status`** — new modules, fixtures and test files are untracked by default and no amount of local green tells you otherwise.
+- **The check, when you need it again:** `git clone ~/odysseus /tmp/x && cd /tmp/x` then an AST sweep of every first-party `from (src|routes|core|services)… import` against files on disk. **Seconds, no venv.** The venv-and-suite version is belt-and-braces once the tree is already green.
+- ⚠️ **`git status` is this item's whole early-warning system, so noise in it is a real cost — see item 26**, reciprocal (#5↔#26). A test writing untracked directories into the repo root puts permanent `??` lines in front of the one signal that would have shown `known_facts.py` missing.
+- ⚠️ **Do not diff working files against blobs to find modifications.** `.gitattributes` sets `*.ps1`/`*.bat` to `eol=crlf`, so the blob is LF and the working tree is CRLF *by design*; comparing `git show HEAD:<file>` against the file reports three Windows scripts as modified when `git status` calls them clean. **Use `git status`, or `git check-attr text eol -- <file>` before believing a diff.**
 
 ### 6. ~~Answer text can be lost to the reasoning channel~~ ✅ fixed 2026-07-28
 **It was never the stream. It was a regex in the save path** — `_normalize_thinking` in `routes/chat_helpers.py` split by *position*, keeping the last line and moving the rest out of the message, on any answer opening with `"I need "`, `"The user "` and five similar phrases. Two instances in 65 recorded turns; one lost 675 of 705 characters. Full account: [resolvedissues.md](resolvedissues.md), *"The save path decided which half of the answer was thinking"*.
@@ -164,6 +155,7 @@ Two defects: counts were replaced rather than accumulated (10 edits reported as 
 
 - ✅ **Failure branch live 2026-07-27** (31e0af64): *"I couldn't apply the edit — the document is unchanged."*
 - ✅ **Accumulation branch live 2026-07-28** (fb5525eb turn 3): *"7 edits applied across 2 rounds, 4 not applied (the FIND text didn't match — those corrections are still missing)."* This was the item's last tests-only scope.
+- ⚠️ **Possible under-report, found 2026-07-29 and NOT yet diagnosed — check before trusting the counter.** Session d16f7a83 turn 1 records **four `edit_document` tool events** (all `<<<FIND>>>`, all `exit_code=None`) and the message says *"rejected **1** attempt this turn … (skipped 1)"*. Four events, one attempt reported. It may be legitimate — one attempt retried across four rounds — but **that is the exact shape of the accumulation bug this item was closed on**, and it is one query to settle: compare `tool_events` length against the reported count on that row.
 
 ### 8. The agent gathers information, then stops
 Four attempts at one task in 16 minutes, **zero files produced**. 0b12aadb read 10,035 chars, correctly identified the embedded HTML page, ended its thinking with *"Let me write out the extracted content:"* — and emitted nothing.
@@ -171,6 +163,9 @@ Four attempts at one task in 16 minutes, **zero files produced**. 0b12aadb read 
 **Shares a root cause with item 7** — every guard tested `full_response` for emptiness, and a dangling promise is not empty. Item 7's silence also *caused* one instance here: told nothing had happened, the user asked again 16 seconds later and the repeat turn spent 162 s producing nothing.
 
 - ✅ **Reporting half — live** (eb2d0ac1): *"I ran `web_search`, `web_fetch` and then stopped without producing an answer — nothing was created or changed."* Detection is positional, not keyword-based: prose is snapshotted before **every** tool block. Tests: `tests/test_dangling_promise_turn.py`.
+- ❌ **"The failing turns lost their write tools" — tested and WRONG, 2026-07-29. Do not re-open it.** It is the most attractive hypothesis available and the `[agent-intent]` log kills it: **every turn, failing and succeeding alike, had `edit_document`, `update_document` and `create_document` in `selected_tools`.** Three consecutive failures at 12–25 tools and a success at 13 tools carried near-identical sets — the successful turn's list differs from a failing one's by a single entry (`manage_research`). *(The genuine version of this bug was fixed 2026-07-18 — [resolvedissues.md](resolvedissues.md), "Active-doc turns losing edit tools on low-signal input"; the fix is holding, which is why the tools are there.)*
+- **Session 3e0c537b, 2026-07-29 — three consecutive failures, and the `thinking` was read rather than the guard.** All three end on a dangling promise: *"Let me edit it to correct these issues…"*, *"I'll correct these and also tighten up wording"*, *"Let me create a corrected table and update the document:"*. **Genuine item 8, none of them item 23.** Even *"continue"* failed. **Corpus tally: 21 of 108 assistant turns end in the guard notice; exactly 1 of the 21 is item 23.**
+- **The live lead this leaves is the verb, not the tooling.** Same model, same document, same tools: *"fact check and correct the document"* failed three times; *"fact check and rewrite"* succeeded via `update_document`. **n=1 each way — a lead, not a finding**, and the cheapest thing step 0 could also measure.
 - ⚠️ **Some of what this item counts is item 23, not item 8. Check before adding to the tally.** On 2026-07-29 the notice fired twice on turns where the model had **finished the work in the reasoning channel** — 3,892 and 1,032 chars of `thinking` holding a complete fact-check report and a question back to the user. *"Stopped without producing an answer"* is true about tools and false about the answer. **The item 6 check does not separate them:** `round_texts[-1]` is genuinely `''` in the item 23 case, because nothing arrived as content. **Compare `thinking` against `content`.** 48 recorded turns have this shape and 7 look deliverable-shaped; see item 23.
 - ✅ **The zero-tool hole, closed 2026-07-28.** fd0f9ba0 turn 3 promised a document, called nothing, and said nothing. **Neither guard was broken; both were out of range** — `_gathering_only_notice` returns `""` with no tools, and `_text_is_only_preamble` needs a tool boundary to be positional about. **This item's "verified live" was recorded from eb2d0ac1, which ran three tools; the scope written down was wider than the thing verified.** `_unstarted_promise_notice()` covers it, measured on all 67 recorded turns before shipping: 3 ran no tools, 5 end on a colon, exactly 1 does both. Tests: `tests/test_zero_tool_turn_reporting.py`.
 - ❌ **The active half was tried and REVERTED the same day. Read this before retrying it.** A nudge told the model *"finish the job NOW using the appropriate tool."* Run 8c80cf8d called `update_document` with **empty content**, wiping a 6186-character document, then created two empty `Untitled` documents and emptied one twice — **five zero-length versions in four minutes, against none in the preceding 79.**
@@ -257,7 +252,9 @@ Asked to *"fact check the document and correct it"*, the turn ran `web_search` �
 
 - **Pre-existing in Clone; "Open in new chat" inherited it** the moment that was added, because it ends by calling the same function.
 - ⚠️ **It matters for item 20's step-0 runs**, which clone the same document five times: identically-named `Untitled` documents make the runs hard to tell apart in `app.db`, and the title is one of the things the model is judged on.
-- ⚠️ **Not verified — this repo has no JS test harness.** Fixed by one line plus a comment; confirm with a single clone that the copy carries the source's title.
+- ✅ **Verified live 2026-07-29, both paths.** Clone at 15:36:31 and *"Open in new chat"* at 16:02:53 each produced a document titled `Lion's Mane Mushroom (Hericium erinaceus) - Complete Guide` ~38 ms after their session, neither `Untitled`. No `(2)` suffix on either, which is correct — the dedup only compares titles **within** a session.
+- ⚠️ **Verified by reading `app.db`, because this repo has no JS test harness.** That is the available standard here, not a shortcut; a JS change cannot be confirmed any other way.
+- ⚠️ **The fix rode into `HEAD` inside a 120-line commit whose message described only the 3-line title change.** The rest is the *"Open in new chat"* feature, which had been sitting uncommitted in the working tree. Amended on 2026-07-29 to say so. **An uncommitted feature will attach itself to the next commit that touches its file** — item 5's failure mode wearing different clothes.
 
 ### 14. Web search derails on ambiguous common nouns
 Recurring, and **it feeds item 2b** — the wrong-species drift there is partly downstream of this. Run eb2d0ac1 returned **"Pink (singer) — Wikipedia"** as a top result for a pink-oyster cultivation query; an earlier run ranked a Victoria's Secret "PINK" page into the same searches. Nothing in the pipeline notices. The species name is in the document title and isn't being used.
@@ -338,6 +335,7 @@ One instance fixed 2026-07-27 ([resolvedissues.md](resolvedissues.md), *"web_fet
 `_public_http_url()` in `services/search/content.py` had no production callers, while `tests/test_search_content_url_guards.py` — a file that exists solely to test URL guards — asserted **3 of 3** cases against it, and `test_web_fetch_size_caps.py:93` monkeypatched it to a no-op. **The live guard had no coverage at all and the suite was green throughout.** Find the commit with `git log -S_public_http_url -- services/search/content.py` *(cited by search, not hash: the hash changed in the 2026-07-28 rebase)*.
 
 - **This is worse than dead code: a green suite asserting a security property nothing enforces.**
+- ⚠️ **A second instance of the shape was found 2026-07-29 — item 25**, reciprocal (#16↔#25). There the assertion is pointed at a live function and still proves nothing, because the fixture's location satisfies it independently of the mechanism. **The audit below looks for zero-caller functions; it would not have caught item 25.** A test can be vacuous with a perfectly well-called function underneath it, and the only way that surfaces is running the function outside the test.
 - Fixed by making the orphan a thin wrapper over `_resolve_public_ips`, so the existing assertions exercise the live path and the two cannot diverge again.
 - **Open:** a cheap first pass is to flag module-private functions with zero non-test references. Upstream added SSRF checks to `services/memory/skill_importer.py` independently: a good sign, and more surface for the same divergence.
 - ⚠️ **The `_PRIVATE_NETWORKS` half of this item is a false lead. Audited and closed 2026-07-28 — do not re-walk it.** Four copies exist and their contents genuinely differ (`services/search/content.py` 9 entries, `src/webhook_manager.py` 8, `routes/model_routes.py` and `src/model_context.py` 3 each plus the Tailscale CGNAT block). **None of it is a hole.** Two of the four are endpoint *classifiers* — "is this endpoint on my LAN" — not guards. Of the two guards, the missing `0.0.0.0/8` in `webhook_manager` is covered by the stdlib predicates above the list (`addr.is_private or is_loopback or is_link_local or is_reserved or is_multicast or is_unspecified`), which subsume its whole tuple; the list there is dead weight, not a gap. **Counting the copies gives four; reading the callers gives two guards that agree.** The `100.64.0.0/10` difference is deliberate — `content.py` runs a two-tier design with `_GATED_PRIVATE_NETWORKS` so `web_fetch` can reach the LAN on purpose, which is what the 2026-07-27 fix was for.
@@ -359,6 +357,25 @@ Cached results carry `cached`, `cached_at` and `cache_age_seconds`; the `web_fet
 - **Third instance of the item 16 shape, and the least dangerous kind** — here the test fails loudly. Item 16's orphan failed *green*, which is why that one is the priority.
 - **Fixing it is a design decision, not a repair.** Expose the closure, inject it, or drive the behaviour through the endpoint. `TESTING_STANDARD.md` favours the last; the other two exist only to make the patch possible.
 - ⚠️ **Do not "fix" these by deleting them.** They cover the CAS race item 1 spent three diagnoses on: an AI edit landing between the handler's read and its write. That case needs coverage; what's broken is how the test reaches it.
+
+### 25. A path-confinement test passes without the mechanism it tests
+`tests/test_tool_path_confinement.py::test_extra_roots_opt_in` builds its fixture under `tmp_path`, patches `tool_path_extra_roots` to include it, and asserts the path resolves. **It resolves either way.** `_tool_path_roots()` already contains `/tmp` and `$TMPDIR` (`src/tool_execution.py`, the `# $TMPDIR — per-user temp root on macOS` block), and `tmp_path` lives in one or the other on both platforms. The patch is decoration; there is no negative control asserting rejection *without* the opt-in.
+
+- ✅ **Confirmed on the M1, 2026-07-29.** With the mechanism removed — `return_value=[]` in place of `[str(extra_dir)]` at line ~205 — the file still reports **`25 passed`**. The test does not depend on the setting it is named after.
+- **Measured, not read.** Importing the real `src.tool_execution` with `DATABASE_URL=sqlite:///:memory:` and calling `_resolve_tool_path` on a `tmp_path`-shaped location resolved it **with no patch applied**. The mirror-image control passed too: the same probe against a repo-root location was `REJECTED` without the extra root and `ALLOWED` with it. *(Those two ran in a Linux sandbox with a faked `TMPDIR`; the macOS run above is what settles it.)*
+- **This is item 16's shape and the pair is reciprocal (#16↔#25).** There it was a security assertion pointed at an orphaned function; here it is a security assertion that holds regardless of the mechanism. **Both were green throughout.** The difference worth keeping: item 16's was found by reading callers, this one only by *running* the function.
+- **Fix is a negative control, not a rewrite:** assert the same path is rejected when `tool_path_extra_roots` is empty. That is the assertion the test's own docstring already claims to make.
+- ⚠️ **Do not "fix" it by moving the fixture out of `tmp_path` without checking the roots list first** — see item 26, where the same coupling runs the other way.
+
+### 26. Test litter in the repo root, kept invisible by `ignore_errors=True`
+`tests/test_chat_helpers.py:176` (`_manifest_test_dir`) builds fixtures at `<repo root>/tmp_pytest_probe/<name>-<uuid4>`. Both callers clean up in a `finally` — with `shutil.rmtree(root, ignore_errors=True)`. **The cleanup ran, failed, and the flag discarded the failure.** Four directories accumulated from two runs on 2026-07-28; `uuid4()` means every run adds rather than reuses.
+
+- **Reproduced under the sandbox mount:** `rmtree(ignore_errors=False)` raises `PermissionError [Errno 1] Operation not permitted`, and with the flag on, the tree survives silently. The mount permits `create` and refuses `unlink` — the same restriction `CLAUDE.md` records for `.git/`.
+- **Why it is not merely untidy:** `tmp_pytest_probe/` is not gitignored, so it appears as untracked in every `git status` — **the one check item 5 depends on to notice untracked files.** The pair is reciprocal (#5↔#26).
+- ⚠️ **The location is load-bearing — check before moving it to `tmp_path`.** `DATA_DIR` is `<repo>/data`, not the repo root, so the fixture currently sits outside every default root, which is exactly what makes the test's `tool_path_extra_roots` patch discriminate. Under `tmp_path` it would stop discriminating and the test would go green for a weaker reason — item 25's defect, newly introduced.
+- ⚠️ **And if you replace `_tool_path_roots` to keep it honest, `os.path.realpath` the root.** The real function normalises its own inputs; a replacement bypasses that, and on macOS `tmp_path` sits under the `/var` → `/private/var` symlink. Demonstrated: without `realpath` the same path is `REJECTED`, with it `ALLOWED` — **a macOS-only failure, which is item 19's class.**
+- **Not a house pattern:** `test_chat_helpers.py:176` is the only test in the suite that *writes* into the repo root; every other `parents[1]` use reads source for AST assertions, and 134 test files already use `tmp_path`.
+- **Related, lower priority:** `tests/test_code_nav_tools.py:39` carries the same `ignore_errors=True`, but writes to `/tmp` — deletable on macOS, and unwritable in a Linux sandbox, so it fails loudly instead of leaking. Its `dir="/tmp"` choice is **deliberate and documented in the fixture** (the opposite requirement: it needs to be *inside* the allowlist). Its line 8 `DATABASE_URL` pointing at a file-backed `/tmp` db is inert while `tests/conftest.py:18` sets `:memory:` first, and only bites under `--noconftest`.
 
 ### 19. ~~Five tests failed on macOS only~~ ✅ fixed 2026-07-28, verified live
 Four `AF_UNIX path too long` (macOS caps `sun_path` at 104 bytes) plus `test_glob_confined_e2e`, whose assertion contradicted its own comment and passed on Linux by luck. **Neither was an application bug**; no confinement hole. [resolvedissues.md](resolvedissues.md), *"Five tests failed on macOS only"* — which also records why a Linux run cannot substitute for a macOS one.
