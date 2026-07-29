@@ -131,7 +131,19 @@ DEFAULT_SETTINGS = {
     # want to actually use (e.g. 900_000 to fill a 1M-context model). See
     # `compute_input_token_budget`.
     "agent_input_token_hard_max": 200_000,
-    "agent_stream_timeout_seconds": 300,
+    # Per-read INACTIVITY timeout on the model stream, not a wall-clock budget.
+    # Raised 300 -> 900 on 2026-07-28 (docs/todo.md 9b). Ollama's /v1 endpoint
+    # does not stream native tool-call arguments incrementally — zero
+    # `tool_call_delta` events in 35k log lines — so the whole payload arrives
+    # in one chunk after the model has finished generating it. That makes this
+    # value a hard cap on how long a single tool call may take to produce. At
+    # the measured 8.9-13.6 tok/s, 300 s capped a document at roughly 2,700
+    # tokens, and four turns died on it: 305 s and 314 s of silence against a
+    # successful sibling that finished in 185 s, same prompt.
+    # ⚠️ This also scales the runaway wall-clock deadline, which is
+    # `max(agent_stream_timeout * 4, 1200)` in `src/agent_loop.py` — 900 makes
+    # that 3600 s per round. Lower both together if that is too loose.
+    "agent_stream_timeout_seconds": 900,
     # Extra directory roots that read_file / write_file may access, in
     # addition to the built-in project data/ and system temp dirs. Each
     # entry is an absolute path. Sensitive subpaths (.ssh, .gnupg, shell
