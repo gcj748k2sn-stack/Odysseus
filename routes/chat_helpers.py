@@ -882,6 +882,52 @@ def accumulate_token_usage(session_id: str, metrics: dict):
         db.close()
 
 
+_AUTHORED_LIST_RE = re.compile(r'^\s{0,3}(?:[-*+]\s+|\d+[.)]\s+)', re.MULTILINE)
+_AUTHORED_HEADING_RE = re.compile(r'^\s{0,3}#{1,6}\s+', re.MULTILINE)
+
+
+def _reasoning_split_is_safe(think: str, reply: str) -> bool:
+    """Is it safe to move ``think`` out of the message and keep only ``reply``?
+
+    docs/todo.md item 6. `_normalize_thinking`'s fallbacks below pick the split
+    point by **position** — "the last line that doesn't look like reasoning" —
+    and everything above it is moved into the thinking panel, out of the saved
+    message. Position is not evidence. Two recorded runs lost most of an answer
+    that way, both because the text opened with a first-person sentence:
+
+      f14a8f52  300 chars -> 79. A numbered list of clarifying questions; the
+                model's first and most important question was deleted and the
+                user saw a reply that began "2.".
+      c7da3649  705 chars -> 28. A complete fact-check naming three real errors,
+                reduced to the words "Let me correct these issues:" — which
+                then reads as the dangling promise of item 8, manufactured by
+                the save path rather than produced by the model.
+
+    So the fallbacks now have to clear this check, which asks whether the half
+    being discarded looks like prose the model was thinking or output it
+    authored for a reader:
+
+    * **A reply ending in a colon is a lead-in, not an answer.** Whatever it was
+      introducing is in the half about to be thrown away.
+    * **Markdown structure in the discarded half means authored output.**
+      Stream-of-thought does not come with numbered lists and headings.
+
+    Refusing costs nothing worse than reasoning staying visible in the message.
+    Accepting wrongly destroys text the model actually wrote, and the message is
+    the only copy the user ever sees. The failure modes are not symmetric, so
+    this returns False whenever it is unsure.
+    """
+    think = (think or "").strip()
+    reply = (reply or "").strip()
+    if not think or not reply:
+        return False
+    if reply.endswith(":"):
+        return False
+    if _AUTHORED_LIST_RE.search(think) or _AUTHORED_HEADING_RE.search(think):
+        return False
+    return True
+
+
 def _normalize_thinking(text: str) -> str:
     """Wrap inline thinking patterns in <think> tags so they persist on reload.
 
@@ -889,6 +935,11 @@ def _normalize_thinking(text: str) -> str:
     - "Thinking Process:" (Qwen3.5)
     - Gemma-style inline reasoning ("The user said/asked...", "I should/need to...")
     - Garbled <think> tags (reasoning before the tag, unclosed tags)
+
+    Every split that is inferred rather than declared goes through
+    `_reasoning_split_is_safe` first — see item 6 there. The one exception is
+    the "Thinking Process:" clean-boundary match, where the model has both
+    named the section and marked its end.
     """
     import re
     if not text:
@@ -942,6 +993,8 @@ def _normalize_thinking(text: str) -> str:
             if line and not re.match(r'^[\d*\-\s(]', line) and len(line) > 5:
                 think = thinking_prefix_re.sub('', '\n\n'.join(parts[:i])).strip()
                 reply = '\n\n'.join(parts[i:])
+                if not _reasoning_split_is_safe(think, reply):
+                    return text
                 return '<think>' + think + '</think>\n\n' + reply
         # Last resort: look for a quoted final response inside the thinking
         # Qwen often drafts the reply as "Option: ..." or * "reply text"
@@ -949,6 +1002,8 @@ def _normalize_thinking(text: str) -> str:
         if last_quote:
             reply = last_quote[-1].strip()
             think = thinking_prefix_re.sub('', text).strip()
+            if not _reasoning_split_is_safe(think, reply):
+                return text
             return '<think>' + think + '</think>\n\n' + reply
         # Truly no reply found
         think = thinking_prefix_re.sub('', text).strip()
@@ -976,6 +1031,8 @@ def _normalize_thinking(text: str) -> str:
             if i > 0 and any(stripped.startswith(p) for p in reply_starts):
                 think = '\n'.join(lines[:i])
                 reply = '\n'.join(lines[i:])
+                if not _reasoning_split_is_safe(think, reply):
+                    return text
                 return '<think>' + think + '</think>\n' + reply
 
         # Try within-line split — model mashed thinking + reply on one line
@@ -987,14 +1044,21 @@ def _normalize_thinking(text: str) -> str:
             if m and m.start() > 20:  # at least 20 chars of reasoning before
                 think = stripped_text[:m.start() + 1]  # include the period
                 reply = stripped_text[m.start() + 1:].lstrip()
+                if not _reasoning_split_is_safe(think, reply):
+                    return text
                 return '<think>' + think + '</think>\n' + reply
 
-        # Last resort: find last non-reasoning line
+        # Last resort: find last non-reasoning line.
+        # This is the branch that lost both recorded runs in item 6: it has no
+        # evidence the discarded lines are reasoning beyond their position, so
+        # `_reasoning_split_is_safe` is doing all the work here.
         for i in range(len(lines) - 1, 0, -1):
             stripped = lines[i].strip()
             if stripped and not any(stripped.startswith(p) for p in reasoning_starts) and not stripped.startswith('*') and len(stripped) > 3:
                 think = '\n'.join(lines[:i])
                 reply = '\n'.join(lines[i:])
+                if not _reasoning_split_is_safe(think, reply):
+                    return text
                 return '<think>' + think + '</think>\n' + reply
 
     return text

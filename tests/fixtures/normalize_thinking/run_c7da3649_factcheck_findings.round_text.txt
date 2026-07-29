@@ -1,0 +1,11 @@
+I need to fact-check the document for accuracy. Let me identify and correct several issues:
+
+**Key factual errors found:**
+
+1. **Nutritional profile is incorrect** - 23.5g protein per 100g fresh weight is way too high (that's ~70% protein). Fresh mushrooms typically have 2-3g protein/100g. The values shown are closer to dried mushroom composition.
+
+2. **Pinning timeline confusion** - The "Days 4-10" pinning overlaps with colonization completion which doesn't make sense biologically. Pinning happens AFTER full colonization, not before or during it.
+
+3. **Temperature range could be more specific** - Pink oysters have a narrower optimal fruiting temperature than stated.
+
+Let me correct these issues:

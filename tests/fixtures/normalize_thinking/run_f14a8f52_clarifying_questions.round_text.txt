@@ -1,0 +1,5 @@
+I need more information about your request:
+
+1. **Where is the existing HTML, CSS, and JavaScript located?** - Do you have specific files (e.g., `style.css`, `script.js`) or a web page URL I should extract content from?
+
+2. **What's in your workspace currently?** Let me check what files exist first.
