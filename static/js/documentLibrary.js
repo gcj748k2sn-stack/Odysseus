@@ -691,6 +691,19 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     }
     dropdown.appendChild(openItem);
 
+    // Open in new chat — "Open" above goes to the session that created the
+    // document; this one gives the document a clean conversation instead.
+    const _newChatIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/><line x1="12" y1="8" x2="12" y2="14"/><line x1="9" y1="11" x2="15" y2="11"/></svg>';
+    const newChatItem = document.createElement('button');
+    newChatItem.className = 'dropdown-item-compact';
+    newChatItem.style.cssText = 'background:none;border:none;width:100%;';
+    newChatItem.innerHTML = _di(_newChatIco) + '<span>Open in new chat</span>';
+    // "clone", not "copy": in this UI Copy means "to the clipboard"
+    // (`_copyChatById`, Copy Chat), while Clone means "duplicate into a session".
+    newChatItem.title = 'Start a new chat and clone this document into it';
+    newChatItem.addEventListener('click', (e) => { e.stopPropagation(); hideCardDropdown(); libraryOpenInNewChat(doc); });
+    dropdown.appendChild(newChatItem);
+
     // Clone
     const _cloneIco = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
     const cloneItem = document.createElement('button');
@@ -810,6 +823,9 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
       openBtn.addEventListener('click', (e) => { e.stopPropagation(); libraryOpenDocument(doc); });
     }
 
+    // "Open in new chat" deliberately lives only in the ⋮ menu, beside Export:
+    // the footer is kept to Clone + Open by the note above, and a third button
+    // there would crowd it.
     const cloneBtn = document.createElement('button');
     cloneBtn.className = 'doclib-card-text-btn doclib-card-action-btn';
     cloneBtn.innerHTML = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>Clone';
@@ -1039,6 +1055,105 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
     _syncDocIndicator();
   }
 
+  /**
+   * Pick the endpoint/model a brand-new chat should use.
+   *
+   * Prefers the chat you are standing in, so "Open in new chat" does not
+   * silently switch models mid-measurement. Falls back to the same heuristic
+   * `libraryImportDocument` already uses when there is no current session.
+   *
+   * Returns `{url, model, endpointId}` or null when nothing is configured.
+   */
+  async function _newChatTarget() {
+    const sm = sessionModule;
+    const tried = [];
+
+    // 1–2. The caches sessions.js itself prefers (`_getPreferredDefaultChat`,
+    // module-private there, so the lookup is repeated rather than imported).
+    let dc = null;
+    try { dc = window.__odysseusDefaultChat || null; } catch (_) {}
+    tried.push('window.__odysseusDefaultChat=' + (dc && dc.model ? 'ok' : 'empty'));
+    if (!dc || !dc.endpoint_url || !dc.model) {
+      try { dc = JSON.parse(localStorage.getItem('odysseus-default-chat-cache') || 'null'); } catch (_) { dc = null; }
+      tried.push('localStorage cache=' + (dc && dc.model ? 'ok' : 'empty'));
+    }
+
+    // 3. The endpoint that exists to answer exactly this question. Per-user,
+    //    and the only source that returns a real `endpoint_id` — the /sessions
+    //    payload does NOT include one (see the fallback below).
+    if (!dc || !dc.endpoint_url || !dc.model) {
+      try {
+        const res = await fetch(`${API_BASE}/api/default-chat`, { credentials: 'same-origin' });
+        dc = res.ok ? await res.json() : null;
+      } catch (_) { dc = null; }
+      tried.push('/api/default-chat=' + (dc && dc.model ? 'ok' : 'empty'));
+    }
+    if (dc && dc.endpoint_url && dc.model) {
+      return { url: dc.endpoint_url, model: dc.model, endpointId: dc.endpoint_id };
+    }
+
+    // 4–5. Fall back to an existing chat's endpoint+model. ⚠️ `endpoint_id` is
+    //      absent from the /sessions payload, so this passes undefined for it —
+    //      `createDirectChat` accepts that (url+model are what it needs), but it
+    //      is why the sources above are preferred.
+    const sessions = (sm && sm.getSessions && sm.getSessions()) || [];
+    const withModel = sessions.filter(s => s.endpoint_url && s.model);
+    tried.push('sessions with endpoint+model=' + withModel.length);
+
+    const curId = sm && sm.getCurrentSessionId && sm.getCurrentSessionId();
+    const cur = curId && withModel.find(s => String(s.id) === String(curId));
+    if (cur) return { url: cur.endpoint_url, model: cur.model, endpointId: cur.endpoint_id };
+
+    const curModel = sm && sm.getCurrentModel ? sm.getCurrentModel() : null;
+    const match = (curModel && withModel.find(s => s.model === curModel)) || withModel[0];
+    if (match) return { url: match.endpoint_url, model: match.model, endpointId: match.endpoint_id };
+
+    // Say WHICH sources were empty. A dead-end error here is unfixable from the
+    // UI, and the first version of this failed with nothing to go on.
+    console.warn('[doclib] Open in new chat: no endpoint/model found. Sources tried:', tried.join(', '));
+    return null;
+  }
+
+  /**
+   * Open a document in a BRAND-NEW chat.
+   *
+   * "Open" (`libraryOpenInSession`) switches to the session that created the
+   * document — deliberately, and it is the right default for "take me back to
+   * where I was working". But it means a document cannot be opened against a
+   * clean conversation at all: switching sessions clears the editor selection,
+   * so there is no carry-across either. Sessions accumulated eleven prompts on
+   * 2026-07-28 partly this way, and same-prompt comparisons are impossible
+   * when every run inherits the previous run's history (docs/todo.md item 20,
+   * the step-0 protocol).
+   *
+   * The two existing calls in the right order are the whole implementation:
+   * create the chat first, then clone into it. Order matters — cloning first
+   * would copy into the old session, which is the behaviour being avoided.
+   */
+  async function libraryOpenInNewChat(doc) {
+    const sm = sessionModule;
+    if (!sm || !sm.createDirectChat || !sm.materializePendingSession) {
+      if (uiModule) uiModule.showError('Could not start a new chat');
+      return;
+    }
+    const target = await _newChatTarget();
+    if (!target) {
+      if (uiModule) uiModule.showError('Could not resolve a model for the new chat — see the console for which sources were empty');
+      return;
+    }
+    // `source: 'manual'` matches a user-initiated new chat and clears the
+    // early-return guard in createDirectChat, which only skips non-manual
+    // callers arriving on top of a manual pending chat.
+    sm.createDirectChat(target.url, target.model, target.endpointId, { source: 'manual' });
+    const ok = await sm.materializePendingSession();
+    if (!ok || !sm.getCurrentSessionId()) {
+      if (uiModule) uiModule.showError('Could not start a new chat');
+      return;
+    }
+    // The new chat is now current, so the clone lands in it.
+    await libraryImportDocument(doc);
+  }
+
   /** Copy a document from the library into the current session */
   async function libraryImportDocument(doc) {
     let sessionId = sessionModule && sessionModule.getCurrentSessionId();
@@ -1094,6 +1209,11 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionId,
+          // `baseTitle` is computed above (including the (2)/(3) dedup) and was
+          // then never sent — `DocumentCreate.title` defaults to "Untitled", so
+          // every cloned document was called Untitled regardless of its source.
+          // Fixed 2026-07-29; see docs/todo.md item 23.
+          title: baseTitle,
           // Preserve the source's type; default to markdown when unknown
           // (the backend also sniffs, but this keeps the tab label correct).
           language: src.language || doc.language || 'markdown',
