@@ -64,6 +64,12 @@ just the evidence.**
     joined — not the raw JSON arguments. All 35 recorded values contain no
     `"title"` key, so wire-level questions (key order, argument shape) cannot be
     answered from it.
+  - **Check `'full_command' in event`, not `event.get('full_command')`.** A
+    sweep for "document calls that arrived empty" returned **9**; eight of them
+    are pre-2026-07-28 rows where the key does not exist at all, so their
+    emptiness is item 10's recording gap, not an empty call. **n was 1, not 9**
+    — and a filed claim citing a 2026-07-18 run as evidence of what a call
+    carried cannot be true, because nothing recorded it then.
 - **If a replay reconstructs its own input, it proves nothing.** Rebuilding
   `thinking + content` and re-splitting it reproduces the stored split by
   construction. Ask what the reconstruction assumed before believing the match.
@@ -126,6 +132,26 @@ during the stream, and did not cover a save-path regex in
   bound what it can do, not merely assert it exists.
 - **A guard that passes in the failing case is not a guard.** Check it fails
   before you check it passes.
+- **Measure a detector by MUTATING it, not by running it.** Running the shipped
+  version over the corpus tells you it fires; breaking one branch and re-running
+  tells you which branch is doing the work. The payload-as-text guard: the
+  unterminated-fence branch is **not** load-bearing (a closed-fence-only variant
+  still scores 3 of 3), and the lexical check is, because the payload it exists
+  to catch is malformed JSON. **Both facts came from mutation; both were guessed
+  wrong beforehand and one of the guesses was already written into the
+  docstring.**
+- **Write the MUTATION down, not just its score.** The line above used to read
+  *"a `json.loads` variant catches 1 of 3"*. Re-checked 2026-07-29: the shipped
+  detector scores 3 of 3 and the closed-fence mutation reproduces exactly, but
+  **the `1 of 3` cannot be reproduced** — no record says which parsing variant
+  was run, and a plausible reconstruction scores 2 of 3. The claim is neither
+  confirmed nor refuted; it is **unfalsifiable as filed**, which is the worse
+  outcome. A score without its mutation is a number nobody can re-derive. *(The
+  same figure appeared as "1 of the 2 recorded instances" in the docstring, on a
+  corpus that held 3 — see `_fenced_regions`.)*
+- **A parser is the wrong tool for detecting malformed output.** The thing you
+  are looking for is malformed by definition, so `json.loads` filters out your
+  own evidence. Match lexically.
 - **Negative controls are mandatory for anything that flags.** A checker with
   only positive cases can be a function that always fires and still look like it
   works. The document-fidelity and known-facts checkers each have a "this input
@@ -249,4 +275,22 @@ helper mechanics in [`tests/README.md`](tests/README.md). Read those. Additions:
   fixtures and test files are untracked by default. The mechanical check is a
   sweep of every first-party `from (src|routes|core|services)... import`
   against the files on disk; it takes seconds and it is what found this.
+  - ⚠️ **It recurred on 2026-07-29, hours after being closed from a clean
+    clone.** The whole of the payload-as-text work — the two detector functions
+    in `src/agent_loop.py`, the retry-text change in `document_tools.py`, and
+    `tests/test_tool_payload_as_text.py` — sat uncommitted while `docs/todo.md`
+    recorded it as *"✅ built — tests (14)"*. **Milder than the `known_facts.py`
+    instance** (nothing untracked is imported, so `HEAD` still runs) and the
+    same failure: **the drift starts the moment an item is marked done.** The
+    untracked file is a *test*, which `git add -u` does not pick up and
+    `git add .` does.
+- **A sandboxed agent CAN answer "what is uncommitted" — with `git archive`, not
+  with blob diffs.** `git archive HEAD | tar -x -C /tmp/x` then `diff -rq /tmp/x .`
+  reads a tree, takes no index lock, and is what found the recurrence above.
+  **It also dodges the CRLF trap** that makes `git show HEAD:<file>` report the
+  three `*.ps1`/`*.bat` scripts as modified when they are clean — `git archive`
+  applies the same `eol` attributes the working tree has. It cannot replace
+  `git status` (it says nothing about the index, or about ignored files), but
+  "which tracked files differ from HEAD, and which files on disk are in no
+  commit" is answerable without touching git's write paths.
 - Conventional Commits, per [`CONTRIBUTING.md`](CONTRIBUTING.md).
