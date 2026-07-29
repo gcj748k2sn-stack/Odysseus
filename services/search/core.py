@@ -351,8 +351,10 @@ def comprehensive_web_search(
         return (msg, []) if return_sources else msg
 
     # Build sources list for the frontend (before content fetching)
+    # ``engine`` is carried through so per-result attribution survives into
+    # app.db metadata; logs rotate, app.db does not.
     _source_list = [
-        {"url": r.get("url", ""), "title": r.get("title", "")}
+        {"url": r.get("url", ""), "title": r.get("title", ""), "engine": r.get("engine", "")}
         for r in search_results if r.get("url")
     ]
 

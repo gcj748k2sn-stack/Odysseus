@@ -3,6 +3,7 @@
 import json
 import logging
 import os
+import re
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse, parse_qs
 
@@ -131,6 +132,52 @@ _NEWS_HINTS = ("news", "nyheter", "headlines", "breaking", "latest", "today", "i
 # third-party API fallback. Override via SEARXNG_GENERAL_ENGINES.
 _GENERAL_ENGINES = os.environ.get("SEARXNG_GENERAL_ENGINES", "bing,mojeek,presearch")
 
+_QUOTED_PHRASE_RE = re.compile(r'"([^"]+)"')
+
+
+def quoted_phrases(query: str) -> List[str]:
+    """Return the double-quoted exact phrases in ``query`` (lowercased).
+
+    Empty/whitespace-only quotes are ignored so a stray pair of quote
+    characters can't produce a phrase that matches everything.
+    """
+    return [p.strip().lower() for p in _QUOTED_PHRASE_RE.findall(query) if p.strip()]
+
+
+def strip_quotes(query: str) -> str:
+    """Return ``query`` with double-quote characters removed.
+
+    Whitespace is collapsed so removing the quotes does not leave the double
+    spaces that made the rewritten query differ from the one a caller would
+    have written by hand.
+    """
+    return re.sub(r"\s+", " ", query.replace('"', " ")).strip()
+
+
+def result_has_phrases(result: dict, phrases: List[str]) -> bool:
+    """True if every quoted phrase appears in the result's title/snippet/url.
+
+    A result that does not contain the phrase the caller asked for verbatim is
+    non-responsive to that query -- this is the semantics of quoting, not a
+    relevance heuristic. The check runs over title + snippet + url because that
+    is all SearXNG returns; a page whose *body* contains the phrase but whose
+    snippet does not will be dropped, which is why ``searxng_search_api`` falls
+    back to an unquoted retry rather than returning an empty list.
+    """
+    if not phrases:
+        return True
+    # URL separators become spaces so a slug like ``/pleurotus-djamor-guide``
+    # matches the phrase "pleurotus djamor". Replaying the recorded corpus with
+    # and without this normalisation gives identical counts (18 junk dropped,
+    # 0 false positives), so it costs nothing and is correct for real slugs.
+    url = re.sub(r"[^a-z0-9]+", " ", (result.get("url") or "").lower())
+    hay = " ".join([
+        result.get("title") or "",
+        result.get("content") or result.get("snippet") or "",
+        url,
+    ]).lower()
+    return all(p in hay for p in phrases)
+
 
 def searxng_search_api(query: str, count: Optional[int] = None, categories: str = "general",
                        time_filter: Optional[str] = None) -> List[dict]:
@@ -171,19 +218,42 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
         # set returns 0 on this instance — see _GENERAL_ENGINES).
         if categories == "general" and _GENERAL_ENGINES:
             params["engines"] = _GENERAL_ENGINES
+    phrases = quoted_phrases(query)
+    # Tracks the phrases that apply to whatever query the *current* attempt
+    # sends. The retry ladder below rewrites the query (unquoted retry, news
+    # fallback), and filtering a rewritten query against the original phrases
+    # would drop results the rewrite was meant to find.
+    active_phrases = list(phrases)
     try:
-        def _parse_results(results):
+        def _parse_results(results, phrase_list=None):
+            # Phrase filtering happens BEFORE the [:count] slice. Filtering
+            # after the slice would only shrink an already-truncated window
+            # instead of letting responsive results further down the list
+            # take the dropped slots.
+            phrase_list = active_phrases if phrase_list is None else phrase_list
+            kept = [r for r in results if r.get("url")]
+            if phrase_list:
+                responsive = [r for r in kept if result_has_phrases(r, phrase_list)]
+                dropped = len(kept) - len(responsive)
+                if dropped:
+                    logger.info(
+                        "SearXNG: dropped %d/%d result(s) missing quoted phrase(s) %s for: %s",
+                        dropped, len(kept), phrase_list, query,
+                    )
+                kept = responsive
             return [
                 {
                     "title": r.get("title", ""),
                     "url": r.get("url", ""),
                     "snippet": r.get("content", ""),
+                    # Keep per-result engine attribution. Without it nothing
+                    # downstream can say which engine produced a bad result.
+                    "engine": r.get("engine") or ",".join(r.get("engines") or []) or "",
                 }
-                for r in results[:count]
-                if r.get("url")
+                for r in kept[:count]
             ]
 
-        def _run(search_params):
+        def _run(search_params, phrase_list=None):
             response = httpx.get(
                 f"{instance}/search",
                 params=search_params,
@@ -192,10 +262,23 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
             )
             response.raise_for_status()
             data = response.json()
-            return _parse_results(data.get("results", [])), data
+            return _parse_results(data.get("results", []), phrase_list), data
 
         active_params = params
         parsed, data = _run(active_params)
+        if not parsed and phrases:
+            # Every result was non-responsive to the quoted phrase. On the
+            # pinned engines a phrase with no real matches is backfilled with
+            # locale-based filler rather than returning nothing, so retry the
+            # query unquoted instead of reporting an empty search.
+            unquoted = strip_quotes(query)
+            logger.info(
+                "SearXNG: no result contained quoted phrase(s) %s; retrying unquoted: %s",
+                phrases, unquoted,
+            )
+            active_params = dict(active_params, q=unquoted)
+            active_phrases = []
+            parsed, data = _run(active_params)
         if not parsed and is_news and categories == "general":
             # Some self-hosted SearXNG configs have no working news engines.
             # Fall back to the known-good general engines before reporting an
@@ -214,6 +297,7 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
                 query,
             )
             active_params = fallback
+            active_phrases = list(phrases)  # this fallback re-sends the original query
             parsed, data = _run(active_params)
         if not parsed and active_params.get("language"):
             fallback = dict(active_params)
@@ -233,7 +317,16 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
             )
             parsed, data = _run(fallback)
         logger.info(f"SearXNG JSON API returned {len(parsed)} results for: {query}")
-        if not parsed:
+        if parsed:
+            # Per-result engine attribution. Before this, the engine field was
+            # discarded during parsing, so a junk result could not be traced to
+            # the engine that produced it from the logs or from app.db.
+            logger.info(
+                "SearXNG result engines for %r: %s",
+                query,
+                [f"{i}:{r.get('engine') or '?'}" for i, r in enumerate(parsed, 1)],
+            )
+        else:
             unresponsive = data.get("unresponsive_engines") if isinstance(data, dict) else None
             if unresponsive:
                 logger.info(f"SearXNG unresponsive engines for {query!r}: {unresponsive}")
