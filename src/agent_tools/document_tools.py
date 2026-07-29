@@ -627,8 +627,11 @@ class EditDocumentTool:
                 return {
                     "error": (
                         "edit_document received no content — the call carried no "
-                        "FIND/REPLACE blocks at all. Retry by writing the edit as a "
-                        "fenced block:\n"
+                        "FIND/REPLACE blocks at all. Send the blocks as the tool "
+                        "content. If you write them as a fenced block instead, the "
+                        "fence tag MUST be the tool name — ```edit_document. A "
+                        "```json or ```markdown block does not run; it is displayed "
+                        "to the user and nothing is edited:\n"
                         "```edit_document\n<<<FIND>>>\nexact existing text\n"
                         "<<<REPLACE>>>\nnew text\n<<<END>>>\n```"
                     ),

@@ -359,6 +359,105 @@ def _unstarted_promise_notice(full_response: str, tool_events: list) -> str:
     )
 
 
+_PAYLOAD_FENCE_OPEN_RE = re.compile(r"```([A-Za-z0-9_-]*)[^\n]*\n")
+
+
+def _fenced_regions(text: str):
+    """Yield (tag, body) for every fence, INCLUDING an unterminated trailing one.
+
+    ⚠️ **The unterminated branch is DEFENSIVE, not observed.** All three recorded
+    instances (2026-07-29 17:48, 17:55, 18:07) close their fence, and a mutation
+    requiring a closing fence still catches **3 of 3** on the corpus. It is kept
+    because a turn cut off mid-payload is the same failure with a truncated tail,
+    and the cost is one branch — but nothing has exercised it in the wild, so do
+    not cite it as evidence for anything. *(An earlier draft of this docstring
+    claimed it was "half the corpus". That was wrong: the first detector missed
+    one instance because of `json.loads`, not because of the fence — see below.)*
+
+    ⚠️ **This docstring said "2 of 2" until 2026-07-29; the corpus held 3.**
+    Re-measured against all 129 assistant rows in `app.db` by lifting these two
+    functions out with `ast` and running them over `chat_messages` — 3 hits, and
+    the closed-fence mutation scores 3 of 3. The count was written when only the
+    17:48 and 17:55 instances existed and was never revisited. **A count in a
+    docstring is a claim with no test; re-measure it rather than trusting it.**
+    """
+    pos = 0
+    while True:
+        m = _PAYLOAD_FENCE_OPEN_RE.search(text, pos)
+        if not m:
+            return
+        end = text.find("```", m.end())
+        yield m.group(1).lower(), (text[m.end():] if end == -1 else text[m.end():end])
+        if end == -1:
+            return
+        pos = end + 3
+
+
+def _tool_payload_looks_like_edit(body: str) -> str:
+    """Lexical, deliberately NOT json.loads().
+
+    A payload the model writes as prose can be INVALID JSON — it embeds literal
+    newlines inside string values, so the 2026-07-29 17:55 instance fails with
+    `Unterminated string`. **Measured 2026-07-29 over all 129 assistant rows:
+    this lexical check catches 3 of 3.** Parsing would reject exactly the
+    malformed calls this exists to catch.
+
+    ⚠️ **The `json.loads` comparison figure is NOT reproducible and should not be
+    cited.** An earlier draft claimed "1 of the 2 recorded instances"; `CLAUDE.md`
+    carries "1 of 3". Neither recorded *which* parsing variant was run, and a
+    plausible reconstruction (parse, then require an `edits`/`suggestions` key)
+    scores **2 of 3** — so the filed number cannot be checked. **A mutation
+    result needs the mutation written down, not just its score.** What survives
+    is the direction, which is what the design rests on: parsing loses instances
+    that lexical matching keeps.
+    """
+    if "<<<FIND>>>" in body and "<<<REPLACE>>>" in body:
+        return "FIND/REPLACE markers"
+    if '"find"' in body and '"replace"' in body and ('"edits"' in body or '"suggestions"' in body):
+        return "edits/find/replace keys"
+    return ""
+
+
+def _tool_payload_as_text_notice(full_response: str, tool_events: list) -> str:
+    """Notice for a turn that WROTE a tool call instead of MAKING one.
+
+    Session ae223b4c, 2026-07-29. An `edit_document` call failed with "received
+    no content", whose error text says *"Retry by writing the edit as a fenced
+    block"*. The model complied and tagged the fence ```json — and the fence tag
+    IS the dispatch key (`_TOOL_BLOCK_RE` over `TOOL_TAGS`), so ```json is inert
+    display text. Two consecutive turns emitted 1,524 and 1,516 bytes of edit
+    payload, ran no tools, and changed nothing. The second one closed with
+    *"Updated ... now contains only current sensor readings as requested"* — a
+    false success claim, the `"Done."` family again.
+
+    **Every existing guard is blind to this.** `_gathering_only_notice` needs a
+    tool to have run; `_unstarted_promise_notice` needs the text to end on a
+    colon and this text ends on a confident sentence; `_text_is_only_preamble`
+    needs a tool boundary. A turn with 2,266 characters of prose looks answered.
+
+    **Measured on all 122 recorded assistant turns before shipping: fires on 2,
+    both true positives.** Negative control over the same corpus: 0 turns that
+    DID run tools carry these tokens, so the `tool_events` gate is not what is
+    doing the work — but it stays, because with tools the payload may well have
+    been an illustrative example.
+
+    Report-only, which is why it can ship on test evidence (items 11 and 21).
+    """
+    if tool_events:
+        return ""
+    for _tag, body in _fenced_regions(full_response or ""):
+        reason = _tool_payload_looks_like_edit(body)
+        if reason:
+            return (
+                "\n\n⚠️ **I wrote that edit out as text instead of running it — "
+                "nothing was created or changed.** A fenced block only executes "
+                "when its tag is the tool name (```edit_document); any other tag "
+                "is display text. Ask me to try again and I'll make the call "
+                "properly."
+            )
+    return ""
+
+
 def _doc_edit_retry_directive(tool: str, attempt: int) -> str:
     """Corrective instruction appended to a FAILED document-edit tool result.
 
@@ -394,7 +493,9 @@ def _doc_edit_retry_directive(tool: str, attempt: int) -> str:
     if attempt <= 1:
         return (
             "\n\n⚠️ THE EDIT DID NOT HAPPEN — the document is UNCHANGED. "
-            "Retry NOW, in this same turn. Write it as a fenced block, exactly this shape:\n"
+            "Retry NOW, in this same turn. If you write it as a fenced block, the "
+            "fence tag MUST be the tool name — a ```json block is display text and "
+            "runs nothing. Exactly this shape:\n"
             "```edit_document\n"
             "<<<FIND>>>\n"
             "exact text copied from the document\n"
@@ -6149,7 +6250,18 @@ async def stream_agent_loop(
     # turn has neither. See `_unstarted_promise_notice`.
     # Skipped when the stream failed: the model didn't choose to stop, it was
     # cut off, and "ask me again and I'll do it" would misdescribe that.
-    _unstarted_notice = "" if _stream_errors else _unstarted_promise_notice(full_response, tool_events)
+    # The model WROTE a tool call instead of MAKING one — a fenced payload with
+    # a non-tool tag, so nothing dispatched. Checked before the promise notice
+    # and suppresses it: both require zero tools, but this one knows *why* the
+    # turn produced nothing, and the promise notice would describe it wrongly
+    # (the text does not trail off; it often claims success).
+    _payload_notice = "" if _stream_errors else _tool_payload_as_text_notice(full_response, tool_events)
+    if _payload_notice:
+        full_response = full_response.rstrip() + _payload_notice
+        yield 'data: ' + json.dumps({"delta": _payload_notice}) + '\n\n'
+        logger.info("[agent] turn emitted a tool payload as display text; no tool ran")
+
+    _unstarted_notice = "" if (_stream_errors or _payload_notice) else _unstarted_promise_notice(full_response, tool_events)
     if _unstarted_notice:
         _chunk_text = " " + _unstarted_notice
         full_response = full_response.rstrip() + _chunk_text
