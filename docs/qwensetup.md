@@ -68,6 +68,33 @@ Learned 2026-07-27 wiring an ESP32 on the LAN into a chat. Both halves cost a wo
 ## Reading `data/app.db` when debugging a run
 Most of the diagnosis in [resolvedissues.md](resolvedissues.md) came from here, and two gotchas cost real time.
 
+> ### ⚠️ The evidence base lives OUTSIDE this repo: `~/odysseus-snapshots/`
+> `data/app.db` is gitignored, is in no commit and never will be, and
+> `data/logs/app.log` **rotates** (`maxBytes=5MB, backupCount=3`, `app.py:107`) —
+> three more rotations delete `app.log.1`, which holds the 17–28 July base. A
+> snapshot tarball is the only thing protecting either. `git clean -fdx` takes
+> the originals; keeping the copy outside the tree is what puts it beyond reach
+> of any git command.
+>
+> - **Latest: `~/odysseus-snapshots/odysseus-evidence-2026-07-29.tar.gz`.**
+> - Verify: `tar xzf …tar.gz && cd evidence-2026-07-29 && sha256sum -c SHA256SUMS.snapshot`
+>   checks the archive. `SHA256SUMS.source` holds the same hashes under
+>   repo-relative paths — run `sha256sum -c SHA256SUMS.source` **from the repo
+>   root** to ask the different question of whether the originals still match.
+> - **Verify by hash, never by `PRAGMA integrity_check`** — an intact database
+>   that quietly lost a row passes that. Hash the source *before* the copy and
+>   again *after*, so a mid-copy write is visible; do not import anything under
+>   `src/` to read it (that runs migrations against the live file).
+> - **Take a new one after any session worth reasoning about.** 2026-07-29's was
+>   taken while the app was live: `app.db` grew 3,698,688 → 3,780,608 bytes in
+>   ten minutes. It is internally consistent and it is not the latest state.
+> - ⚠️ **A snapshot written to an agent's working folder is not a snapshot.**
+>   Before 2026-07-29 these docs cited `outputs/snapshots/*.tar.gz`; no such
+>   directory existed in the repo and no tarball existed anywhere on disk. The
+>   path pointed at a scratchpad that gets cleared between sessions, so the file
+>   the docs called the only protection had been gone for an unknown period
+>   while every item went on citing it.
+
 - ⚠️ **Check `data/logs/app.log` first.** It carries `[agent-timing] round_start / first_event / first_visible_token / round_stream_done` per round plus `stream_error` with the provider's own payload — and its timestamps are **local CEST while these rows are naive UTC**, so an empty window is usually the wrong two hours. [todo.md](todo.md) item 9b was diagnosed from one grep of it after a whole session of inferring mechanisms from these columns.
 - **Copy the file before querying it.** The running app holds it (`data/app.db-journal` on disk is how you tell), a direct read can fail with `disk I/O error`, and importing app modules runs migrations against the real database. Rows also appear *late* — they are written on `save_sessions()`, so the newest row is not the last turn.
 

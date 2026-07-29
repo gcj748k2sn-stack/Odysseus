@@ -67,6 +67,14 @@ just the evidence.**
 - **If a replay reconstructs its own input, it proves nothing.** Rebuilding
   `thinking + content` and re-splitting it reproduces the stored split by
   construction. Ask what the reconstruction assumed before believing the match.
+- **A turn that "produced nothing" may have produced everything, on the wrong
+  channel. Read `thinking` before believing `content`.** A round logging
+  `text_chars=0 tool_calls=0` after 109 seconds held 3,892 characters of
+  finished, headed, user-facing report in `thinking` — and the guard reported
+  *"stopped without producing an answer"*, which was true about tools and false
+  about the answer. **`round_texts` does not separate this from a genuine
+  stall** (it is `''` either way, because nothing arrived as content);
+  `thinking` vs `content` does. docs/todo.md items 8 and 23.
 - **An absence in the log is only evidence if the thing could have been
   logged.** Check the emitting call site and the level before concluding
   anything from a zero count. Three items were built on one grep this way:
@@ -94,6 +102,11 @@ have been wrong in specific, repeating ways:
 - A mechanism has twice been recorded from a symptom string.
 - An item has recorded itself blocked on a dependency that could not have helped.
 - Effort estimates go stale because nobody re-reads the code after filing.
+- A *settled constraint* has been false since before the items resting on it
+  were filed. "Local models get no tool schemas at all" was the stated reason
+  item 8's active half had to be a text nudge — and that nudge destroyed a
+  document. **The `Notes & constraints` section is not more trustworthy than
+  the items; it is less, because nothing re-reads it.**
 
 So: **re-check line numbers, callers and field contents against the tree before
 building on them.** Say so when a filed claim turns out to be wrong — a
@@ -136,6 +149,24 @@ helper mechanics in [`tests/README.md`](tests/README.md). Read those. Additions:
   else, so a sandboxed run is necessarily partial. **Say so.** Report which
   files were run and with what, never a whole-suite number you did not produce,
   and hand the full-suite run back to the maintainer on the M1.
+- **There is NO JavaScript test harness.** `package.json` has one devDependency
+  and no runner, so anything under `static/js/` ships on `node --check` and
+  review alone. **Say "unverified" in the commit and in the item**, and name the
+  one manual step that would confirm it. Half of what the UI does — session
+  selection, the document panel, what `active_doc_id` the frontend sends — is
+  only observable from `app.log` afterwards.
+- **A stub package with `__path__ = []` encodes today's import list of the code
+  it exercises.** `test_review_regressions.py` replaced `core` that way and six
+  tests died with `ModuleNotFoundError: No module named 'core.log_safety'` — a
+  file that exists, is committed, and imports fine everywhere else. Point
+  `__path__` at the real package instead; `sys.modules` still wins for the
+  submodules you actually stub. **Five other test files still do this**; the
+  inventory is pinned in `test_review_regressions.py`.
+- **`sys.modules` is consulted before `__path__`, which can make an import test
+  pass for the wrong reason.** The first negative control written for the fix
+  above passed with the bug still in place, because the module was already
+  cached from an earlier import. `monkeypatch.delitem(sys.modules, ...)` is what
+  turned it into a test. **Revert the fix and watch it fail before believing it.**
 - **Two pre-existing failures** in `test_document_put_version_conflict.py` —
   they patch a closure. Don't delete them; they cover a real CAS race.
 - **The `area_*` markers key off filenames, not subject matter.** `-m
