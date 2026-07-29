@@ -40,7 +40,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 19 | ~~Five tests failed on macOS only~~ | S4 | XS | ✅ fixed 2026-07-28 | **live** — M1 suite |
 | 20 | 116 lines of agent rules never reached a model | S3 | S | open — **found 2026-07-28** | tests |
 | 21 | ~~Three S1 warnings suppressed when the model wrote a summary~~ | S1 | XS | ✅ **fixed 2026-07-28** | tests (13) |
-| 22 | Documents never stream into the editor on this setup | ? | ? | open — **found 2026-07-28**, severity unestablished | n/a |
+| 22 | ~~Documents never stream into the editor on this setup~~ | S4 | — | ⊘ **retired — disproved 2026-07-28** | n/a |
 
 **Numbers are never reused.** A retired item keeps its number and a `⊘` row, because renumbering has silently rotted cross-references four times (see *Notes & constraints*). Item 2 split into 2a/2b, and 9 into 9/9b, rather than taking new numbers, for the same reason.
 
@@ -50,7 +50,9 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 > 1. **One live turn for 2a**, the last S1 still at *tests*. Ask for the ESP32 document and read the closing summary for *"Doesn't match the source"*.
 >    ⚠️ **Close the open document in the editor first.** fd0f9ba0 asked three times and got nothing: the model read the open document from context and reasoned "one already exists, I should not duplicate". The document doing the suppressing was `3e99b6e3` from 2026-07-19, which 2b flags four times over. fb5525eb created one on the first try with the editor clear — consistent, but one run and not a controlled comparison.
 > 2. **Item 3's prevention gap** — `find_stale_values` has exactly one production caller, `document_tools.py:765`, inside `EditDocumentTool`; `update_document` bypasses the lint entirely *(re-verified 2026-07-28)*. Note the interaction: item 7's live guard promises *"I'll rewrite the document in full instead of patching"*, which routes every edit failure into the one path with no lint.
-> 3. **Item 16's audit** — four independent `_PRIVATE_NETWORKS` copies, all still present *(re-verified 2026-07-28)*. The one open item where a green suite asserts a security property nothing enforces.
+> 3. **Item 16's audit — narrowed 2026-07-28 to the zero-non-test-references pass.** The `_PRIVATE_NETWORKS` half was walked and is a false lead; the retraction is in the item and re-walking it costs a session.
+>
+> **Item 22 was answered and retired on 2026-07-28** — it was a prerequisite for 9b's next experiment, and it came back supporting 9b's mechanism rather than blocking it.
 > 4. **Item 13** — friction, but it has obstructed debugging twice. ⚠️ *Two of the three cited call sites re-verified 2026-07-28; `start-macos.sh:292` is now a bare `uvicorn` CLI invocation with no log flag, which is a different fix shape from a `logging.Filter` on a `uvicorn.run` kwarg.*
 >
 > **Item 11 came off this list on 2026-07-28** — built, report-only, tests (20), still owed a live turn.
@@ -71,6 +73,7 @@ Not autosave and not the compare-and-swap — a single tool call emitted `doc_up
 `src/document_fidelity.py`, surfaced in the closing summary, silent unless the turn fetched a JSON source. Design argument and the two bugs the tests caught: [resolvedissues.md](resolvedissues.md), *"The document didn't match its source"*.
 
 - ⚠️ **Tests only — the last S1 not seen live.** Ask for the ESP32 document and the closing summary should carry the warning.
+- ⚠️ **Measured 2026-07-28: it has never fired, on any recorded turn.** *"Doesn't match the source"* appears **0 times** across all 77 recorded assistant messages, against 4 for 2b's warning, 3 for item 3's lint and 3 for item 7's failure branch. **That is not yet a fault** — it is silent unless a turn fetched a source the fixture knows, and `config/field_semantics.json` knows one device. But it means every part of this item downstream of "does it fire at all" is still untested, so the live turn is worth more here than anywhere else on the list.
 - **The finding that shaped it:** across two runs **239 of 240 cells were transcribed correctly and both documents were still wrong.** Filed as transcription; transcription was the incidental half. **A source-to-document diff cannot catch a correct value under the wrong field.**
 - ⚠️ `config/field_semantics.json` describes **one device**. It is a fixture, not config: every entry should come from an observed failure, and an empty one silently checks nothing.
 
@@ -144,6 +147,26 @@ Four attempts at one task in 16 minutes, **zero files produced**. 0b12aadb read 
   - **A future attempt needs a narrower directive plus a guard proving the retry can only write content it actually holds.** Tests must assert the directive is *safe*, not merely that it exists — the ones written for the reverted version would have passed no matter how destructive it was.
 - ⚠️ **The behaviour has never been observed with the rule against it in force.** *"YOU DECLARE WHEN THE JOB IS DONE … the only wrong moves are trailing off mid-task"* is a direct instruction against this, shadowed since 2026-06-09 (item 20). **Measure with a live rule before building anything in the loop** — that is the cheap experiment, and the reverted nudge is what the expensive one looks like.
 
+#### Session c1af9e2f, 2026-07-28 23:04–23:47 CEST — five reproductions in forty minutes
+Eleven prompts in one chat. Seven asked for a document; **three produced one and four produced nothing**, each of the four ending in the guard line.
+
+| # | 23:xx | prompt | outcome |
+|---|---|---|---|
+| 1 | 04 | create a new document … | ✅ created (v1) |
+| 2 | 09 | fact check and correct the document | ✅ updated (v2) |
+| 3 | 13 | *(identical to #1)* | ✅ created |
+| 4 | 19 | *(identical to #1)* | ❌ `web_search`, then nothing |
+| 6 | 24 | *(identical to #1)* | ❌ `web_search`, then nothing |
+| 7 | 27 | webfetch and create a new document … | ❌ `web_search`, `web_fetch`, then nothing |
+| 9 | 40 | fact check the temperature values | ❌ `web_search`, then nothing |
+| 10 | 44 | web search …, then create a new document | ❌ `web_search`, `web_fetch`, then nothing |
+
+- ✅ **The reporting half fired on all five, live.** Every failed turn was saved as *"I ran `web_search` … and then stopped without producing an answer — **nothing was created or changed.**"* This is the item's largest live sample to date and it did not miss once. Both successful document turns also carried 2b/3 ⚠️ warnings.
+- ⚠️ **This session cannot attribute a cause, and the attempts to make it are recorded below as warnings.** It is one conversation with a growing history, three documents accumulating, and a changing injected document. **That is precisely what item 20's step-0 protocol has to avoid** — see the corrected protocol there.
+- ❌ ~~"The failures start once a document is injected into the prompt"~~ — **wrong, retracted before filing.** `[doc-inject]` is INFO and shows a document injected on **all eleven** turns, including the three that succeeded. The first read came from grepping `app.log` alone after it had **rotated at 23:21:34**, so the first four turns' lines were in `app.log.1` and their absence looked like a signal. **Grep `data/logs/app.log*`, never `app.log`.**
+- ❌ ~~"The model is being handed 91,212 tokens against a 32k window"~~ — **wrong, retracted before filing.** `input_tokens` is the **sum across rounds**; `request_context_tokens` is the per-request figure and peaked at **17,712 / 32,768 (54 %)**. No turn came close to the window.
+- **What is left after both retractions is a real and narrower observation:** the four failures are consecutive and follow the three successes, with no configuration change between them. Whether that is conversation length, the specific document, or nondeterminism is exactly what five independent runs would separate.
+
 ### 9. ~~Throughput cliff on larger context~~ — retired, disproved by its own data
 **Not a work item. Kept as a counter-example, because the obvious optimisation it invites is the wrong one.** Ordered by input size the numbers *rise*: 10,223 tok → 5.22 tok/s · 34,723 → 6.52 · 56,323 → **6.78**. Time-to-first-token does climb, but that is prompt ingestion, not generation, and **the two must not be conflated again**. Confirmed 2026-07-28: with TTFT subtracted, all twelve recorded turns run 8.9–13.6 tok/s. **Do not optimise for "less context" on this evidence.**
 
@@ -152,7 +175,13 @@ Four attempts at one task in 16 minutes, **zero files produced**. 0b12aadb read 
 
 ✅ **Reporting verified live on run bbde3e51, 2026-07-28**, three hours after shipping: *"⚠️ The request to the model failed after 375s — `Read timeout (504)`."* Before that day the same turn saved as `143 tokens, 0.38 tok/s` and nothing else.
 
-**Mechanism, found 2026-07-28 — the timeout is not the disease.** `agent_stream_timeout_seconds` is a **per-read inactivity** timeout. **Ollama's `/v1` endpoint does not stream native tool-call arguments incrementally** — zero `tool_call_delta` events in 35,744 log lines — so the whole payload arrives in one chunk *after* the model has finished generating it. The inactivity timeout therefore functions as a hard cap on how long a single tool call may take to produce. At the measured 8.9–13.6 tok/s, 300 s capped a document at roughly 2,700 tokens.
+**Mechanism, proposed 2026-07-28 — the timeout is not the disease.** `agent_stream_timeout_seconds` is a **per-read inactivity** timeout. If Ollama's `/v1` endpoint does not stream native tool-call arguments incrementally, the whole payload arrives in one chunk *after* the model has finished generating it, and the inactivity timeout functions as a hard cap on how long a single tool call may take to produce. At the measured 8.9–13.6 tok/s, 300 s would cap a document at roughly 2,700 tokens.
+
+> ⚠️ **The evidence originally cited for this is not evidence. Retracted 2026-07-28.** It read *"zero `tool_call_delta` events in 35,744 log lines"*. `tool_call_delta` is emitted at **`logger.debug`** (`src/agent_loop.py`, in the SSE dispatch loop) and the root logger is set to INFO at `app.py:88` — **`app.log` contains zero DEBUG lines of any kind.** The grep measured the logging configuration.
+>
+> ✅ **The conclusion survived a proper test the same day, from a different direction — item 22.** One of the five document-streaming emit sites logs at INFO, and across its **32** recorded firings the document opens a median **0.069 s** before the end-of-stream tool-call event, on rounds running 34–262 s. On the 245 s round at 21:37:19 the model streamed thinking to 40.6 s, went **silent for 204 s**, then emitted open, tool-calls and stream-done inside 91 ms. **The tool-call payload materialises at the end of the stream**, which is what makes a per-read inactivity timeout act as a cap on total generation time. Detail and the one assumption still unverified: [resolvedissues.md](resolvedissues.md), *"Documents do stream into the editor"*.
+>
+> **Kept as a retraction anyway, because the reasoning was invalid when it was written and being right by luck is not a method.** The next reader should copy the second measurement, not the first.
 
 | run | ttft | silence before the failure | outcome |
 |---|---|---|---|
@@ -163,18 +192,18 @@ Four attempts at one task in 16 minutes, **zero files produced**. 0b12aadb read 
 **Same prompt, opposite outcomes** — it is decided by how long the model chooses to make the document.
 
 - ✅ **Raised 300 → 900 s on 2026-07-28**, in `data/settings.json` *and* the default in `src/settings.py`. ⚠️ **The saved file overrides the default**, so changing the code alone does nothing on a machine that already has the key.
+- ✅ **Confirmed live in the log**: `round_start … timeout=900` from **21:34 CEST** onward; every earlier round that day logs `timeout=300`. Both of the day's 504s (16:00 at 380.7 s, 20:56 at 375.2 s — the fd0f9ba0 and bbde3e51 rows above) are **pre-change**.
+- ⚠️ **And the change has therefore told us nothing yet.** Since 21:34 the longest single silent stretch is **245 s** — under the *old* cap. **Zero information gained: no run since has been long enough to test it.** The three runs owed must be deliberately long ones, or the experiment repeats this result.
 - ⚠️ **This is an experiment, not a diagnosis.** If a turn still dies at 900 s the cause is a hang, not payload length, and the two want different fixes. **Do not close this until three same-prompt runs succeed.**
 - ⚠️ **Raising it also scales the runaway wall-clock deadline** — `max(agent_stream_timeout * 4, 1200)` in `agent_loop.py` is now **3600 s per round**. Lower both together if that is too loose.
 - **A second error class exists:** bbde3e51 turn 4 returned `All model candidates returned no substantive output (502)` at 69.8 s, on round 4 of a turn whose earlier rounds had written a document. Not a timeout. Unexplained.
 - **Still open:** whether 0b12aadb (0.39 tok/s, 393 s) was the same 504. Its log window predates the check and nothing was persisted.
 - ✅ **The failure notice no longer overstates the failure.** bbde3e51 turn 4 wrote v6 of a real document on rounds 1–3, then failed on round 4, and was told *"the turn did not finish, so treat it as incomplete"*. When `tool_events` is non-empty the notice now says work completed before the failure has been kept. **A failure notice that overstates the failure is still a false report** — the `"Done."` bug pointing the other way.
 
-### 22. Documents have never streamed into the editor on this setup
-`doc_stream_open` / `doc_stream_delta` exist to stream a document into the editor panel as the model generates it. **There are zero of either in 35,744 lines of `app.log`**, alongside zero `tool_call_delta` — Ollama's `/v1` endpoint delivers a native tool call as one chunk, so there is nothing to stream from. Found 2026-07-28 while diagnosing 9b, which has the same root cause.
+### 22. ~~Documents have never streamed into the editor on this setup~~ — retired, disproved 2026-07-28
+**Not a work item.** `doc_stream_open` has fired **32 times since 2026-07-16**, most recently the same day this was filed. The finding it was opened on — *"zero of either in 35,744 log lines"* — grepped for SSE frames that are never logged.
 
-- **Severity is unclear and that is the first question.** If the feature is meant to work here it is broken; if it only ever applied to the text-fence path (`_ody_doc_stream_create_mode`) or to API models, it is fine and the dead branch should say so. **Do not "fix" it before establishing which.**
-- **It is not free.** The scanning code runs per delta on every round — `_doc_acc`, `_fence_markers`, the `"title"` regex — for an event that never arrives.
-- Interacts with 9b: a user watching a document appear would at least *see* that a long generation was progressing. Right now a 300-second buffered tool call is indistinguishable from a hang, which is part of why 9b read as a throughput problem for three sessions.
+**What is true instead:** the stream opens at **100 % of its round**, a median 0.069 s before the end-of-stream tool-call event, across rounds of 34–262 s. The feature works and is a no-op — the document lands whole at the end. **S4, nothing to build.** It also corroborates 9b's mechanism without depending on a DEBUG grep. Full account, the one assumption still unverified, and the ten-second check that would close it: [resolvedissues.md](resolvedissues.md), *"Documents do stream into the editor"*.
 
 ### 14. Web search derails on ambiguous common nouns
 Recurring, and **it feeds item 2b** — the wrong-species drift there is partly downstream of this. Run eb2d0ac1 returned **"Pink (singer) — Wikipedia"** as a top result for a pink-oyster cultivation query; an earlier run ranked a Victoria's Secret "PINK" page into the same searches. Nothing in the pipeline notices. The species name is in the document title and isn't being used.
@@ -182,7 +211,13 @@ Recurring, and **it feeds item 2b** — the wrong-species drift there is partly 
 - A prompt rule now tells the model to disambiguate common-word names in queries (2026-07-28, item 20). **That is not a fix** — it is unmeasured, and the ranking problem is upstream of the model.
 
 ### 20. A 116-line block of agent rules has never reached a model
-`src/agent_loop.py` assigns **`_AGENT_RULES` twice** — the detailed block at ~660 and an 851-character "## Base rules" at ~776 — so Python keeps the second and the first is dead. `_API_AGENT_RULES` is shadowed the same way. The module imports, the suite is green, and the block reads as live to anyone grepping the file.
+`src/agent_loop.py` assigns **`_AGENT_RULES` twice** — the detailed block first, an 851-character "## Base rules" second — so Python keeps the second and the first is dead. `_API_AGENT_RULES` is shadowed the same way. The module imports, the suite is green, and the block reads as live to anyone grepping the file.
+
+**Re-verified 2026-07-28, still shadowed.** Do not cite line numbers for this; the two filed here (~660 / ~776) were already stale, and adding the item 11 guard moved them again. Find them with the grep, which cannot rot:
+
+```
+grep -n '^_AGENT_RULES = \|^_API_AGENT_RULES = ' src/agent_loop.py   # 4 hits, 2 per name
+```
 
 - **Item 16's shape, applied to the system prompt.** Not dead code that fails loudly — dead code that *looks* enforced.
 - **Three items were arguing against rules that do not exist:** *"BIAS TOWARD ACTION … JUST DO IT"* (fd0f9ba0 refused to create, three times), *"AFTER A TOOL SUCCEEDS … no validation theater"* (item 12), *"YOU DECLARE WHEN THE JOB IS DONE"* (item 8).
@@ -195,7 +230,17 @@ Recurring, and **it feeds item 2b** — the wrong-species drift there is partly 
 
 - ⚠️ **Every item in this file was filed after the rules stopped applying** — the Qwen 9B work starts 2026-07-16. **Nobody has yet observed this model with the emphatic instructions in force**, so "prompt-level guidance doesn't work on the 9B" is currently unevidenced.
 - ⚠️ **Do not read this as "no rules reach the model".** Weaker equivalents survive in the live "## Base rules", and `_DOMAIN_RULES` is alive and detailed. The emphatic versions — written immediately after watching a failure — are what was lost.
-- **First adherence data, 2026-07-28: 1 of 3.** ✅ bbde3e51 turn 1 quoted the new create rule in its own reasoning — *"they're asking for one anyway - I should follow their request and create it as instructed (per the duplicate handling rule)"* — and proceeded. ❌ Turn 2, same prompt eight minutes later, refused and offered options instead. ❌ eb2d0ac1 titled a document *"…- Fact Checked 2026-07-28"*, which the new title rule prohibits outright. **So the rules reach the model and sometimes steer it, and are not reliable.** Three samples; treat as a first reading, not a rate. **Measuring this properly is the cheapest open experiment** — see the top of the Next list.
+- **First adherence data, 2026-07-28: 1 of 4.** ✅ bbde3e51 turn 1 quoted the new create rule in its own reasoning — *"they're asking for one anyway - I should follow their request and create it as instructed (per the duplicate handling rule)"* — and proceeded. ❌ Turn 2, same prompt eight minutes later, refused and offered options instead. ❌ eb2d0ac1 titled a document *"…- Fact Checked 2026-07-28"*, which the new title rule prohibits outright. ❌ **And again at 21:34 CEST the same evening** — a second document titled *"… Growth Phases Guide - Fact Checked 2026-07-28"*. **Two violations from two opportunities on the one rule with a mechanical test.** So the rules reach the model and sometimes steer it, and are not reliable. Four samples; treat as a first reading, not a rate. **Measuring this properly is still the cheapest open experiment** — see the top of the Next list.
+- **Score it mechanically, not by reading replies.** Every rule added on 2026-07-28 has a predicate in `app.db`: the duplicate rule → did `create_document` appear in `tool_events`; the title rule → does `documents.title` match `Fact Checked|Corrected|\d{4}-\d{2}-\d{2}`; item 12's rule → did `manage_documents` run *after* a successful document tool; item 8's → did the turn end on a colon or on a round with 0 chars and 0 tool calls. **The same five runs settle items 20, 12 and 8's live-rule question at once**, which is the leverage argument for doing it first. Run them back to back with no restart: `data/settings.json` changed mid-evening on 2026-07-28 and split that day's runs into two populations.
+
+**The protocol, corrected 2026-07-28 after session c1af9e2f ran it wrong.** That session put eleven prompts in one chat, and the result is uninterpretable for exactly the reason below. Full account under item 8.
+
+1. **A new chat per run — five chats, not five prompts in one.** Otherwise run 5 sees runs 1–4's conversation *and* their documents, and conversation length becomes a second variable nobody is controlling. ⚠️ **A "new chat" that has never been sent leaves no row in `sessions`** (it is a `_pendingChat` held in the frontend until the first message), so *"did I actually start a new chat"* cannot be answered from the record afterwards. Confirm it in the sidebar before typing.
+2. **Open the same document in the editor in each new chat.** The active document is scoped to its session (`documents.session_id`, and the fallback in `routes/chat_routes.py` filters on it), so a fresh chat has nothing open by default — the opposite of the condition being tested. The frontend sends `active_doc_id` explicitly when the editor has one open, which is what makes this work across sessions.
+3. **Verify each run got the document** before scoring it: `grep 'doc-inject' data/logs/app.log*` should show `found by ID` with the same id five times. **This is the step that catches a run where the precondition silently did not hold.**
+4. **Identical prompt text, five times.** Not paraphrases.
+
+- ⚠️ **The five runs need a document OPEN; item 2a's live turn needs the editor CLEAR.** Opposite preconditions — do not try to collect both in one session.
 - **Open: decide per rule; do not revive the block wholesale.** The assembled prompt is already ~35k chars (~8.8k tokens) against a 32k window. Six rules were added to the live sections on 2026-07-28 (four document, three web) and `tests/test_agent_rules_reach_the_model.py` pins the four best-known dead markers as *absent*, so reviving one is a deliberate act.
 
 ## S4 — friction and blocked diagnosis
@@ -242,7 +287,9 @@ One instance fixed 2026-07-27 ([resolvedissues.md](resolvedissues.md), *"web_fet
 
 - **This is worse than dead code: a green suite asserting a security property nothing enforces.**
 - Fixed by making the orphan a thin wrapper over `_resolve_public_ips`, so the existing assertions exercise the live path and the two cannot diverge again.
-- **Open:** a cheap first pass is to flag module-private functions with zero non-test references. `src/webhook_manager.py`, `routes/model_routes.py` and `src/model_context.py` each carry their own `_PRIVATE_NETWORKS` copy — **four independent implementations**, all still present as of 2026-07-28. Upstream added SSRF checks to `services/memory/skill_importer.py` independently: a good sign, and more surface for the same divergence.
+- **Open:** a cheap first pass is to flag module-private functions with zero non-test references. Upstream added SSRF checks to `services/memory/skill_importer.py` independently: a good sign, and more surface for the same divergence.
+- ⚠️ **The `_PRIVATE_NETWORKS` half of this item is a false lead. Audited and closed 2026-07-28 — do not re-walk it.** Four copies exist and their contents genuinely differ (`services/search/content.py` 9 entries, `src/webhook_manager.py` 8, `routes/model_routes.py` and `src/model_context.py` 3 each plus the Tailscale CGNAT block). **None of it is a hole.** Two of the four are endpoint *classifiers* — "is this endpoint on my LAN" — not guards. Of the two guards, the missing `0.0.0.0/8` in `webhook_manager` is covered by the stdlib predicates above the list (`addr.is_private or is_loopback or is_link_local or is_reserved or is_multicast or is_unspecified`), which subsume its whole tuple; the list there is dead weight, not a gap. **Counting the copies gives four; reading the callers gives two guards that agree.** The `100.64.0.0/10` difference is deliberate — `content.py` runs a two-tier design with `_GATED_PRIVATE_NETWORKS` so `web_fetch` can reach the LAN on purpose, which is what the 2026-07-27 fix was for.
+  - **The transferable point:** this item's own evidence was a `grep -l` count, and a count of files is not a count of behaviours. Same failure as item 11's tool *sequence* versus tool *result*, and 9b's log grep — three in one day. **The audit worth keeping is the zero-non-test-references pass**, which is about callers by construction.
 - Related smell, not fixed: `test_web_fetch_size_caps.py` patches `content_mod.httpx.stream` while `_get_public_url` uses `httpx.Client(...).stream`. Those tests are not exercising what they claim either.
 
 ### 17. ~~A cache hit is indistinguishable from a live fetch~~ ✅ fixed 2026-07-28
@@ -270,7 +317,9 @@ Four `AF_UNIX path too long` (macOS caps `sun_path` at 104 bytes) plus `test_glo
 Settled. Recorded so they don't get re-litigated. **Working method lives in [`CLAUDE.md`](../CLAUDE.md); this section is facts about the system.**
 
 - **Per-round thinking suppression isn't currently possible.** `reasoning_effort:"none"` needs `tools and _is_qwen_thinking_model and _agent_thinking_disabled()` (`llm_core.py:2276`). `agent_disable_thinking` is `False`, **and** `tools` is always `None` on this endpoint — so flipping the setting changes nothing. Needs an override plumbed through `stream_llm`.
-- **Local models get no tool schemas at all** (`all_tool_schemas` is empty unless `_is_api_model`). Anything shaped like "force/narrow/restrict the tools" has no channel here and must happen in the loop.
+- ~~**Local models get no tool schemas at all**~~ — **retracted 2026-07-28, and it was never true of this model.** The rule reads `all_tool_schemas` is empty unless `_is_api_model`, which is correct; what is wrong is the assumption that a local model is not `_is_api_model`. `qwen3.5:9b-32k` resolves **`_is_api_model=True`** — `src/agent_loop.py` takes `any(h in endpoint_url for h in _API_HOSTS) or _model_supports_tools`, and the endpoint is marked as supporting tools. Every round in `app.log` since **2026-07-15** logs `native_tools=True tools_sent=24..31`, several hundred of them. **There is a channel:** `tool_choice` is plumbed through `stream_llm` (`tool_choice_none`, `src/llm_core.py`), and `_force_answer` already ships the narrowing move — it sets `all_tool_schemas = []` to force an answer.
+  - ⚠️ **This one was load-bearing.** It is the stated reason item 8's active half had to be a *text nudge*, and that nudge wiped a 6,186-character document. **A bounded retry can restrict the schema list instead of instructing the model** — which is the shape item 8 asks for ("bound what it can do"), and it was available the whole time.
+  - The same wrong claim is duplicated in a docstring on `_doc_edit_retry_directive`; corrected there too.
 - **Don't widen `_ody_doc_finetune_mode`.** It gates tool narrowing and `tool_choice_none` as well as the loop break. The reporting path was split out of it deliberately.
 - ~~**The redundant `user` document version is cosmetic.**~~ **Retracted 2026-07-19.** It was the visible edge of the duplicate-`doc_update` data loss in item 1.
 - **`app.db` lags live activity — "the newest row" is not "the last turn".** Rows are written on `save_sessions()`. A query at 15:20 returned a newest row of 12:36 while fd0f9ba0 had run until 14:00. **`data/app.db-journal` on disk is how you tell the app is running**, and while it is, anything else opening the tree gets `disk I/O error`. Copy the file and query the copy.

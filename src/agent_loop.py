@@ -375,11 +375,21 @@ def _doc_edit_retry_directive(tool: str, attempt: int) -> str:
     stops asking for a targeted edit at all and demands a full rewrite, which
     has no FIND text to get wrong.
 
-    Note this is still guidance, not enforcement. For local models it is the
-    only channel available — tool schemas aren't sent to them at all
-    (`all_tool_schemas` is empty unless `_is_api_model`), so there is nothing
-    to narrow or force. The mechanical backstop is the end-of-turn guard, which
-    refuses to let a turn end silently after an unresolved edit failure.
+    Note this is still guidance, not enforcement — but not, as this docstring
+    claimed until 2026-07-28, because guidance is the only channel available.
+    That said tool schemas are never sent to local models. **`all_tool_schemas`
+    is empty unless `_is_api_model`, and `qwen3.5:9b-32k` IS `_is_api_model`**
+    (see the resolution above: `_model_supports_tools` on a tool-capable
+    endpoint). Every recorded round since 2026-07-15 logs
+    `native_tools=True tools_sent=24..31`, and `tool_choice` is plumbed through
+    `stream_llm`. Narrowing and forcing are both available here; `_force_answer`
+    already does the former by setting `all_tool_schemas = []`.
+
+    The mechanical backstop is still the end-of-turn guard, which refuses to
+    let a turn end silently after an unresolved edit failure. See docs/todo.md,
+    *Notes & constraints*, for why the retracted version mattered: it is the
+    stated reason item 8's active half was built as a text nudge, and that
+    nudge wiped a 6,186-character document.
     """
     if attempt <= 1:
         return (
