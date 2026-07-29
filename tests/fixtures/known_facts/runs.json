@@ -1,0 +1,23 @@
+{
+  "run_009660d2_cold_shock": {
+    "document_id": "ca867224-d914-46ba-9f1e-a6d1a57519b5",
+    "session_id": "009660d2-cbb9-4b71-9c6c-d7500e74f628",
+    "title": "Pink Oyster Mushroom Growth Phases",
+    "created_at": "2026-07-19 04:58:34.210388",
+    "chars": 6198
+  },
+  "run_4d97aa60_factchecked_worst": {
+    "document_id": "6f5fc0c8-3533-42c8-b2e2-f9fd30e0b72e",
+    "session_id": "4d97aa60-c59b-4d4c-8897-916bfc00b6d8",
+    "title": "Pink Oyster Mushroom (Pleurotus djamor) Growth Phases - Fact Sheet",
+    "created_at": "2026-07-19 06:24:26.236858",
+    "chars": 6890
+  },
+  "run_acba4766_closest_correct": {
+    "document_id": "f6b263ad-7dd5-4f10-951d-8d5c138c28d6",
+    "session_id": "acba4766-ac41-4c3c-b42d-fa5760e4a1a2",
+    "title": "Pink Oyster Mushroom Growth Phases",
+    "created_at": "2026-07-19 06:29:05.861471",
+    "chars": 6342
+  }
+}

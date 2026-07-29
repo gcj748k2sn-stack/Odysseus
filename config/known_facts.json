@@ -1,0 +1,115 @@
+{
+  "_README": [
+    "Written-down ground truth that a generated document must not contradict.",
+    "docs/todo.md item 2b. This is a FIXTURE, not configuration: every entry",
+    "should come from an observed failure and should cite where the truth was",
+    "established, so a later reader can re-argue the fact rather than trusting",
+    "this file.",
+    "",
+    "Why it exists: the agent's own fact-check step makes documents WORSE. Asked",
+    "to 'create with fact checked infos', run 4d97aa60 fetched four sources and",
+    "produced fruiting temperatures of 14-21 C on a tropical species -- the",
+    "Pleurotus ostreatus cold-shock rule -- while the plain 'create a document'",
+    "run acba4766 got it roughly right. Retrieval actively drags the answer",
+    "toward the wrong species, and both bad documents titled themselves 'Fact",
+    "Checked & Corrected'. An agent fact-check is a prompt to go look, never a",
+    "verdict; this file is the part that can actually be checked.",
+    "",
+    "REPORT-ONLY, like config/field_semantics.json. Findings reach the closing",
+    "summary and nothing else. See docs/todo.md item 8 before changing that.",
+    "",
+    "  identify      the document is only checked if one of these appears in it",
+    "  ranges        numeric ground truth, per phase, in celsius / percent / ppm",
+    "  contradictions  claims that are wrong no matter what number accompanies",
+    "                them -- the directional errors a range check cannot see"
+  ],
+  "subjects": [
+    {
+      "id": "pleurotus_djamor",
+      "name": "Pink oyster (Pleurotus djamor)",
+      "source": "docs/resolvedissues.md, \"4B retired -- 2026-07-18\". Established by scoring six same-task runs against cultivation sources, not by a single lookup.",
+      "identify": [
+        "pink oyster",
+        "pleurotus djamor",
+        "p. djamor"
+      ],
+      "ranges": [
+        {
+          "fact": "colonization temperature",
+          "phase": "colonization",
+          "unit": "celsius",
+          "low": 24,
+          "high": 29,
+          "note": "Run 009660d2 stated 20-24 C for colonization and then instructed a further drop."
+        },
+        {
+          "fact": "fruiting temperature",
+          "phase": "fruiting",
+          "unit": "celsius",
+          "low": 20,
+          "high": 30,
+          "note": "The load-bearing number. 14-21 C (run 4d97aa60) and 16-20 C (the 4B) are the P. ostreatus range applied to a tropical species. 26 C, which 4d97aa60 flagged as too warm, is squarely optimal."
+        },
+        {
+          "fact": "fruiting humidity",
+          "phase": "fruiting",
+          "unit": "percent_rh",
+          "low": 85,
+          "high": 95,
+          "note": "Scoped to fruiting deliberately. The ground truth as recorded says only 'RH 85-95%'; 60-70% during colonization is ordinary practice, so applying it to every phase would fire on correct documents."
+        },
+        {
+          "fact": "CO2 concentration",
+          "phase": "any",
+          "unit": "ppm",
+          "low": 500,
+          "high": 800,
+          "note": "At 3-6 air changes per hour. Only prescriptive ranges are judged -- '<1000 ppm' is a bound that contains this one, while the 4B's '1000-1500 ppm through fruiting' is backwards. No run has ever caught the CO2 error, which is the most consequential mistake in the set."
+        }
+      ],
+      "contradictions": [
+        {
+          "id": "cold_shock_instruction",
+          "pattern": "(?:cold\\s+shock|temperature\\s+shock|temperature\\s+(?:drop|reduction|decrease|cooling)[^.\\n]{0,45}?\\d+(?:\\s*[-–]\\s*\\d+)?\\s*°\\s*[CF]|(?:cool(?:\\s*(?:down|ing))?|drop|lower|reduc\\w+|decreas\\w+)[^.\\n]{0,25}?\\b(?:to|by|of)\\b\\s*\\**\\s*\\d+(?:\\s*[-–]\\s*\\d+)?\\s*°\\s*[CF])",
+          "why": "P. djamor is thermophilic and needs no cold shock. A numeric drop instruction is the failure that retired the 4B and it reached chamber setpoints twice more on the 9B. A general remark that cooling can help pinning is NOT this -- the damage is a prescribed delta. The verb must act on a temperature: 'lower accuracy (±2°C)' in a sensor datasheet matched an earlier, looser pattern.",
+          "seen_in": "009660d2: \"Cool down by 3-5°F from spawn temp\"",
+          "message": "P. djamor is thermophilic and needs no cold shock; this prescribes one, and a chamber setpoint is what it becomes."
+        },
+        {
+          "id": "cooler_than_other_pleurotus",
+          "pattern": "(?:cool|cold|low)\\w*[^.\\n]{0,80}than[^.\\n]{0,60}(?:pleurotus|oyster)",
+          "why": "Exactly backwards: P. djamor is the warm-loving member of the genus.",
+          "seen_in": "009660d2: \"pink oysters prefer slightly cooler than other Pleurotus species during fruiting\"",
+          "message": "Backwards — P. djamor is the warm-loving member of the genus. This is the claim that retired the 4B."
+        },
+        {
+          "id": "optimal_temperature_called_too_warm",
+          "pattern": "(?:>|above|over|higher\\s+than|exceed\\w*\\s+)\\s*(2[0-9])\\s*°?\\s*C\\b[^.\\n]{0,80}(?:reduce|damage|harm|stress|avoid|too\\s+warm|abort|inhibit|kill|may\\s+cause)",
+          "why": "Warns against a temperature inside the fruiting range. 26 C was flagged as yield-reducing in a document that called itself fact-checked.",
+          "seen_in": "4d97aa60: \"Higher temps (>26°C/80°F) may reduce yield\"",
+          "message": "Warns against a temperature that is inside the recorded fruiting range of 20–30 °C.",
+          "diagnostic_framing_excluded": false
+        }
+      ],
+      "requires": [
+        {
+          "id": "co2_guidance_present",
+          "any_of": [
+            "co2",
+            "co₂",
+            "ppm",
+            "fresh air exchange",
+            "fae",
+            "air change"
+          ],
+          "only_if_document_mentions": [
+            "fruiting",
+            "pinning"
+          ],
+          "why": "A cultivation document that specifies temperature and humidity for fruiting and says nothing about CO2 has omitted the parameter the model gets wrong most often. Run 4d97aa60 dropped it entirely after four source fetches.",
+          "message": "a cultivation document that gives temperature and humidity for fruiting and says nothing about CO₂ has omitted the parameter the model gets wrong most often; run 4d97aa60 dropped it entirely after four source fetches."
+        }
+      ]
+    }
+  ]
+}
