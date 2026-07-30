@@ -48,8 +48,8 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 27 | A LAN address in the prompt deletes every document tool | S3 | S | open — **root-caused 2026-07-29** | **live** ×3 |
 | 28 | ~~The model writes the tool call instead of making it~~ | S2 | S | ✅ built + **committed `1a8e804e`** 2026-07-29 | **tests (14)** — live ×3 pre-fix |
 | 29 | ~~Quoted phrases return locale filler~~ | S3 | S | built 2026-07-29, ⚠️ **UNCOMMITTED** | **tests (16) green on the M1** — not live |
-| 30 | Switching chats writes the editor buffer into the other chat's document | S2 | M | root-caused; guard ✅ **verified**, `restoreFn` open | **live ×3, reproduced on demand** |
-| 31 | Closing a document tab overwrites a *different* document | S2 | M | (a)+(b) **fixed 2026-07-30, unverified**; (c) retracted | source-level only — **no JS harness** |
+| 30 | Switching chats writes the editor buffer into the other chat's document | S2 | M | root-caused; guard ✅ **both branches now observed**, `restoreFn` open | **live ×3, reproduced on demand** |
+| 31 | Closing a document tab overwrites a *different* document | S2 | M | (a) ✅ **fixed + verified live**; (b) shipped, **not exercised**; (c) retracted | **live — 16:02 CEST** |
 | 32 | A scheduled tidy hard-deletes duplicate documents, versions and all | S2 | S | open — **found 2026-07-30**, task paused by the maintainer | **live** — `task_runs` `ad505282`, 8 rows destroyed |
 
 **Numbers are never reused.** A retired item keeps its number and a `⊘` row, because renumbering has silently rotted cross-references four times (see *Notes & constraints*). Item 2 split into 2a/2b, and 9 into 9/9b, rather than taking new numbers, for the same reason.
@@ -240,7 +240,14 @@ That is the *"the chip opened an empty untitled document"* report, exactly. **No
   ```
 
   **The 12:48 run is the negative control** — identical steps with that branch unguarded, document emptied — so "check it fails before you check it passes" is satisfied without reverting anything. The minimize immediately after logs `bufLen=17085 mapLen=17085 blocked=false`, so a legitimate copy still passes and the guard does not over-block.
-- ⚠️ **Only the empty-buffer branch has been observed being blocked.** The foreign-buffer branch (the 14:24 write into `c4da7609`) falls under the same `_stamp !== activeDocId` condition but **has not been triggered on demand**. Do not record it as verified.
+- ⚠️ ~~**Only the empty-buffer branch has been observed being blocked.** The foreign-buffer branch (the 14:24 write into `c4da7609`) falls under the same `_stamp !== activeDocId` condition but **has not been triggered on demand**.~~ ✅ **OBSERVED 2026-07-30 ~16:02 CEST, blocking:**
+
+  ```
+  [doc-map] buffer (stamp b1754908…, 8579 chars) does not belong to 79879a2f… (5 chars) — not copying
+  ```
+
+  A buffer rendered from `b1754908` while `activeDocId` had already moved to `79879a2f` — **8,579 characters of one chat's document, one map-copy away from a 5-character entry in another.** That is the shape of the 14:24 write into `c4da7609`, caught this time. It fell out of item 31's verification run, not from a protocol aimed at it. **Both branches of the guard have now been seen blocking, and row 1 of item 31's trace shows the delete branch still firing when it should** — so neither is a guard that cannot act.
+  - ⚠️ **The same run shows the underlying defect is still firing in normal use**, twice in one session: `[doc-map] buffer (stamp (none), 0 chars) does not belong to aa87b1ce… (17085 chars)`. **The guard is doing real work on ordinary chat switches, not just in a staged repro.** `restoreFn` is still the fix that is owed.
   - ⚠️ **And the guard was already live when those writes happened** — re-checked 2026-07-30. `[doc-put]` records `14:17:24 doc=b1754908 … sha=2a6319146b84` (the recovery) and then `14:24:08 doc=c4da7609 … sha=2a6319146b84` — **byte-identical, into another chat's document seven minutes later** — followed by `14:26:51 … len=1757`. The guard was verified at 12:52 and the file last edited at 14:51, so both writes fall inside the guarded window. They are **item 31(a)**, which this guard was never meant to cover: `saveDocument` writes `activeDocId` with a correctly stamped buffer, so nothing fires. **The distinction matters — *"guard ✅ verified"* is true of the map, and reads as though it covered the writes.**
 - ✅ **`window.__docTrace` is why this was found.** A rolling in-page trace of `loadSessionDocs` / `chipRestore` / `switchToDoc` / `closePanel` / `saveCurrentToMap` / `saveDocument`, dumped with `console.log(JSON.stringify(window.__docTrace))`. **Four fix attempts were argued from reading a 10,000-line file and three were wrong; the trace settled it in one run.** ⚠️ It relies on nothing being open at the time, which is the property the console lacked — two runs were wasted on "was the console open, was the panel open, was the precondition met".
 - **Still open:** `restoreFn`'s ordering is the actual defect and is untouched — the guard makes it harmless, it does not make it correct. `openPanel()` should render the active document into the pane it builds, rather than leaving `switchToDoc` to flush an empty buffer first.
@@ -274,12 +281,26 @@ else            fetch(`${API_BASE}/api/document/${docId}`, { method: 'DELETE' })
 - ⚠️ **Never reproduced, and now it cannot be reproduced from the record either** — `DELETE /api/document/{id}` had **no logging at all** when the damage happened, and the routes have no request log (item 13's territory). *An absence of `DELETE` lines in `app.log*` proves nothing about deletes.* **`[doc-del]` was added 2026-07-30** alongside `[doc-put]`, same shape, logging `len` and `versions` **before** the flag flips — so the next close of a non-empty document is visible as it happens.
 - **Not fixed by item 30's guard**, which stops the *map* being polluted: (a) still targeted the wrong document and (b) still read `doc.content`.
 
-✅ **FIXED 2026-07-30 — `_detachDocFromSession`, both halves. ⚠️ UNVERIFIED: there is no JS harness, and this shipped on `node --check` and review alone.**
+✅ **FIXED 2026-07-30 — `_detachDocFromSession`, both halves. (a) VERIFIED LIVE the same afternoon; (b) shipped and NOT exercised — see below.** There is no JS harness, so everything here rests on the in-page trace and `app.log`.
+
+**The run, 2026-07-30. `window.__docTrace` `detachDoc` entries — ⚠️ `t` is UTC, `app.log` is CEST, the same two-hour gap this file trips over elsewhere:**
+
+```
+13:54:13Z  3840c215  active=3840c215  isActive=true   mapLen=0     syncedLen=0     hasContent=false  → DELETE
+13:56:04Z  1ee69f26  active=1ee69f26  isActive=true   mapLen=8578  syncedLen=8578  hasContent=true   → save
+14:02:04Z  79879a2f  active=aa87b1ce  isActive=false  mapLen=5     syncedLen=5     hasContent=true   → neither
+```
+
+- ✅ **(a) verified.** Row 3 is the case the fix exists for: a non-active tab closed while `aa87b1ce` was active. Console: `[doc-detach] 79879a2f… is not the active document (aa87b1ce…) — closing without a save`, and **no `[doc-put]` followed** — pre-fix this close would have written `aa87b1ce`'s buffer. **`app.log` carries no `[doc-del]` for it either.**
+- ✅ **Row 1 is the negative control, and it was not staged for one.** An empty new document, closed while active: `[doc-del] doc=3840c215 versions=1 len=0 active=True`. **The delete branch still fires when it should** — so the pass in row 3 is not a guard that can never act, which is the failure mode items 16 and 25 record.
+- ❌ **(b) was NOT exercised, and the row that looks like it tests it does not.** Row 3 has `mapLen=5`, so `doc.content` was non-empty and **the pre-fix code would have taken the identical branch**. The discriminating case is `mapLen === 0 && syncedLen > 0` — an emptied map entry over intact server content — **and it did not occur**, because item 30's guard now prevents the map from being emptied in the first place. That is the desired outcome and it leaves this guard unwatched: **do not upgrade (b) to verified on the strength of (a).** `docs` is module-private, so forcing the case needs a temporary export or a deliberate revert of item 30's guard for one run.
+
+**The change itself:**
 
 - **(a)** the save now happens only when `docId === activeDocId`. Nothing is lost for the document being closed — it has no buffer, and the write that used to fire was never its own.
 - **(b)** emptiness is no longer inferred from `doc.content` alone: `lastSyncedContent` (the last content the **server** acknowledged) also has to be empty, and a document **missing from the map is UNKNOWN, not empty**, so it is never deleted. The asymmetry is deliberate — a false negative leaves a stray empty document; a false positive is a soft delete that item 32 makes permanent.
-- **The manual step that would confirm it**, in one pass: minimize the panel, switch chats, restore the chip, close a *non-active* tab, and check `app.log` for `[doc-del]`. **A `[doc-del]` line naming a document with `len > 0` means (b) is still live.** Console shows `[doc-detach] … closing without a save` for (a). Both branches are in `window.__docTrace` as `detachDoc`.
-- ⚠️ **Both changes SUPPRESS an action, which is the safe direction** ([`CLAUDE.md`](../CLAUDE.md) §3) — but it is still a guard nobody has watched fail. **Do not mark this *verified* from the absence of damage;** the failing case has to be produced deliberately.
+- **The protocol, for the next re-check** — minimize the panel, switch chats, restore the chip, close a *non-active* tab; read `[doc-detach]` in the console, `detachDoc` in `window.__docTrace`, and `[doc-del]`/`[doc-put]` in `app.log`. ⚠️ **Arm it first: close an empty new document and confirm a `[doc-del] … len=0` line appears.** Two preconditions can silently void the whole thing — the app must have been restarted after the route change (compare the file mtime against *"Application startup complete"*), and the browser must have dropped the cached `document.js` (**⌘⇧R is Safari's Reader, not a reload** — Entwickler → Caches leeren, then ⌘R). `typeof window.__docTrace` does **not** prove the new module is loaded: the trace shipped with item 30's guard. `JSON.stringify(window.__docTrace).includes('detachDoc')` does.
+- ⚠️ **Both changes SUPPRESS an action, which is the safe direction** ([`CLAUDE.md`](../CLAUDE.md) §3).
 - **Still open:** (a)'s deeper fix — `saveDocument` reads `activeDocId` and takes no target, so *every* caller inherits this hazard. The refusal is a fence around one caller, not the fix.
 
 ### 32. A scheduled tidy hard-deletes "duplicate" documents, versions and all
