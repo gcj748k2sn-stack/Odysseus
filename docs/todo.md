@@ -2,7 +2,7 @@
 
 **How to work on this — [`CLAUDE.md`](../CLAUDE.md) at the repo root.** Evidence rules, guard rules, what to distrust in *this* file, and the traps that recur. Added 2026-07-28 because the drift described at the bottom is structural and the docs alone were not fixing it.
 
-Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolvedissues.md](resolvedissues.md). Settled constraints that are *not* work items are at the bottom.
+Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolvedissues.md](resolvedissues.md). Last session's summary: [session-log.md](session-log.md). Settled constraints that are *not* work items are at the bottom.
 
 **Severity is ranked by what the failure does to the user**, not by how broken the code looks:
 

@@ -2,7 +2,7 @@
 
 Odysseus runs natively from `~/odysseus` (venv at `~/odysseus/venv`), models via Ollama (localhost:11434, brew service) and MLX server (127.0.0.1:8000).
 
-Open items / todo live in [todo.md](todo.md); closed investigations in [resolvedissues.md](resolvedissues.md). *(`llmSetup.md`, the pre-2026-07-18 combined document, was deleted 2026-07-28 once its last source citations were repointed — see [todo.md](todo.md) item 5.)*
+Open items / todo live in [todo.md](todo.md); closed investigations in [resolvedissues.md](resolvedissues.md); what happened last session is in [session-log.md](session-log.md). *(`llmSetup.md`, the pre-2026-07-18 combined document, was deleted 2026-07-28 once its last source citations were repointed — see [todo.md](todo.md) item 5.)*
 
 ## Models
 - **Agent/main — the only chat model:** Qwen3.5-9B-32k, thinking ON. Create: `printf 'FROM qwen3.5:9b\nPARAMETER num_ctx 32768\n' > /tmp/mf && ollama create qwen3.5:9b-32k -f /tmp/mf`.

@@ -8,6 +8,11 @@ at least once, and most of it twice.
 docs record findings; this file records *how to work*, so each session doesn't
 re-derive it.
 
+**Read [`docs/session-log.md`](docs/session-log.md) first, before anything
+else.** It's a short, dated, reverse-chronological log of what the *previous
+session actually did* — scope and state changes, not findings (those are
+`todo.md`/`resolvedissues.md`). It's the one thing no session can otherwise see.
+
 ---
 
 ## 1. Evidence
@@ -294,3 +299,25 @@ helper mechanics in [`tests/README.md`](tests/README.md). Read those. Additions:
   "which tracked files differ from HEAD, and which files on disk are in no
   commit" is answerable without touching git's write paths.
 - Conventional Commits, per [`CONTRIBUTING.md`](CONTRIBUTING.md).
+
+## 7. Handing steps back to the maintainer
+
+**Any step the maintainer is expected to run gets the full command, ready to
+paste.** Not a description of the command, not a fragment, not "snapshot the
+database first" — the actual line, with the real absolute paths of this machine
+(`/Users/cedrik/odysseus`, `~/odysseus-snapshots`), in the order it must run.
+
+- **This applies hardest to the steps an agent cannot run itself.** Everything
+  in §6 is handed over by definition, and so is any `pytest` run — `./venv/bin/`
+  is a macOS tree and a sandboxed agent cannot execute it. Those are exactly the
+  steps most likely to be described instead of written out, because the agent
+  never had to make them work.
+- **Include the verification command, not just the action.** A `tar` line
+  without the `shasum -c` that proves the archive matches is half a step, and
+  this repo has a whole section on why "it ran" is not "it worked".
+- **Say which directory the command assumes**, or use absolute paths. Each
+  sandbox `bash` call starts fresh with no `cd` carried over, so a relative
+  command that worked in the agent's transcript is not reproducible by hand.
+- **macOS, not Linux:** `shasum -a 256`, not `sha256sum`; BSD `sed -i ''`, not
+  GNU `sed -i`. A command lifted from a sandbox run is a Linux command until
+  checked.

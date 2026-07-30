@@ -107,3 +107,16 @@ compound.config.json
 *.error.log
 _scratch/
 /odysseus/
+
+# Obsidian vault config — local to whoever's browsing docs/ in Obsidian,
+# not part of the project.
+.obsidian/
+
+# Symlinks that let the docs/ Obsidian vault reach files outside itself
+# (root CLAUDE.md/CONTRIBUTING.md/SECURITY.md, tests/README.md,
+# tests/TESTING_STANDARD.md). Local convenience only — the real files are
+# tracked at their real paths.
+docs/CLAUDE.md
+docs/CONTRIBUTING.md
+docs/SECURITY.md
+docs/tests/

@@ -1,6 +1,6 @@
 # Resolved issues — Qwen 9B setup
 
-Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open items in [todo.md](todo.md).
+Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open items in [todo.md](todo.md); last session's summary in [session-log.md](session-log.md).
 
 **Trimmed 2026-07-28 from 283 lines to what still earns its keep.** The test applied to every line: *would someone about to make a decision be worse off without it?* What survived is **retractions** (wrong mechanisms recorded as findings — three separate re-investigations have been stopped by these), **traps that recur**, **ground truth**, and **the scope a fix was verified at**. What went is mechanism walkthroughs, per-run evidence tables and timings: all of it describes code that is now fixed, tested and committed, so it is re-derivable and was costing a re-read on every visit.
 
