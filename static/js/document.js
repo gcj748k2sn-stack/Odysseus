@@ -4121,8 +4121,8 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   function _restoreDetachedEmailDoc(snapshot) {
     if (!snapshot || !snapshot.id || !snapshot.doc) return;
     if (!docs.has(snapshot.id)) docs.set(snapshot.id, snapshot.doc);
-    _ensureDocPaneMounted();
-    switchToDoc(snapshot.id);
+    const _rebuilt = _ensureDocPaneMounted();
+    switchToDoc(snapshot.id, { flush: !_rebuilt });
     _syncDocIndicator();
   }
 
@@ -4519,22 +4519,56 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     _discardEmail();
   }
 
-  function switchToDoc(docId) {
+  function switchToDoc(docId, { flush = true } = {}) {
     if (!docs.has(docId)) return;
     _hideLoadingOverlay();
     if (_diffModeActive) exitDiffMode(true);
 
-    // Save current doc state before switching
-    saveCurrentToMap();
+    // Save current doc state before switching.
+    //
+    // `flush: false` is for callers that have just REBUILT the pane, where the
+    // textarea is a fresh empty node that never held anything: the chip
+    // restore does openPanel() (which removes and recreates
+    // #doc-editor-pane) and then calls this. Flushing there copies an empty
+    // buffer over a full map entry — docs/todo.md item 30, observed emptying
+    // a 17,085-character entry on 2026-07-30.
+    //
+    // Nothing is lost by skipping it, for two independent reasons: the
+    // minimize path (`closePanel('down')`) already flushed while the pane was
+    // intact and correctly stamped, so the map is authoritative; and by the
+    // time this runs the buffer is gone anyway, so the flush could not
+    // recover unsaved text even in principle. The stamp guard inside
+    // saveCurrentToMap already BLOCKS this call, so skipping it is
+    // outcome-identical — it removes the attempt, not a write.
+    if (flush) saveCurrentToMap();
 
-    // Auto-delete the doc we're leaving if it's completely empty
+    // Auto-delete the doc we're leaving if it's completely empty.
+    //
+    // ⚠️ This is a third map-derived DELETE, the same class as item 31(b) and
+    // in a different function. It runs three lines after the flush above, so
+    // before item 30's guard the sequence was: flush zeroes the map entry for
+    // the document being left → this reads that entry as empty (title too,
+    // because the rebuilt pane's title input is blank) → DELETE. The guard is
+    // what stopped it, and the guard was not written for this.
+    //
+    // So do not infer emptiness from the map alone: `lastSyncedContent` is the
+    // last content the SERVER acknowledged, and a document that has ever held
+    // content is not an empty scratch document. docs/todo.md item 33.
     const prevId = activeDocId;
     if (prevId && prevId !== docId && docs.has(prevId)) {
       const prev = docs.get(prevId);
-      if (prev.language !== 'email' && !(prev.content || '').trim() && !(prev.title || '').trim()) {
+      const everHadContent =
+        (typeof prev.lastSyncedContent === 'string' && prev.lastSyncedContent.trim().length > 0);
+      if (prev.language !== 'email'
+          && !(prev.content || '').trim()
+          && !(prev.title || '').trim()
+          && !everHadContent) {
         fetch(`${API_BASE}/api/document/${prevId}`, { method: 'DELETE' }).catch(() => {});
         docs.delete(prevId);
         _syncDocIndicator();
+      } else if (prev.language !== 'email' && !(prev.content || '').trim() && everHadContent) {
+        console.warn('[doc-switch] %s looks empty in the map but the server has %d chars — not deleting',
+                     prevId, prev.lastSyncedContent.length);
       }
     }
 
@@ -7020,9 +7054,16 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         // openPanel builds the pane shell; switchToDoc re-renders the
         // saved doc content into it (including PDF render-pages, syntax
         // highlighting, etc.). Without switchToDoc, the pane is empty.
+        //
+        // `flush: false` because openPanel() has just REBUILT the pane: the
+        // textarea is a fresh empty node, and flushing it would copy nothing
+        // over the map entry we are about to render. The buffer was already
+        // saved by closePanel('down') at minimize time. docs/todo.md item 30 —
+        // this ordering is the root cause; the stamp guard made it harmless,
+        // this makes it correct.
         openPanel();
         if (id && docs.has(id)) {
-          try { switchToDoc(id); } catch (e) { console.error('Restore doc failed:', e); }
+          try { switchToDoc(id, { flush: false }); } catch (e) { console.error('Restore doc failed:', e); }
         }
       },
     });
@@ -7235,13 +7276,13 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     // actual pane was torn down — a bare openPanel() early-returns and the doc
     // mounts into a wrong/half-built pane (rendered as a narrow sidebar on
     // mobile instead of its own full-screen window). This remounts it cleanly.
-    _ensureDocPaneMounted();
+    const _rebuilt = _ensureDocPaneMounted();
     // Defer to the next frame so the panel DOM exists before switchToDoc
     // populates it. Do not call switchToDoc synchronously here: it saves the
     // previously active doc and can re-enter the email draft path while a reply
     // document is still being injected.
     requestAnimationFrame(() => {
-      if (docs.has(doc.id)) switchToDoc(doc.id);
+      if (docs.has(doc.id)) switchToDoc(doc.id, { flush: !_rebuilt });
     });
   }
 
@@ -7371,19 +7412,30 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   // pane was torn down by another full-screen view (e.g. opening a doc from the
   // email modal): in that case openPanel() early-returns and nothing mounts, so
   // the doc silently never appears. Reset the stale flag and re-open for real.
+  /** Mount the pane if it isn't there. Returns TRUE when it had to REBUILD it.
+   *
+   * The return value matters: a rebuilt pane has a fresh, empty, unstamped
+   * textarea, so a following `switchToDoc` must not flush it into the map —
+   * same defect as the chip restore, docs/todo.md item 30. When the pane was
+   * already mounted the buffer is real and the flush is legitimate, so the
+   * caller cannot simply hard-code `flush: false`; it has to know which
+   * happened. Callers: `switchToDoc(id, { flush: !rebuilt })`.
+   */
   function _ensureDocPaneMounted() {
     if (!isOpen || !document.getElementById('doc-editor-pane')) {
       isOpen = false;
       openPanel();
+      return true;
     }
+    return false;
   }
 
   export async function loadDocument(docId) {
     _closeNotesForDocumentOpen();
     // If already in tabs, just switch
     if (docs.has(docId)) {
-      _ensureDocPaneMounted();
-      switchToDoc(docId);
+      const _rebuilt = _ensureDocPaneMounted();
+      switchToDoc(docId, { flush: !_rebuilt });
       return;
     }
     try {
@@ -7391,8 +7443,8 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       if (!res.ok) throw new Error(res.status === 404 ? 'Not found' : `HTTP ${res.status}`);
       const doc = await res.json();
       addDocToTabs(doc, doc.session_id);
-      _ensureDocPaneMounted();
-      switchToDoc(doc.id);
+      const _rebuilt = _ensureDocPaneMounted();
+      switchToDoc(doc.id, { flush: !_rebuilt });
     } catch (e) {
       console.error('Failed to load document:', e);
       if (uiModule) {
