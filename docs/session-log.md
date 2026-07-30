@@ -8,6 +8,15 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-07-30 — late-afternoon session (re-check of items 30 and 31)
+
+- **Re-checked the previous session's own findings and two of item 31's three claims did not survive.** The item said closing a tab *"can hard-DELETE a document whose stored content is intact"* and called it the highest-severity live thing. **`DELETE /api/document/{id}` is a SOFT delete** — `doc.is_active = False`, row and versions untouched. **31(c) retracted**: `session_id → NULL` comes from session deletion (`core/session_manager.py` `delete_session`; `src/session_actions.py:137` via the ORM backref), not from closing a tab. **31(a) stands verbatim.**
+- 🔥 **Filed item 32 — the real destroyer, and it is a scheduled task.** `task_runs.ad505282`, 2026-07-30 12:01:09 UTC: *"Removed 8 of 70 … (+8 duplicate copies) · 62 kept"*. **The `70 → 62` figure item 31 rested on is that run's own result string.** `src/document_actions.py` groups by (normalized title, content fingerprint) and `db.delete()`s all but one, `document_versions` cascading — **triggered on every fifth `document_created`**, counter was at 2 of 5. It had also removed 2 documents on 07-29. **The maintainer paused the task.**
+- **Item 20's five-clone protocol was destroying its own evidence** — five identical clones are one duplicate group *and* the trigger count in the same act. Written in as step 5 of the protocol.
+- **Shipped, both ⚠️ unverified (no JS harness — `node --check` and review only):** `_detachDocFromSession` now saves only when `docId === activeDocId` (31a), and never infers emptiness from `doc.content` alone — `lastSyncedContent` must also be empty, and a document missing from the map is UNKNOWN, not empty (31b). Added **`[doc-del]`** logging in `routes/document_routes.py`, mirroring `[doc-put]`: the delete path had **no logging at all**, so absence of `DELETE` lines in `app.log*` was never evidence.
+- **Two negative results worth not re-deriving:** orphaned `document_versions` is a **void** test for hard deletes (the cascade removes them too), and item 30's guard was live during the 14:24/14:26 writes into `c4da7609` — those are 31(a), not a guard failure, but *"guard verified"* should not be read as covering them. Both traps are now in `CLAUDE.md` §1.
+- **Repo state:** `git archive HEAD` + `diff -rq` shows no tracked drift and no untracked first-party file — item 5 clean. ⚠️ The first such check **raced a commit landing mid-read** and produced a stale tree; re-run before trusting one. `documents` = 62, 38 `is_active=0`, **0 with empty content**, all four recovered documents still hashing to their recorded values.
+
 ## 2026-07-30 — afternoon session
 
 - Committed the previous session's docs (`add7e328`) — `docs/session-log.md` was untracked and `CLAUDE.md` pointed at it, so a clean clone had a broken mandatory-reading link. **Item 5's fourth recurrence, closed.** Snapshot taken first: `~/odysseus-snapshots/odysseus-evidence-2026-07-30.tar.gz`, 1,448,264 bytes, three `OK` against pre-copy hashes.

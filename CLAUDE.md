@@ -54,6 +54,23 @@ just the evidence.**
   could not be removed from the sandbox at all. Anything a sandboxed run
   leaves behind is the maintainer's to clean up, so say what was left and
   where, in the same breath as the finding.
+- **Before blaming code for missing rows, check whether a SCHEDULED TASK ate
+  them — `task_runs.result` names its own damage.** Item 31 filed *"closing a
+  document tab can hard-DELETE it"* and cited **70 rows → 62** as the evidence.
+  Both numbers came from a single row: `task_runs.ad505282`, *"Removed 8 of 70
+  … (+8 duplicate copies) · 62 kept"* — the Documents Tidy action, firing on
+  every fifth `document_created`. `app.log` says only *"Task 'Documents Tidy'
+  completed (run ad505282)"*; **the result string lives in the database, so the
+  log alone makes an automatic deletion look like an unexplained one.** These
+  actions are event-triggered, not scheduled, so nothing in the record suggests
+  a clock to correlate against. `select id,task_id,started_at,status,result
+  from task_runs order by started_at desc limit 20` is the ten-second check.
+- **Do not test for hard deletes by looking for orphaned child rows.**
+  `DocumentVersion` is `cascade="all, delete-orphan"` with
+  `ondelete="CASCADE"`, so a hard-deleted document takes its versions with it
+  and the orphan count is **zero either way**. That sweep was run, came back
+  clean, and proved nothing. **Check the cascade before believing an
+  absence** — same shape as the DEBUG-level greps above.
 - **`app.db` lags live activity.** Rows are written on `save_sessions()`, so
   "the newest row" is not "the last turn". A query can miss the run you are
   looking for and look perfectly healthy doing it.
