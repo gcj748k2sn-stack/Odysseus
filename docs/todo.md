@@ -52,6 +52,20 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 31 | Closing a document tab overwrites a *different* document | S2 | M | (a) ✅ **fixed + verified live**; (b) shipped, **not exercised**; (c) retracted | **live — 16:02 CEST** |
 | 32 | A scheduled tidy hard-deletes duplicate documents, versions and all | S2 | S | open — **found 2026-07-30**, task paused by the maintainer | **live** — `task_runs` `ad505282`, 8 rows destroyed |
 
+> **34 rows — 17 open, 17 closed or retired, as of 2026-07-30.** Measured, not counted by hand ([`CLAUDE.md`](../CLAUDE.md) §5 — *numbers in prose are claims with no test*). **Open: 3, 5, 8, 9b, 12, 13, 14, 16, 18, 20, 23, 25, 26, 27, 30, 31, 32.** A row is closed when its Item cell is struck through; that is the only definition, because a Status cell like *"detection live; prevention open"* is not machine-readable and should not be. Re-derive with:
+>
+> ```
+> cd /Users/cedrik/odysseus && python3 -c "
+> import re
+> L=open('docs/todo.md').read().split('\n')
+> e=next(i for i,l in enumerate(L) if l.startswith('**Numbers are never reused'))
+> r=[l for l in L[:e] if re.match(r'^\| (\d+[ab]?) \|', l)]
+> o=[x for x in r if '~~' not in x.split('|')[2]]
+> print(len(r),'rows —',len(o),'open,',len(r)-len(o),'closed');print('open:',', '.join(x.split('|')[1].strip() for x in o))"
+> ```
+
+**Bodies for closed items live in [resolvedissues.md](resolvedissues.md), cited by title.** Migrated 2026-07-30 — 15 bodies, 116 lines. **The table above stays complete, retired rows included: it is the number registry, and it is what enforces *"numbers are never reused"* now that a closed item's prose is in another file.** So `item N` always resolves here, whether or not its body still lives here. ⚠️ **There are ~40 numeric `item N` citations in `.py`/`.js` source comments** — 8 point at item 1 alone — and they now resolve to a table row rather than a body. Cite by title when you touch one.
+
 **Numbers are never reused.** A retired item keeps its number and a `⊘` row, because renumbering has silently rotted cross-references four times (see *Notes & constraints*). Item 2 split into 2a/2b, and 9 into 9/9b, rather than taking new numbers, for the same reason.
 
 > ⚠️ **Item 23 changes how item 8's evidence should be read**, and the pair is reciprocal (#8↔#23) so neither can be renumbered quietly. A turn that reports *"stopped without producing an answer"* may have produced one — in the reasoning channel. **Compare `thinking` against `content` before filing another item 8.**
@@ -72,7 +86,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 > 5. **Item 13** — friction, but it has obstructed debugging twice. ⚠️ *Two of the three cited call sites re-verified 2026-07-28; `start-macos.sh:292` is now a bare `uvicorn` CLI invocation with no log flag, which is a different fix shape from a `logging.Filter` on a `uvicorn.run` kwarg.*
 >
 > **Owed verifications, not investigations.** Each is one run and closes a row that currently overstates itself:
-> **item 11** — one turn using a non-document tool; **item 2a** — one ESP32 document with the editor cleared; **item 9b** — three deliberately long *rounds*. ⚠️ *9b is no longer untested and the evidence points the wrong way: a single round ran **448.7 s** on 2026-07-28 23:38 at `timeout=900` and completed, where the old 300 s cap would have killed it — but it logged `text_chars=0 tool_calls=0`, so that silence was **not** a tool-call payload being generated.* ⚠️ **Do not cite the 457 s turn of 2026-07-29 18:06 as a second data point** — it was 8 rounds, longest 140.5 s, and the timeout is per-read inactivity *within* a round. `response_time` is a turn; `elapsed` is a round; **conflating them is how this item was misread the first time.**
+> **item 7** — one query, not a run: session d16f7a83 turn 1 has **four `edit_document` tool events** against a message reporting **1** attempt. Compare `len(tool_events)` with the reported count on that row; it is the shape of the accumulation bug item 7 was closed on. **item 21** — 2a's and 2b's live scope was recorded on a turn where the model wrote nothing after the tool, i.e. the branch that always worked; re-verify on a turn where it summarises its own work. **item 2a** — one ESP32 document with the editor cleared; **item 9b** — three deliberately long *rounds*. ⚠️ *9b is no longer untested and the evidence points the wrong way: a single round ran **448.7 s** on 2026-07-28 23:38 at `timeout=900` and completed, where the old 300 s cap would have killed it — but it logged `text_chars=0 tool_calls=0`, so that silence was **not** a tool-call payload being generated.* ⚠️ **Do not cite the 457 s turn of 2026-07-29 18:06 as a second data point** — it was 8 rounds, longest 140.5 s, and the timeout is per-read inactivity *within* a round. `response_time` is a turn; `elapsed` is a round; **conflating them is how this item was misread the first time.**
 >
 > **Closed 2026-07-29 by running them:** ~~item 5~~ **— re-opened the same evening, third recurrence; see the item.** The measurement stands (clean clone, `2 failed, 5738 passed`, 2,930 imports resolved) and **was overtaken by work committed after it**. Also item 24 and *"Open in new chat"* (two clones, both carried the source title), and item 25 (macOS run confirms the vacuity) — both still closed.
 >
@@ -83,9 +97,6 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 ---
 
 ## S1 — wrong output the user trusts
-
-### 1. ~~Autosave is reverting AI edits~~ ✅ fixed, verified live 2026-07-19
-Not autosave and not the compare-and-swap — a single tool call emitted `doc_update` **twice**, and the second delivery made the diff-mode guard restore and persist the pre-edit buffer. **20 reverts pre-fix → 0 post-fix.** [resolvedissues.md](resolvedissues.md), *"Autosave reverting AI edits"*.
 
 ### 2. Wrong numbers in documents the user trusts
 *Split 2026-07-28: 2a is "the document disagrees with the data it was handed", 2b is "the document disagrees with reality". Both are built and report-only. They looked like one item and share only a severity.*
@@ -109,16 +120,6 @@ Not autosave and not the compare-and-swap — a single tool call emitted `doc_up
 - **Ground truth** — colonization 24–29 °C, fruiting 20–30 °C **no cold shock**, RH 85–95 %, CO₂ 500–800 ppm at 3–6 ACH — is recorded in [resolvedissues.md](resolvedissues.md) (*"4B retired"*) and pinned by `test_the_ground_truth_matches_what_resolvedissues_records`, so editing the fixture is a deliberate act.
 - ⚠️ **Keep this, it is the reason the checker exists and it is counter-intuitive:** asking for verification made documents *worse*. Plain "create a document" scored closest to correct; "create with fact checked infos" plus four source fetches scored worst, at fruiting 14–21 °C — the *P. ostreatus* range on a tropical species. **The retrieval step is not neutral; it drags the answer toward the wrong species**, and item 14 is part of why. Do not "fix" 2b by searching harder.
 
-### 21. ~~Three S1 warnings were suppressed whenever the model wrote its own summary~~ ✅ fixed 2026-07-28
-`_closing_doc_summary` returned early on `if existing and not preamble_only`, discarding the **whole** of `_doc_tool_summary` — which carries item 3's `stale_values`, 2a's `fidelity` and 2b's `known_facts`. The finetune-break path had the same gate. The reasoning was sound and the conclusion was wrong: **the user had been told what happened, but not that it was wrong.**
-
-**Run eb2d0ac1, 2026-07-28.** The model researched, fetched two sources and created an 8,636-character document titled *"…Growth Phases Guide - **Fact Checked** 2026-07-28"*, containing *"Temperature drop of 5 – 10°F"* — a prescribed cold shock on a thermophilic species, the exact failure that retired the 4B. **2b caught it.** The model then wrote a confident summary with ✅ ticks, so the warning was dropped and the user saw neither finding.
-
-- **The net was withheld because the model sounded sure**, which is the one case it exists for. **Inverse of the `"Done."` bug**: that reported success for work that never happened; this reported success for work that happened wrongly.
-- **Fix:** `_doc_tool_summary(info, warnings_only=True)` returns the ⚠️ blocks without the *"Created/Updated …"* action line, and both call sites append it instead of returning. The model keeps its own words; the action line is not duplicated. Tests: `tests/test_doc_warnings_survive_model_prose.py`, including a byte-exact pin that the default rendering did not change.
-- ⚠️ **This invalidates part of 2a's and 2b's verification scope.** Both were recorded live on `fb5525eb`, where the model wrote *nothing* after the tool (`round_texts=[0, 0]`) — the branch that always worked. **Neither has been seen live on the branch that was broken.** Re-verify by asking for a document on a turn where the model summarises its own work.
-- **Found by reading runs, not by testing.** Every wiring test asserted the findings reach `_doc_tool_summary`; none asserted `_doc_tool_summary` reaches the user. **A test that stops one call short of the user is the item 16 shape** — it pins the plumbing and not the delivery.
-
 ### 3. Partial edits leave documents contradicting themselves
 Run 127d32b0: 8 edits fixed the prose and missed the summary table, leaving four CO₂ thresholds and three colonization durations in one document.
 
@@ -130,9 +131,6 @@ Run 127d32b0: 8 edits fixed the prose and missed the summary table, leaving four
 - **Gap:** the lint runs only inside `EditDocumentTool`. A full `update_document` rewrite bypasses it entirely.
 - ⚠️ **The interaction with item 7 was filed as a theory and was OBSERVED END TO END on 2026-07-29, session d16f7a83.** Turn 1: four `edit_document` calls, every FIND block rejected, item 7's guard fires — *"I'll rewrite the document in full instead of patching individual passages."* Turn 2: the model does exactly that, `update_document`, **v5 written with no consistency lint at any point.** The guard is honest, the promise is reasonable, and it routes each edit failure into the one write path with no checking. **Any fix here has to cover `update_document`, or item 7's success makes item 3 worse.**
 - **How much is the model is an open measurement, not a known quantity** — the editor was manufacturing part of it.
-
-### 4. ~~The retired 4B is still live on the research path~~ ✅ done 2026-07-19
-`research_model` is now `qwen3.5:9b-32k`. [resolvedissues.md](resolvedissues.md), *"Research path moved off the retired 4B"* — which also records why blanking a model field is a downgrade, not an inherit.
 
 ## S2 — silent loss
 
@@ -169,14 +167,6 @@ Closed twice and re-opened twice: committed 2026-07-28, recurred within hours an
 - **The check, when you need it again:** `git clone ~/odysseus /tmp/x && cd /tmp/x` then an AST sweep of every first-party `from (src|routes|core|services)… import` against files on disk. **Seconds, no venv.** The venv-and-suite version is belt-and-braces once the tree is already green.
 - ⚠️ **`git status` is this item's whole early-warning system, so noise in it is a real cost — see item 26**, reciprocal (#5↔#26). A test writing untracked directories into the repo root puts permanent `??` lines in front of the one signal that would have shown `known_facts.py` missing.
 - ⚠️ **Do not diff working files against blobs to find modifications.** `.gitattributes` sets `*.ps1`/`*.bat` to `eol=crlf`, so the blob is LF and the working tree is CRLF *by design*; comparing `git show HEAD:<file>` against the file reports three Windows scripts as modified when `git status` calls them clean. **Use `git status`, or `git check-attr text eol -- <file>` before believing a diff.**
-
-### 6. ~~Answer text can be lost to the reasoning channel~~ ✅ fixed 2026-07-28
-**It was never the stream. It was a regex in the save path** — `_normalize_thinking` in `routes/chat_helpers.py` split by *position*, keeping the last line and moving the rest out of the message, on any answer opening with `"I need "`, `"The user "` and five similar phrases. Two instances in 65 recorded turns; one lost 675 of 705 characters. Full account: [resolvedissues.md](resolvedissues.md), *"The save path decided which half of the answer was thinking"*.
-
-- ⚠️ **Item 8's evidence base needs re-reading because of this.** Run c7da3649 ended on *"Let me correct these issues:"* — a textbook dangling promise, **manufactured by the save path**. **Do not count a dangling-promise run as item 8 without comparing `round_texts` against the saved `content` first.**
-- ~~"Confirming it needs the raw stream"~~ and ~~"item 10 unblocks this"~~ — **both wrong, retracted.** `round_texts` persisted the complete pre-split text all along; `full_command` is *tool arguments* and could not have helped. This item recorded itself blocked on item 10 three times. **Check what a field contains before filing a dependency on it.**
-- ~~The 2026-07-27 frequency count~~ — **retracted, not evidence.** All-zero `round_texts` is 15 of 40 turns and appears on turns that ended fine; it is the base rate, not a signal.
-- **The earlier `/v1` retraction stands and is unrelated.** That one is about `llm_core.py` *during* the stream; this is `routes/chat_helpers.py` *after* it. **Both are true at once**, and reading the retraction as "therefore nothing eats the answer" is what kept this open for nine days.
 
 ### 30. Switching chats writes the editor buffer into the other chat's document
 **Found 2026-07-30 while collecting item 20's five runs. An AI-written document was destroyed and a second chat's document was overwritten with content it never contained.** Not item 1 — that was a duplicate `doc_update` inside a single tool call, and it stays closed. This is cross-session carry-over, and the pair is reciprocal (#1↔#30).
@@ -322,16 +312,12 @@ task_runs  ad505282-1f59-4a5f-a345-61b5a6f5c5d5   task 0a71978a "Documents Tidy"
 - **It is also the second half of item 31(b), and of item 30.** `routes/document_routes.py` `tidy_documents` hard-deletes `is_active == False` rows whose `current_content` is `NULL` or `''`, and the same file hard-deletes *active* documents whose content is empty or whose title is in `_JUNK_TITLES`. **An emptied document plus a closed tab is a permanent loss at the next five-document boundary** — that is the chain, and no single step in it looks dangerous on its own.
 - **Current exposure, measured on a copy of `app.db` 2026-07-30 ~15:20:** 62 documents, 38 `is_active = 0`, and **0 rows with empty content**, so nothing is currently queued for destruction. The four documents recovered from items 30/31 all still hash to their recorded values, and in each case `current_content` equals the newest version row.
 - **Not decided, deliberately.** Whether the duplicate pass should exist at all is the maintainer's call — it is a *feature* that works exactly as written. **What is not defensible is that it is irreversible, automatic and silent.** In risk order: (a) soft-delete (`is_active = 0` / `archived`) instead of `db.delete`, so a mistake is recoverable; (b) never group across different `session_id`s — deliberate clones of one document into five chats are not duplicates of each other; (c) log the deleted ids to `app.log`, not only a truncated preview into `task_runs.result`; (d) reconsider a **destructive** action on an event trigger.
-- ⚠️ **`tidy_sessions` is the same shape and was not examined.** It ran ten seconds earlier the same day (*"Cleaned 3 sessions"*, `task_runs.ddbf6bb3`) and `src/session_actions.py:91,137` uses `db.delete(row)` on `Session`. It is what leaves documents with `session_id = NULL` (item 31(c)). **`tidy_research` is a third, also unexamined.**
+- ✅ **The pause is real, and it is enforced at two independent layers** — checked 2026-07-30 rather than assumed. `src/event_bus.py:82` filters `status == "active"` when *arming*, so a paused task's `trigger_counter` does not even increment; `src/task_scheduler.py:817` re-checks at execution time and marks an already-queued run `skipped` with `Task no longer active`. **A run queued before the pause cannot fire.** State as of the pause: `0a71978a` = `paused`, counter frozen at **2 of 5**.
+  - ⚠️ **Pausing DEFERS the deletion, it does not cancel it.** Duplicates accumulate while it is off and the first run after re-enabling collapses every group in one pass — nine clones became one row on 07-30. **Snapshot or clean up deliberately before re-enabling**, and note it fires on the fifth document *after* that, not immediately.
+  - ⚠️ **The manual routes stay live while the task is paused:** `POST /api/documents/tidy` and `POST /api/documents/ai-tidy`. Both need an explicit click, so neither is a background risk, but **ai-tidy asks a model to label documents `junk` and hard-deletes on its verdict** (`routes/document_routes.py:1114`).
+- ⚠️ **`tidy_sessions` is the same shape, is STILL ACTIVE, and was not examined.** It ran ten seconds earlier the same day (*"Cleaned 3 sessions"*, `task_runs.ddbf6bb3`) and `src/session_actions.py:91,137` uses `db.delete(row)` on `Session`. It is what leaves documents with `session_id = NULL` (item 31(c)). **`tidy_research` is a third, also unexamined.**
 
 ## S3 — visible task failure
-
-### 7. ~~Closing summary under-reports, and sometimes says nothing~~ ✅ fixed — live end to end
-Two defects: counts were replaced rather than accumulated (10 edits reported as 1), and the guard only fired on an *empty* response, which this model never produces because it opens with its intent. **Item 7's silence caused an item 8 failure.** Mechanism: [resolvedissues.md](resolvedissues.md), *"Turns that did work and reported none of it"*.
-
-- ✅ **Failure branch live 2026-07-27** (31e0af64): *"I couldn't apply the edit — the document is unchanged."*
-- ✅ **Accumulation branch live 2026-07-28** (fb5525eb turn 3): *"7 edits applied across 2 rounds, 4 not applied (the FIND text didn't match — those corrections are still missing)."* This was the item's last tests-only scope.
-- ⚠️ **Possible under-report, found 2026-07-29 and NOT yet diagnosed — check before trusting the counter.** Session d16f7a83 turn 1 records **four `edit_document` tool events** (all `<<<FIND>>>`, all `exit_code=None`) and the message says *"rejected **1** attempt this turn … (skipped 1)"*. Four events, one attempt reported. It may be legitimate — one attempt retried across four rounds — but **that is the exact shape of the accumulation bug this item was closed on**, and it is one query to settle: compare `tool_events` length against the reported count on that row.
 
 ### 8. The agent gathers information, then stops
 Four attempts at one task in 16 minutes, **zero files produced**. 0b12aadb read 10,035 chars, correctly identified the embedded HTML page, ended its thinking with *"Let me write out the extracted content:"* — and emitted nothing.
@@ -369,9 +355,6 @@ Eleven prompts in one chat. Seven asked for a document; **three produced one and
 - ❌ ~~"The model is being handed 91,212 tokens against a 32k window"~~ — **wrong, retracted before filing.** `input_tokens` is the **sum across rounds**; `request_context_tokens` is the per-request figure and peaked at **17,712 / 32,768 (54 %)**. No turn came close to the window.
 - **What is left after both retractions is a real and narrower observation:** the four failures are consecutive and follow the three successes, with no configuration change between them. Whether that is conversation length, the specific document, or nondeterminism is exactly what five independent runs would separate.
 
-### 9. ~~Throughput cliff on larger context~~ — retired, disproved by its own data
-**Not a work item. Kept as a counter-example, because the obvious optimisation it invites is the wrong one.** Ordered by input size the numbers *rise*: 10,223 tok → 5.22 tok/s · 34,723 → 6.52 · 56,323 → **6.78**. Time-to-first-token does climb, but that is prompt ingestion, not generation, and **the two must not be conflated again**. Confirmed 2026-07-28: with TTFT subtracted, all twelve recorded turns run 8.9–13.6 tok/s. **Do not optimise for "less context" on this evidence.**
-
 ### 9b. Streams fail mid-turn, and the timeout is a document-length cap
 `{"error": "Read timeout", "status": 504}`, logged as a WARNING and persisted nowhere, so the row read as *a slow turn*. Reporting fixed 2026-07-28 — `metrics["stream_errors"]` plus a user-facing notice. [resolvedissues.md](resolvedissues.md), *"A turn that failed read as a turn that was slow"*.
 
@@ -404,11 +387,6 @@ Eleven prompts in one chat. Seven asked for a document; **three produced one and
 - **Still open:** whether 0b12aadb (0.39 tok/s, 393 s) was the same 504. Its log window predates the check and nothing was persisted.
 - ✅ **The failure notice no longer overstates the failure.** bbde3e51 turn 4 wrote v6 of a real document on rounds 1–3, then failed on round 4, and was told *"the turn did not finish, so treat it as incomplete"*. When `tool_events` is non-empty the notice now says work completed before the failure has been kept. **A failure notice that overstates the failure is still a false report** — the `"Done."` bug pointing the other way.
 
-### 22. ~~Documents have never streamed into the editor on this setup~~ — retired, disproved 2026-07-28
-**Not a work item.** `doc_stream_open` has fired **32 times since 2026-07-16**, most recently the same day this was filed. The finding it was opened on — *"zero of either in 35,744 log lines"* — grepped for SSE frames that are never logged.
-
-**What is true instead:** the stream opens at **100 % of its round**, a median 0.069 s before the end-of-stream tool-call event, across rounds of 34–262 s. The feature works and is a no-op — the document lands whole at the end. **S4, nothing to build.** It also corroborates 9b's mechanism without depending on a DEBUG grep. Full account, the one assumption still unverified, and the ten-second check that would close it: [resolvedissues.md](resolvedissues.md), *"Documents do stream into the editor"*.
-
 ### 23. The model finishes the job in the reasoning channel, and the guard calls it silence
 **Found live 2026-07-29, session 374d57b7** — a clean two-prompt session, one cloned document open, 14.5k of a 32,768 window. Not a long-conversation artefact.
 
@@ -425,15 +403,6 @@ Asked to *"fact check the document and correct it"*, the turn ran `web_search` �
 - ⚠️ **So do not "fix" this in the parser.** The plausible levers are model-side — the `reasoning_effort` control (⚠️ and the note claiming it cannot be sent here needs re-checking; the same *Notes* entry that said local models get no tool schemas was wrong), or a prompt rule, or an end-of-turn fallback that surfaces reasoning-channel text **when the turn produced no content at all**. That last one is report-only and is the cheapest safe option.
 - **Severity is S2, not S3.** The user is told nothing was produced when a complete answer exists — work is lost silently, and the `"Done."` family is exactly the class this repo has spent the most time on.
 - **Sibling of item 6, different layer.** Item 6 was the save path (`routes/chat_helpers.py`) reclassifying text *after* the stream; `round_texts` still held the original, which is how it was caught. Here `round_texts[-1]` is genuinely `''` — nothing arrived as content — so **the item 6 check (`round_texts` vs `content`) does not detect this one. Compare `thinking` against `content` instead.**
-
-### 24. ~~Every cloned document was named "Untitled"~~ ✅ fixed 2026-07-29
-`libraryImportDocument` in `static/js/documentLibrary.js` computes `baseTitle`, including the `(2)`/`(3)` dedup against existing titles in the session, and then **never put it in the POST body**. `DocumentCreate.title` defaults to `"Untitled"` (`routes/document_helpers.py`), so every clone took the default — both documents cloned on 2026-07-29 are named `Untitled`.
-
-- **Pre-existing in Clone; "Open in new chat" inherited it** the moment that was added, because it ends by calling the same function.
-- ⚠️ **It matters for item 20's step-0 runs**, which clone the same document five times: identically-named `Untitled` documents make the runs hard to tell apart in `app.db`, and the title is one of the things the model is judged on.
-- ✅ **Verified live 2026-07-29, both paths.** Clone at 15:36:31 and *"Open in new chat"* at 16:02:53 each produced a document titled `Lion's Mane Mushroom (Hericium erinaceus) - Complete Guide` ~38 ms after their session, neither `Untitled`. No `(2)` suffix on either, which is correct — the dedup only compares titles **within** a session.
-- ⚠️ **Verified by reading `app.db`, because this repo has no JS test harness.** That is the available standard here, not a shortcut; a JS change cannot be confirmed any other way.
-- ⚠️ **The fix rode into `HEAD` inside a 120-line commit whose message described only the 3-line title change.** The rest is the *"Open in new chat"* feature, which had been sitting uncommitted in the working tree. Amended on 2026-07-29 to say so. **An uncommitted feature will attach itself to the next commit that touches its file** — item 5's failure mode wearing different clothes.
 
 ### 27. A LAN address in the prompt deletes every document tool
 *"create a document with temperature and humidity data from http://192.168.0.185"* produces no document, three times over. **The model never had the tool.**
@@ -458,38 +427,6 @@ Then `src/agent_loop.py`, the `[tool-rag] Workspace file/terminal request` branc
   - ✅ **The negative control is writable today** — verified 2026-07-29 by lifting the pattern out with `ast` and compiling it standalone (no app import, no migrations): `list files on mediaserver` **fires**, so asserting it still gets the Terminus set is a live assertion and not a tautology. The same probe reproduces every row of the table above, and confirms two prompts that must *not* fire: `fact check the document and correct it` and `create a new document about pink oyster mushroom`.
   - **Lift, don't import.** `ast.get_source_segment` on the `_LOCAL_COMPUTER_REFERENCE_RE` assignment plus `eval(seg, {"re": re})` gives the live pattern with none of the import side effects `CLAUDE.md` warns about. This is the cheapest way to test any module-level constant in `agent_loop.py`.
 - **Workaround until fixed:** keep the raw address out of the message that asks for a document.
-
-### 28. ~~The model writes the tool call instead of making it~~ ✅ built 2026-07-29 — report-only
-`_tool_payload_as_text_notice()` in `src/agent_loop.py`, wired ahead of `_unstarted_promise_notice` and suppressing it. A ```json fence is display text, so three turns emitted ~1.5 KB of edit payload each, ran nothing, and one claimed success. Mechanism, the mutation results and the retry-text fix: [resolvedissues.md](resolvedissues.md), *"The model wrote the tool call instead of making it"*.
-
-- ⚠️ **NONE OF THIS IS COMMITTED — found 2026-07-29, see item 5.** The two detector functions, the retry-text fix and all 14 tests are working-tree only. **This row's ✅ describes a machine, not the repository.**
-- **Tests (14), seven of them negative controls.** Measured on all 129 recorded turns before shipping: 3 hits, all true positives, 0 false positives. ⚠️ **Not yet seen firing live** — every instance predates it, and re-confirmed 2026-07-29: the notice string appears **0 times** in `chat_messages`.
-- ✅ **The corpus measurement reproduces, and two filed numbers did not.** Re-run 2026-07-29 by lifting `_fenced_regions` and `_tool_payload_looks_like_edit` out with `ast` and running them over all 129 assistant rows in a hash-verified copy of `app.db`: **3 hits — 17:48:20, 17:55:34, 18:07:52, all `json`-tagged fences matching on edits/find/replace keys.** The closed-fence-only mutation scores **3 of 3**, reproducing [`CLAUDE.md`](../CLAUDE.md) exactly.
-  - ❌ **The source docstrings said "2 recorded instances" and "2 of 2".** Written when only the first two existed, never revisited. Corrected in place.
-  - ❌ **The `json.loads` comparison — *"1 of 3"* in `CLAUDE.md`, *"1 of the 2"* in the docstring — is not reproducible.** The mutation was never written down, and a plausible reconstruction scores **2 of 3**. **Unfalsifiable as filed**, which is worse than wrong. The direction the design rests on still holds; the number does not. Both files now say so.
-- ⚠️ **Root cause open, n=1**, and it belongs to item 23's family: in the one properly-recorded empty call the FIND/REPLACE payload is in `thinking`. **Salvaging it is filed, not built** — an *acting* fix on a data-mutating path at n=1 is the class that wiped a 6,186-character document.
-- ⚠️ **Do not re-derive the empty-`edits` count from `app.db`.** A naive sweep returns 9; eight are pre-2026-07-28 rows with no `full_command` key at all. **Check `'full_command' in event`.**
-
-### 29. ~~Quoted phrases return locale filler~~ ✅ built 2026-07-29
-When the model writes an exact-phrase query — `"Pleurotus djamor" "pink oyster" …` — the pinned engines return few real matches and **backfill the rest with locale-based filler**. Recorded examples, all against mushroom-cultivation queries: a Dutch casino, GitHub Desktop, a ChatGPT jailbreak repo, a hotel in Finnentrop, Psalm 37 on die-bibel.de, a Stack Overflow thread about `\0` in C, and five pages of the browser game *My Little Farmies*. **One quoted query came back 5 of 5 junk.** The user is in DE and `language=en` is pinned but the region is not, which is the likely reason the filler is German.
-
-Fixed in `services/search/providers.py`: `quoted_phrases` / `result_has_phrases` drop results that do not contain the quoted phrase, and `strip_quotes` drives an unquoted retry when filtering empties the set. **This is not a relevance heuristic — it is the semantics of quoting.** A result that lacks the phrase the caller asked for verbatim is non-responsive.
-
-- ⚠️ **NOT COMMITTED — see item 5.** `tests/test_search_quoted_phrase_filter.py` is a **new file**, so `git add -u` will not pick it up. Same shape as item 28's untracked test.
-- **The split is measured, not impressionistic.** Replaying all 58 recorded `web_search` calls (290 results) parsed out of `tool_events[].output` in a copy of `app.db`:
-
-  | query style | queries | with junk | junk results |
-  |---|---|---|---|
-  | quoted | 7 | 6 (86 %) | 18/35 (51 %) |
-  | unquoted | 51 | 1 (2 %) | 3/255 (1.2 %) |
-
-- **Replay of the shipped predicate over that corpus: 18 junk dropped, 0 false positives, 17 good kept, 255 unquoted results untouched.** Re-derive by importing `quoted_phrases`/`result_has_phrases` and re-parsing the corpus; do not trust these numbers without re-running them.
-- ⚠️ **The corpus is truncated by the recorder.** `core.py` writes `result['snippet'][:200]`, so a term past character 200 is invisible to the replay, and `age` was not parsed. **51 of 58 searches are a fixed point under the current ranking**; the other 7 are most likely those two gaps, not a parse error — but that was inferred, not shown.
-- **Filtering runs BEFORE the `[:count]` slice**, so dropped slots refill from further down the engine's list instead of shrinking an already-truncated window. A test pins this; it fails if the order is swapped.
-- **Tests (16), three of them negative controls** — an unquoted query, a quoted query whose results all contain the phrase, and `result_has_phrases` with no phrases. ⚠️ **Reverting both changes turns 7 of the 16 red**, checked before believing them; the negative controls stay green in both states, which is what makes them controls.
-- ✅ **The owed M1 run is done, 2026-07-29 21:2x.** `./venv/bin/python -m pytest` over the whole suite: `2 failed, 5768 passed, 4 skipped`, with **`tests/test_search_quoted_phrase_filter.py` 16 passed** on the pinned venv and `asyncio_mode=auto` honoured. The two failures are item 18. *(Superseded: the earlier sandboxed Linux run of `python3 -m pytest` over the search files reported 72 passed with ad-hoc, unpinned httpx/bs4/sqlalchemy/fastapi/pyotp and an unrecognised `asyncio_mode` — it could not have exercised the async paths and should not be cited.)*
-- ⚠️ **Not seen live.** Every recorded instance predates the fix.
-- **Also landed here: per-result `engine` attribution.** Parsing discarded SearXNG's `engine` field, so no junk result could be traced to the engine that produced it. It is now carried into the parsed result, logged per search, and copied into `web_sources` (`core.py`) so it survives in `app.db` — **`app.log` rotates, `app.db` does not.** Until the first post-fix search, **engine attribution for everything in this file rests on the `msockid=` parameter on the Victoria's Secret URL, which is Microsoft's** — i.e. on one inference, not on a record.
 
 ### 14. Web search derails on ambiguous common nouns
 Recurring, and **it feeds item 2b** — the wrong-species drift there is partly downstream of this. Run eb2d0ac1 returned **"Pink (singer) — Wikipedia"** as a top result for a pink-oyster cultivation query; an earlier run ranked a Victoria's Secret "PINK" page into the same searches. Nothing in the pipeline notices. The species name is in the document title and isn't being used.
@@ -544,31 +481,20 @@ grep -n '^_AGENT_RULES = \|^_API_AGENT_RULES = ' src/agent_loop.py   # 4 hits, 2
 3. **Verify each run got a document** before scoring it: `grep 'doc-inject' data/logs/app.log*` should show five `found by ID` lines, **one per run and each with a DIFFERENT id** — a clone is a new document. (An earlier version of this step said "the same id five times", which is right for "Open" and wrong for the protocol that actually works.) **This is the step that catches a run where the precondition silently did not hold.**
    - Cloning is also the cleaner control: five independent copies sharing no version history. And because each run is a fresh session, the title-dedup in `libraryImportDocument` sees no existing titles, so **every clone keeps the identical original title** — no `(2)`/`(3)` drift to become a variable of its own.
 4. **Identical prompt text, five times.** Not paraphrases.
-5. 🔥 **PAUSE the "Documents Tidy" scheduled task first — the protocol destroys its own evidence otherwise.** Added 2026-07-30. That task hard-deletes documents grouped by `(normalized title, content fingerprint)`, keeping one, **and it triggers on every fifth `document_created`**. Five identical clones are one duplicate group *and* the trigger count in the same act. It removed 8 documents this way on 2026-07-30 (`task_runs.ad505282`) and 2 on 07-29, `document_versions` cascading with them, leaving nothing in `app.log`. **A run of this protocol that comes back short is more likely to have been tidied than to have failed.** See item 32; confirm the pause in the Tasks UI, and re-count `documents` before and after.
+5. 🔥 **PAUSE *both* tidy tasks first — the protocol destroys its own evidence otherwise.** Added 2026-07-30. **"Documents Tidy"** (`document_created`, every 5) *and* **"Chat Sessions Tidy"** (`session_created`, every 5) — this protocol creates five documents *and* five chats, so it arms both. The session one deletes empty sessions, and a deleted session **nulls its documents' `session_id`**, which makes them invisible to `list_documents` in *every* chat; a run where the model produced nothing leaves a session that can read as empty. **Quieter than the document tidy — nothing is deleted, the evidence just stops being findable.** Verify the status mechanically before the run, not after:
+
+   ```
+   cd /Users/cedrik/odysseus && cp data/app.db /tmp/t.db && python3 -c "
+   import sqlite3
+   for r in sqlite3.connect('/tmp/t.db').execute(\"select name,status,trigger_counter,trigger_count from scheduled_tasks where owner='cedrik' and action like 'tidy%'\"): print(r)"
+   ```
+
+   ⚠️ **A pause is UI state and is invisible to anyone reading the repo** — it is not in git, and the next session has no way to know. The query above is the only check. That task hard-deletes documents grouped by `(normalized title, content fingerprint)`, keeping one, **and it triggers on every fifth `document_created`**. Five identical clones are one duplicate group *and* the trigger count in the same act. It removed 8 documents this way on 2026-07-30 (`task_runs.ad505282`) and 2 on 07-29, `document_versions` cascading with them, leaving nothing in `app.log`. **A run of this protocol that comes back short is more likely to have been tidied than to have failed.** See item 32; confirm the pause in the Tasks UI, and re-count `documents` before and after.
 
 - ⚠️ **The five runs need a document OPEN; item 2a's live turn needs the editor CLEAR.** Opposite preconditions — do not try to collect both in one session.
 - **Open: decide per rule; do not revive the block wholesale.** The assembled prompt is already ~35k chars (~8.8k tokens) against a 32k window. Six rules were added to the live sections on 2026-07-28 (four document, three web) and `tests/test_agent_rules_reach_the_model.py` pins the four best-known dead markers as *absent*, so reviving one is a deliberate act.
 
 ## S4 — friction and blocked diagnosis
-
-### 10. ~~Failures aren't replayable~~ ✅ fixed 2026-07-28
-Document tool events now carry `full_command` — complete arguments, capped at 16 KB with an in-band truncation marker. Persisted on success as well as failure. [resolvedissues.md](resolvedissues.md), *"The record of a run didn't say what happened"*.
-
-- ⚠️ **Rows written before 2026-07-28 have no `full_command`.** Existing history is still only as good as `<<<FIND>>>`.
-- ⚠️ **Item 6 filed itself as blocked on this and was wrong**, three times. `full_command` is *tool arguments*; item 6 needed `round_texts`, which was already persisted. Nothing here ever unblocked it. Kept as the back-reference so the pair stays reciprocal.
-- **Effort was filed as M and was one line plus a cap** — the data was already computed and streamed; only the persistence dict dropped it. The estimate was stale because nobody re-read the code after filing.
-- A replay harness over history, symmetric with the editor-side one in `tests/tools/`, is now possible and not yet built.
-
-### 11. ~~Non-document tools have no closing report~~ ✅ built 2026-07-28
-`_side_effect_tool_summary` in `src/agent_loop.py`, wired into the turn-end path beside `_gathering_only_notice`. Report-only.
-
-Session 57dcd968 ran `web_fetch` → `write_file` → `get_workspace` and saved only the 175-character preamble. Diagnosis, the corrected reading of that turn (`write_file` **failed**; the entry had it backwards), the coverage argument and the corpus sweep: [resolvedissues.md](resolvedissues.md), *"Non-document tools reported nothing at all"*.
-
-- ✅ **Verified live 2026-07-29, session ae223b4c.** `web_fetch` → `write_file` (`exit=1`, *"path '~/…' is outside the allowed roots"*) → `get_workspace`, and the user was told: *"⚠️ `write_file` failed — …"*. **Near-identical to session 57dcd968**, the founding case, which saved a 175-character preamble and nothing else. Same prompt, same tool sequence, same failure, now reported.
-- ❌ ~~"Still open, and separate: the model chose the wrong tool"~~ — **retired 2026-07-29, it was never a choice.** A LAN address in the prompt strips every document tool before the model sees them; see item 27, reciprocal (#11↔#27).
-- ⚠️ **Known gap, not an oversight:** the five self-reporting tools (`manage_notes`, `manage_calendar`, `manage_tasks`, `list_emails`, `read_email`) are excluded, so a `manage_notes` **create** stays unreported. Fixing it means reordering the end-of-turn block.
-- **Still open, and separate: the model chose the wrong tool.** Asked for "a document" it wrote a workspace `.md` file, so items 3, 2a and 2b never applied either. **Do not fold the two together** — the reporting gap was real regardless.
-- Item 8's reverted nudge is why any *acting* fix must bound what the retry can write. A reporting fix has no such constraint, which is why this one could ship on test evidence.
 
 ### 12. Wasted verification rounds
 9B sometimes runs `manage_documents` "to check" after creating a doc (~47 s for nothing). Run 27a94a01 did exactly this.
@@ -577,9 +503,6 @@ Session 57dcd968 ran `web_fetch` → `write_file` → `get_workspace` and saved 
 
 ### 13. Terminal access-log noise
 Every request prints, so real errors scroll away — worst during polling (`/api/research/status/<id>`, `/api/chat/stream_status/<id>`). **Got in the way twice on 2026-07-19** while confirming PUT traffic during the editor investigation. Hide 200s; hide 304s behind their own toggle, since a 304 storm is how you spot a stale-cache bug. Don't use `--no-access-log` (kills 4xx/5xx) — add a `logging.Filter` on `uvicorn.access` keyed by status, wired at `app.py:1281`, `launcher.py:142`, `start-macos.sh:292`, with an `access_log_hide_statuses` setting.
-
-### 15. ~~`web_fetch` failure rate on cultivation sources~~ — folded into item 2
-**Its premise was answered before it was measured.** Roughly a third of fetches fail on the sites this task reaches for. But run 31e0af64 fetched **one clean source, verified byte-exact**, and still produced four defects. Retrieval quality is not the load-bearing cause. Worth knowing when a fact-check turn ends empty-handed; measuring it more precisely would not change what gets built next.
 
 ### 16. SSRF guard tests covered an orphaned function
 One instance fixed 2026-07-27 ([resolvedissues.md](resolvedissues.md), *"web_fetch could not reach the LAN"*); the **audit is the open part**.
@@ -593,15 +516,6 @@ One instance fixed 2026-07-27 ([resolvedissues.md](resolvedissues.md), *"web_fet
 - ⚠️ **The `_PRIVATE_NETWORKS` half of this item is a false lead. Audited and closed 2026-07-28 — do not re-walk it.** Four copies exist and their contents genuinely differ (`services/search/content.py` 9 entries, `src/webhook_manager.py` 8, `routes/model_routes.py` and `src/model_context.py` 3 each plus the Tailscale CGNAT block). **None of it is a hole.** Two of the four are endpoint *classifiers* — "is this endpoint on my LAN" — not guards. Of the two guards, the missing `0.0.0.0/8` in `webhook_manager` is covered by the stdlib predicates above the list (`addr.is_private or is_loopback or is_link_local or is_reserved or is_multicast or is_unspecified`), which subsume its whole tuple; the list there is dead weight, not a gap. **Counting the copies gives four; reading the callers gives two guards that agree.** The `100.64.0.0/10` difference is deliberate — `content.py` runs a two-tier design with `_GATED_PRIVATE_NETWORKS` so `web_fetch` can reach the LAN on purpose, which is what the 2026-07-27 fix was for.
   - **The transferable point:** this item's own evidence was a `grep -l` count, and a count of files is not a count of behaviours. Same failure as item 11's tool *sequence* versus tool *result*, and 9b's log grep — three in one day. **The audit worth keeping is the zero-non-test-references pass**, which is about callers by construction.
 - Related smell, not fixed: `test_web_fetch_size_caps.py` patches `content_mod.httpx.stream` while `_get_public_url` uses `httpx.Client(...).stream`. Those tests are not exercising what they claim either.
-
-### 17. ~~A cache hit is indistinguishable from a live fetch~~ ✅ fixed 2026-07-28
-Cached results carry `cached`, `cached_at` and `cache_age_seconds`; the `web_fetch` output tells the model *"served from cache … NOT a live reading"*. **Absence of the flag means live.** [resolvedissues.md](resolvedissues.md), *"The record of a run didn't say what happened"*.
-
-- **Labelling the record alone would not have fixed the original failure** — it was the *model* reporting a cached `uptime: 91 s` as current, so the notice has to reach the model, ahead of the output trim.
-- ⚠️ **The notice is delivered and half-believed, twice now.** Run 42889f7b quoted *"cached ~77 seconds ago"* in its document body and titled the same document *"(Live Fetch)"*. Run eb2d0ac1 built on a fetch **1,123 seconds** (18.7 min) old and described the result as *"fact-checked"* with *"✅ verified facts"*. **The model reads the flag and then writes a claim that contradicts it** — which is why item 21's warning path matters and why the new title rule exists. Getting the label into the prompt was necessary and is not sufficient.
-- ⚠️ **Still true and not addressed:** `full: true` changes the cache key, so the same URL fetched with and without `full` uses two independent entries and can return two different bodies in one session. *Which* entry you got is now visible; that there are two remains a trap.
-- ⚠️ Rows written before 2026-07-28 carry no flag either way.
-- Operational detail in [qwensetup.md](qwensetup.md), *"`web_fetch` — what it sees, and what it silently reuses"*.
 
 ### 18. Two tests in `test_document_put_version_conflict.py` have never passed
 `test_concurrent_ai_edit_after_read_loses_the_swap` and `test_losing_swap_does_not_leave_a_partial_version_row` both patch `droutes._reserve_document_uploads`, which is defined at `routes/document_routes.py:82` **nested inside `setup_document_routes()`**. It is a closure, never a module attribute, so the lookup raises `AttributeError` and can never have worked.
@@ -630,9 +544,6 @@ Cached results carry `cached`, `cached_at` and `cache_age_seconds`; the `web_fet
 - ⚠️ **And if you replace `_tool_path_roots` to keep it honest, `os.path.realpath` the root.** The real function normalises its own inputs; a replacement bypasses that, and on macOS `tmp_path` sits under the `/var` → `/private/var` symlink. Demonstrated: without `realpath` the same path is `REJECTED`, with it `ALLOWED` — **a macOS-only failure, which is item 19's class.**
 - **Not a house pattern:** `test_chat_helpers.py:176` is the only test in the suite that *writes* into the repo root; every other `parents[1]` use reads source for AST assertions, and 134 test files already use `tmp_path`.
 - **Related, lower priority:** `tests/test_code_nav_tools.py:39` carries the same `ignore_errors=True`, but writes to `/tmp` — deletable on macOS, and unwritable in a Linux sandbox, so it fails loudly instead of leaking. Its `dir="/tmp"` choice is **deliberate and documented in the fixture** (the opposite requirement: it needs to be *inside* the allowlist). Its line 8 `DATABASE_URL` pointing at a file-backed `/tmp` db is inert while `tests/conftest.py:18` sets `:memory:` first, and only bites under `--noconftest`.
-
-### 19. ~~Five tests failed on macOS only~~ ✅ fixed 2026-07-28, verified live
-Four `AF_UNIX path too long` (macOS caps `sun_path` at 104 bytes) plus `test_glob_confined_e2e`, whose assertion contradicted its own comment and passed on Linux by luck. **Neither was an application bug**; no confinement hole. [resolvedissues.md](resolvedissues.md), *"Five tests failed on macOS only"* — which also records why a Linux run cannot substitute for a macOS one.
 
 ---
 
