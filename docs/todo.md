@@ -48,11 +48,12 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 27 | A LAN address in the prompt deletes every document tool | S3 | S | open — **root-caused 2026-07-29** | **live** ×3 |
 | 28 | ~~The model writes the tool call instead of making it~~ | S2 | S | ✅ built + **committed `1a8e804e`** 2026-07-29 | **tests (14)** — live ×3 pre-fix |
 | 29 | ~~Quoted phrases return locale filler~~ | S3 | S | built 2026-07-29, ⚠️ **UNCOMMITTED** | **tests (16) green on the M1** — not live |
-| 30 | Switching chats writes the editor buffer into the other chat's document | S2 | M | root-caused; guard ✅ **both branches now observed**, `restoreFn` open | **live ×3, reproduced on demand** |
+| 30 | ~~Switching chats writes the editor buffer into the other chat's document~~ | S2 | M | ✅ **fixed 2026-07-30** — root cause and guard, both branches observed | **live** — 21:27, no flush attempted |
+| 33 | `switchToDoc` deletes the document you are leaving, from the map | S2 | XS | ✅ fixed 2026-07-30 — **unverifiable by the passing case** | source-level; **no JS harness** |
 | 31 | Closing a document tab overwrites a *different* document | S2 | M | (a) ✅ **fixed + verified live**; (b) shipped, **not exercised**; (c) retracted | **live — 16:02 CEST** |
 | 32 | ~~A scheduled tidy hard-deletes duplicate documents, versions and all~~ | S2 | S | ✅ **fixed 2026-07-30** — archives, session-scoped, logged | **live** — 17:31, counts held · tests (7 + 3 mutations) |
 
-> **34 rows — 16 open, 18 closed or retired, as of 2026-07-30 (item 32 closed the same day it was filed).** Measured, not counted by hand ([`CLAUDE.md`](../CLAUDE.md) §5 — *numbers in prose are claims with no test*). **Open: 3, 5, 8, 9b, 12, 13, 14, 16, 18, 20, 23, 25, 26, 27, 30, 31.** A row is closed when its Item cell is struck through; that is the only definition, because a Status cell like *"detection live; prevention open"* is not machine-readable and should not be. Re-derive with:
+> **35 rows — 16 open, 19 closed or retired, as of 2026-07-30.** Items 32 and 33 were filed and fixed the same day; 30 closed. Measured, not counted by hand ([`CLAUDE.md`](../CLAUDE.md) §5 — *numbers in prose are claims with no test*). **Open: 3, 5, 8, 9b, 12, 13, 14, 16, 18, 20, 23, 25, 26, 27, 31, 33.** ⚠️ **31 and 33 are *fixed but not verified* and deliberately still count as open** — a fix nobody has watched fail is not a closed item, and both share the same predicament: item 30's fix removed the condition that would trigger them. A row is closed when its Item cell is struck through; that is the only definition, because a Status cell like *"detection live; prevention open"* is not machine-readable and should not be. Re-derive with:
 >
 > ```
 > cd /Users/cedrik/odysseus && python3 -c "
@@ -242,7 +243,25 @@ That is the *"the chip opened an empty untitled document"* report, exactly. **No
   - ⚠️ **The same run shows the underlying defect is still firing in normal use**, twice in one session: `[doc-map] buffer (stamp (none), 0 chars) does not belong to aa87b1ce… (17085 chars)`. **The guard is doing real work on ordinary chat switches, not just in a staged repro.** `restoreFn` is still the fix that is owed.
   - ⚠️ **And the guard was already live when those writes happened** — re-checked 2026-07-30. `[doc-put]` records `14:17:24 doc=b1754908 … sha=2a6319146b84` (the recovery) and then `14:24:08 doc=c4da7609 … sha=2a6319146b84` — **byte-identical, into another chat's document seven minutes later** — followed by `14:26:51 … len=1757`. The guard was verified at 12:52 and the file last edited at 14:51, so both writes fall inside the guarded window. They are **item 31(a)**, which this guard was never meant to cover: `saveDocument` writes `activeDocId` with a correctly stamped buffer, so nothing fires. **The distinction matters — *"guard ✅ verified"* is true of the map, and reads as though it covered the writes.**
 - ✅ **`window.__docTrace` is why this was found.** A rolling in-page trace of `loadSessionDocs` / `chipRestore` / `switchToDoc` / `closePanel` / `saveCurrentToMap` / `saveDocument`, dumped with `console.log(JSON.stringify(window.__docTrace))`. **Four fix attempts were argued from reading a 10,000-line file and three were wrong; the trace settled it in one run.** ⚠️ It relies on nothing being open at the time, which is the property the console lacked — two runs were wasted on "was the console open, was the panel open, was the precondition met".
-- **Still open:** `restoreFn`'s ordering is the actual defect and is untouched — the guard makes it harmless, it does not make it correct. `openPanel()` should render the active document into the pane it builds, rather than leaving `switchToDoc` to flush an empty buffer first.
+✅ **ROOT CAUSE FIXED AND VERIFIED LIVE 2026-07-30 21:27. The item is closed.**
+
+**Not** by making `openPanel` render — that was the filed proposal and it is the wrong shape: `openPanel` is **1,353 lines** (4891–6243) with 23 `activeDocId` references, all inside event-handler closures except a three-line tail (`renderTabs()`, then `showEmptyState()` when `!activeDocId`). Threading a document through it is a large change to a large function.
+
+**The defect is one line earlier: `switchToDoc` flushes the buffer into the map UNCONDITIONALLY**, and after a pane rebuild that buffer is a fresh empty node. So `switchToDoc(docId, { flush = true } = {})`, and the callers that have just rebuilt the pane pass `false`.
+
+- **The flush at restore is not merely wrong, it is redundant** — `closePanel('down')` already flushed while the pane was intact and stamped. Confirmed by observation, not argument: `21:26:47 saveCurrentToMap … bufLen=8579 mapLen=8579 blocked=false` at minimize, and the restore 25 s later renders exactly those 8,579 characters.
+- **It could not have lost data either way.** By the time it runs the buffer is already gone, and the stamp guard was blocking the call regardless — so removing it is *outcome-identical*, an attempt removed rather than a write.
+- ⚠️ **`restoreFn` was not the only site. Three more were found while checking the call list**, all `_ensureDocPaneMounted()` → `switchToDoc(…)`: `_restoreDetachedEmailDoc`, the email-draft path, and both branches of `loadDocument`. **`_ensureDocPaneMounted` rebuilds only *sometimes***, so they cannot hard-code `flush: false` — it now returns whether it rebuilt and each caller passes `flush: !_rebuilt`. **The guard is why these were harmless; nobody had noticed they were the same shape.**
+
+**The three stages of one sequence, all recorded 2026-07-30:**
+
+```
+12:48  saveCurrentToMap len=0        →  switchToDoc len=0       17,085 chars emptied
+12:52  saveCurrentToMap blocked=true →  switchToDoc len=17085   guard catches it
+21:27  (no saveCurrentToMap at all)  →  switchToDoc len=8579    nothing wrong is attempted
+```
+
+The 21:27 trace goes straight from `chipRestore` to `switchToDoc`, with no `[doc-map]` warning, no `[doc-put]` and no `[doc-del]`. **The guard stays as defence in depth** — it is what caught the foreign-buffer branch at 16:02 and the three call sites above, and it costs nothing.
 
 ### 31. Closing a document tab overwrites a *different* document
 **Found 2026-07-30, from the maintainer's own account of what he had been doing** — *"I closed some documents in the editor that sometimes opened all together when I opened different chats"*. Reciprocal with #30 (same map/binding confusion, different consequence).
@@ -294,6 +313,25 @@ else            fetch(`${API_BASE}/api/document/${docId}`, { method: 'DELETE' })
 - **The protocol, for the next re-check** — minimize the panel, switch chats, restore the chip, close a *non-active* tab; read `[doc-detach]` in the console, `detachDoc` in `window.__docTrace`, and `[doc-del]`/`[doc-put]` in `app.log`. ⚠️ **Arm it first: close an empty new document and confirm a `[doc-del] … len=0` line appears.** Two preconditions can silently void the whole thing — the app must have been restarted after the route change (compare the file mtime against *"Application startup complete"*), and the browser must have dropped the cached `document.js` (**⌘⇧R is Safari's Reader, not a reload** — Entwickler → Caches leeren, then ⌘R). `typeof window.__docTrace` does **not** prove the new module is loaded: the trace shipped with item 30's guard. `JSON.stringify(window.__docTrace).includes('detachDoc')` does.
 - ⚠️ **Both changes SUPPRESS an action, which is the safe direction** ([`CLAUDE.md`](../CLAUDE.md) §3).
 - **Still open:** (a)'s deeper fix — `saveDocument` reads `activeDocId` and takes no target, so *every* caller inherits this hazard. The refusal is a fence around one caller, not the fix.
+
+### 33. `switchToDoc` deletes the document you are leaving, on a map-derived emptiness test
+**Found 2026-07-30 while planning item 30's root-cause fix — a THIRD map-derived DELETE, in a third function, covered by none of the fixes for 30 or 31.** Reciprocal with #31 (same inference, different caller).
+
+`switchToDoc`, three lines after the flush that item 30 corrupts:
+
+```js
+const prevId = activeDocId;
+if (prevId && prevId !== docId && docs.has(prevId)) {
+  const prev = docs.get(prevId);
+  if (prev.language !== 'email' && !(prev.content || '').trim() && !(prev.title || '').trim()) {
+    fetch(`${API_BASE}/api/document/${prevId}`, { method: 'DELETE' }).catch(() => {});
+```
+
+- **The sequence reads: flush zeroes the map entry for the document being left → three lines later that entry is empty → DELETE.** The title check does not save it: `saveCurrentToMap` copies the rebuilt pane's blank title input, so `prev.title` is empty too. **Item 30's stamp guard is the only thing that was preventing this, and it was written for something else.**
+- **Severity is bounded, and only since today.** The endpoint is a soft delete (item 31's correction), and the tidy now archives rather than hard-deleting (item 32) — so the row and its versions survive. **Before this morning the same chain ended in a destroyed row.**
+- ✅ **Fixed 2026-07-30 with the same rule as 31(b):** the delete now also requires `lastSyncedContent` — the last content the *server* acknowledged — to be empty, so a document that has ever held content is never auto-removed. When the map looks empty and the server does not, it logs `[doc-switch] … not deleting` instead.
+- ⚠️ **Not verified, and not verifiable from the passing case.** No JS harness, and the trigger condition is one item 30's fix now prevents from arising — the same position item 31(b) is in. **A run that deletes nothing does not distinguish this fix from the guard that was already covering it.**
+- **Still open:** the deeper question this shares with 31 — *nothing should infer a document's emptiness from the in-memory map.* Three functions have now done it. The map is a render cache, not a source of truth, and the fix each time has been to consult `lastSyncedContent` rather than to stop asking the map.
 
 ### 32. A scheduled tidy hard-deletes "duplicate" documents, versions and all
 **Found 2026-07-30 while re-checking item 31's evidence. This is what actually destroyed the 8 documents, and it is the only unrecoverable path in the whole 30/31/32 complex** — everything else soft-deletes or leaves a `document_versions` row to restore from. The maintainer **paused the task** on 2026-07-30 once this was found.
