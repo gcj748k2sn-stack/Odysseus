@@ -48,7 +48,8 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 27 | A LAN address in the prompt deletes every document tool | S3 | S | open — **root-caused 2026-07-29** | **live** ×3 |
 | 28 | ~~The model writes the tool call instead of making it~~ | S2 | S | ✅ built + **committed `1a8e804e`** 2026-07-29 | **tests (14)** — live ×3 pre-fix |
 | 29 | ~~Quoted phrases return locale filler~~ | S3 | S | built 2026-07-29, ⚠️ **UNCOMMITTED** | **tests (16) green on the M1** — not live |
-| 30 | Switching chats writes the editor buffer into the other chat's document | S2 | M | open — **found 2026-07-30** | **live ×2, proven by hash** |
+| 30 | Switching chats writes the editor buffer into the other chat's document | S2 | M | root-caused; guard ✅ **verified**, `restoreFn` open | **live ×3, reproduced on demand** |
+| 31 | Closing a document tab can delete or overwrite a *different* document | S2 | M | open — **found 2026-07-30** | source-level; 8 documents missing |
 
 **Numbers are never reused.** A retired item keeps its number and a `⊘` row, because renumbering has silently rotted cross-references four times (see *Notes & constraints*). Item 2 split into 2a/2b, and 9 into 9/9b, rather than taking new numbers, for the same reason.
 
@@ -239,6 +240,28 @@ That is the *"the chip opened an empty untitled document"* report, exactly. **No
 - ✅ **`window.__docTrace` is why this was found.** A rolling in-page trace of `loadSessionDocs` / `chipRestore` / `switchToDoc` / `closePanel` / `saveCurrentToMap` / `saveDocument`, dumped with `console.log(JSON.stringify(window.__docTrace))`. **Four fix attempts were argued from reading a 10,000-line file and three were wrong; the trace settled it in one run.** ⚠️ It relies on nothing being open at the time, which is the property the console lacked — two runs were wasted on "was the console open, was the panel open, was the precondition met".
 - **Still open:** `restoreFn`'s ordering is the actual defect and is untouched — the guard makes it harmless, it does not make it correct. `openPanel()` should render the active document into the pane it builds, rather than leaving `switchToDoc` to flush an empty buffer first.
 
+### 31. Closing a document tab can delete or overwrite a *different* document
+**Found 2026-07-30, from the maintainer's own account of what he had been doing** — *"I closed some documents in the editor that sometimes opened all together when I opened different chats"* — which explains three things the record could not: 8 documents gone from `documents` (70 rows → 62), 11 with `session_id = NULL`, and the two writes into `c4da7609`. Reciprocal with #30 (same map/binding confusion, different consequence).
+
+`_detachDocFromSession(docId)` in `static/js/document.js`:
+
+```js
+const hasContent = doc && doc.content && doc.content.trim().length > 0;
+if (hasContent) saveDocument({ silent: true, reason: 'Autosave (doc detached)' });
+else            fetch(`${API_BASE}/api/document/${docId}`, { method: 'DELETE' });
+```
+
+**(a) It saves the WRONG document.** `saveDocument()` takes no target — it writes `activeDocId`. So closing tab X issues a PUT for whatever document is *active*, carrying the current buffer. `closeTab` calls `saveCurrentToMap()` first, so pre-fix the buffer had already been copied into the active document's map entry. **This is the most likely origin of `c4da7609` v3 (8,579 chars, another chat's text) and v4 (1,757) at 14:24 and 14:26** — two closes in a row while `c4da7609` was active.
+
+**(b) `hasContent` reads the MAP, and item 30 empties the map.** When the map entry has been zeroed — which item 30 proves happens on every chip restore — `hasContent` is `false`, so the `else` branch runs and the document is **hard-DELETEd from the server** although its stored content is intact. **That is the chain that removes a document with 8,578 characters in it**, and it needs no keystroke: restore the chip, close the tab, gone. The 8 missing documents are all the 8,578-char clones.
+
+**(c) Detached documents are never pruned, so they follow you into every chat.** `loadSessionDocs` prunes with `if (doc.sessionId && doc.sessionId !== sessionId) docs.delete(id)` — the truthiness test deliberately keeps session-less documents (email compose). `_detachDocFromSession` produces exactly those, so **every close makes a document that appears in every chat's tab bar afterwards**, which is the *"opened all together"* the maintainer describes. Eleven exist now. It is self-reinforcing: more detached documents means more foreign tabs means more closing.
+
+- ⚠️ **Source-level, not reproduced.** (a) and (b) are read off the code and fit the record; **no repro has been run.** The one to run is cheap now that `window.__docTrace` exists: restore a chip (map goes empty), close that tab, and watch for a `DELETE`. **Item 30 had three plausible mechanisms that were wrong — treat this the same way.**
+- **Not fixed by item 30's guard.** That guard stops the *map* being polluted. (a) still targets the wrong document, and (b) still reads `doc.content` — which is now correct more often, but a stale or unloaded entry still reads as empty. **The fix for (b) is to stop inferring emptiness from the map**: ask the server, or pass the content explicitly.
+- **Fix sketch, in risk order:** (a) `saveDocument` should take an explicit document id, or `_detachDocFromSession` should refuse when `docId !== activeDocId`; (b) never DELETE on a map-derived emptiness test; (c) prune detached documents by session too, or give them an owning-session concept that isn't `NULL`.
+- ⚠️ **(b) is a DELETE, so it is the highest-severity thing on this list that is still live.** Everything else in items 30/31 is recoverable from `document_versions`; a deleted row is not.
+
 ## S3 — visible task failure
 
 ### 7. ~~Closing summary under-reports, and sometimes says nothing~~ ✅ fixed — live end to end
@@ -311,6 +334,8 @@ Eleven prompts in one chat. Seven asked for a document; **three produced one and
 - ✅ **Raised 300 → 900 s on 2026-07-28**, in `data/settings.json` *and* the default in `src/settings.py`. ⚠️ **The saved file overrides the default**, so changing the code alone does nothing on a machine that already has the key.
 - ✅ **Confirmed live in the log**: `round_start … timeout=900` from **21:34 CEST** onward; every earlier round that day logs `timeout=300`. Both of the day's 504s (16:00 at 380.7 s, 20:56 at 375.2 s — the fd0f9ba0 and bbde3e51 rows above) are **pre-change**.
 - ⚠️ **And the change has therefore told us nothing yet.** Since 21:34 the longest single silent stretch is **245 s** — under the *old* cap. **Zero information gained: no run since has been long enough to test it.** The three runs owed must be deliberately long ones, or the experiment repeats this result.
+- ✅ **Two rounds past the old cap, 2026-07-30, both completed** — `813.3 s` (session `ef460706`, round 1, one `create_document` producing a **54,390-character** document) and `433.1 s`. Neither was contrived; both came out of item 20's runs. **Not a close.** The item asks for three same-prompt successes, and the 433 s round is *not* a success in any other sense: `text_chars=0 tool_calls=0`, no assistant row ever saved. ⚠️ **`elapsed=813.3 s` bounds the silent stretch at ≤740.9 s but does not measure it** — `first_visible_token` at 72.5 s is the last event before `round_stream_done`, so the per-read inactivity the timeout actually governs is still unmeasured.
+- **A context reading worth keeping from the same turn:** round 2 of `ef460706` opened at `request_context_tokens=40,857` against `context_length=32,768` — `context_percent: 100`. The model's own 54 KB document went straight back into its next round. Right field (not the `input_tokens` trap), real overflow.
 - ⚠️ **This is an experiment, not a diagnosis.** If a turn still dies at 900 s the cause is a hang, not payload length, and the two want different fixes. **Do not close this until three same-prompt runs succeed.**
 - ⚠️ **Raising it also scales the runaway wall-clock deadline** — `max(agent_stream_timeout * 4, 1200)` in `agent_loop.py` is now **3600 s per round**. Lower both together if that is too loose.
 - **A second error class exists:** bbde3e51 turn 4 returned `All model candidates returned no substantive output (502)` at 69.8 s, on round 4 of a turn whose earlier rounds had written a document. Not a timeout. Unexplained.
