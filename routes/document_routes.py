@@ -630,6 +630,23 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 raise HTTPException(404, "Document not found")
             _verify_doc_owner(db, doc, user)
 
+            # [doc-put] report-only instrumentation — docs/todo.md item 30.
+            # Logs every PUT that reaches this handler, BEFORE the identical-
+            # content skip and before the CAS, so a cross-session write is
+            # visible even when it is later rejected or skipped. The 2026-07-30
+            # data loss was reconstructed from document_versions after the fact;
+            # nothing recorded which document each PUT carried at the time.
+            # Remove once item 30 is closed.
+            import hashlib as _hashlib
+            logger.info(
+                "[doc-put] doc=%s doc_session=%s base_version=%s len=%d sha=%s",
+                doc_id,
+                getattr(doc, "session_id", None),
+                req.base_version,
+                len(req.content or ""),
+                _hashlib.sha256((req.content or "").encode()).hexdigest()[:12],
+            )
+
             incoming_content = req.content
             from src.agent_tools.document_tools import _coerce_email_document_content, _looks_like_email_document
             is_email_doc = (

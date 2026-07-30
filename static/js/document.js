@@ -25,6 +25,16 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   let _autoDetectDebounce = null;
   let _autoTitleDebounce = null;
   let _autoSaveDebounce = null;
+
+  // Rolling trace of every editor/document binding transition — docs/todo.md
+  // item 30. The console only shows what was open at the time, and this bug
+  // fires on a sequence of UI actions nobody is watching a console during.
+  // Dump it after the fact with:  copy(JSON.stringify(window.__docTrace))
+  const _docTrace = (window.__docTrace = []);
+  function _trace(ev, data) {
+    _docTrace.push(Object.assign({ t: new Date().toISOString().slice(11, 23), ev }, data || {}));
+    if (_docTrace.length > 400) _docTrace.shift();
+  }
   let _lastAutoSaveErrorAt = 0;
   let _animationInProgress = false;
   let _animationCancel = null;      // function to cancel current animation
@@ -4541,6 +4551,10 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     if (titleInput) titleInput.value = doc.title || '';
     // For email docs, _showEmailFields will set textarea to body only (not raw header)
     if (textarea && doc.language !== 'email') textarea.value = doc.content || '';
+    // Which document this buffer was rendered from. saveDocument refuses to
+    // write a buffer whose stamp doesn't match its target — docs/todo.md item 30.
+    if (textarea) textarea.dataset.docId = docId;
+    _trace('switchToDoc', { id: docId, len: (doc.content || '').length });
     if (langSelect) langSelect.value = doc.language || 'markdown';
     if (badge) { const _v = doc.version || 1; badge.textContent = `v${_v}`; badge.style.display = _v > 1 ? '' : 'none'; }
     { const _v = doc.version || 1; const _dbtn = document.getElementById('doc-diff-toggle-btn'); if (_dbtn) _dbtn.style.display = _v > 1 ? '' : 'none'; }
@@ -4748,6 +4762,42 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     if (!activeDocId || !docs.has(activeDocId)) return;
     const doc = docs.get(activeDocId);
     const textarea = document.getElementById('doc-editor-textarea');
+    // Never copy a buffer into a document it was not rendered from.
+    //
+    // This is the hole the saveDocument guard could not close. closePanel()
+    // (including the minimize path) and switchToDoc() both call this while the
+    // pairing may already be wrong, so the foreign text lands in the MAP entry
+    // for activeDocId. A later switchToDoc then renders that entry and stamps
+    // it with its own id — stamp and content now agree, and saveDocument's
+    // guard is satisfied by laundered corruption. Observed 2026-07-30 14:24:
+    // one chat's buffer written to c4da7609 in a session from the day before,
+    // over an `ai` version. docs/todo.md item 30.
+    // A MISSING stamp is not permission. restoreFn does openPanel() — which
+    // builds a fresh, empty, unstamped textarea — and then switchToDoc(), whose
+    // first act is to call this function while activeDocId still points at the
+    // minimized document. So an empty buffer was copied over a 17,085-character
+    // map entry, switchToDoc then rendered the emptied entry, and the chip
+    // "opened an empty untitled document". Observed 2026-07-30 12:48:03.016Z:
+    //   saveCurrentToMap active=aa87b1ce stamp=null len=0  →  switchToDoc len=0
+    // The same call with activeDocId already moved to another chat's document
+    // copies the FOREIGN text instead — that is the cross-chat write.
+    //
+    // So: only an explicitly matching stamp may write. The one exception is a
+    // genuinely new document, where buffer and map entry are both empty and
+    // there is nothing to lose either way.
+    const _stamp = textarea ? (textarea.dataset.docId || null) : null;
+    const _bufLen = textarea ? textarea.value.length : 0;
+    const _mapLen = (doc.content || '').length;
+    const _bothEmpty = _stamp === null && _bufLen === 0 && _mapLen === 0;
+    const _blocked = !!textarea && _stamp !== activeDocId && !_bothEmpty;
+    _trace('saveCurrentToMap', {
+      active: activeDocId, stamp: _stamp, bufLen: _bufLen, mapLen: _mapLen, blocked: _blocked,
+    });
+    if (_blocked) {
+      console.warn('[doc-map] buffer (stamp %s, %d chars) does not belong to %s (%d chars) — not copying',
+                   _stamp || '(none)', _bufLen, activeDocId, _mapLen);
+      return;
+    }
     const titleInput = document.getElementById('doc-title-input');
     const langSelect = document.getElementById('doc-language-select');
     if (titleInput) doc.title = titleInput.value;
@@ -6928,6 +6978,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       },
       restoreFn: () => {
         const id = _minimizedDocId;
+        _trace('chipRestore', { minimized: id, active: activeDocId, inMap: id ? docs.has(id) : null });
         _minimizedDocId = null;
         // openPanel builds the pane shell; switchToDoc re-renders the
         // saved doc content into it (including PDF render-pages, syntax
@@ -6950,6 +7001,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       return;
     }
     isOpen = false;
+    _trace('closePanel', { direction: direction || '(none)', active: activeDocId });
     // On touch, closing the doc should leave the keyboard DOWN. The tap blurs
     // the textarea (keyboard starts down), but a stray refocus during teardown
     // (the view behind regaining focus, etc.) was bouncing it back up. Blur any
@@ -7375,6 +7427,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
   /** Load all documents for a session into tabs */
   export async function loadSessionDocs(sessionId, opts = {}) {
+    _trace('loadSessionDocs', { session: sessionId, wasActive: activeDocId });
     _lastSessionId = sessionId;
     const restoreMode = !!opts.restoreMode;
     const shouldRestoreOpen = localStorage.getItem(_docOpenKey(sessionId)) === '1';
@@ -7473,6 +7526,8 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
     if (titleInput) titleInput.value = doc.title || '';
     if (textarea) textarea.value = doc.current_content || doc.content || '';
+    // Stamp the buffer with its source document — docs/todo.md item 30.
+    if (textarea && doc.id) textarea.dataset.docId = doc.id;
     if (langSelect) langSelect.value = doc.language || 'markdown';
     if (badge) { const _v = doc.version_count || doc.version || 1; badge.textContent = `v${_v}`; badge.style.display = _v > 1 ? '' : 'none'; }
     { const _v = doc.version_count || doc.version || 1; const _dbtn = document.getElementById('doc-diff-toggle-btn'); if (_dbtn) _dbtn.style.display = _v > 1 ? '' : 'none'; }
@@ -9534,6 +9589,41 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const textarea = document.getElementById('doc-editor-textarea');
     if (!textarea) return;
     const savingDocId = activeDocId;
+
+    // The buffer must belong to the document we are about to write.
+    //
+    // When the panel is minimized to the composer chip across a chat switch,
+    // openPanel() rebuilds #doc-editor-pane while it still holds the PREVIOUS
+    // chat's text, and loadSessionDocs() has already repointed activeDocId at
+    // the new chat's document. A single keystroke — or chat.js's save-before-
+    // send — then persists one chat's document into another's, as source="user",
+    // with a base_version the CAS accepts legitimately.
+    //
+    // Reproduced 2026-07-30 13:32:45: 16,293 characters of session 1bcd57dc's
+    // AI document written into session 5bc3c70f's 8,578-char clone, byte-
+    // identical apart from the one character typed. See docs/todo.md item 30.
+    //
+    // Re-render rather than save: the stale text is another document's, that
+    // document still holds it, and nothing here is the user's to lose.
+    const stampedDocId = textarea.dataset.docId;
+    // Unconditional, so a save that slips past the guard is still explained:
+    // an absent stamp and a matching stamp are different failures.
+    console.log('[doc-save] target=%s stamp=%s len=%d',
+                savingDocId, stampedDocId || '(none)', textarea.value.length);
+    _trace('saveDocument', { target: savingDocId, stamp: stampedDocId || null,
+                             len: textarea.value.length });
+    if (stampedDocId && stampedDocId !== savingDocId) {
+      console.warn('[doc-save] editor buffer belongs to', stampedDocId,
+                   '— refusing to write it to', savingDocId);
+      const correct = docs.get(savingDocId);
+      if (correct && (correct.language || '') !== 'email') {
+        textarea.value = correct.content || '';
+        textarea.dataset.docId = savingDocId;
+        syncHighlighting();
+      }
+      return;
+    }
+
     saveCurrentToMap();
     const localDoc = docs.get(savingDocId);
     const contentToSave = localDoc?.content ?? textarea.value;
