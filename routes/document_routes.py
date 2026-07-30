@@ -1026,27 +1026,45 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                         doc.title = new_title
                         fixed_titles += 1
 
+            # Archive, never db.delete — docs/todo.md item 32. Same helper as
+            # the scheduled action, so the two paths cannot drift on what
+            # "tidy removed it" means.
+            from src.document_actions import retire_document
+            retired: List[tuple] = []
             for doc in to_delete:
-                db.delete(doc)
+                retire_document(doc, "junk", retired)
 
-            # Also clean up inactive empty docs from previous soft-deletes
+            # Also retire inactive empty docs from previous soft-deletes.
+            #
+            # ⚠️ This is the second half of item 31(b)'s chain and the reason
+            # the archived filter below is load-bearing: a document emptied by
+            # item 30 and closed by item 31 lands here as `is_active=0` with
+            # empty content. It used to be hard-deleted at that point. It is
+            # now archived — and archived rows are excluded, so retiring one
+            # is terminal rather than a step toward deletion on the next run.
             inactive_q = (
                 db.query(Document)
                 .outerjoin(DbSession, Document.session_id == DbSession.id)
                 .filter(Document.is_active == False)
+                .filter((Document.archived == False) | (Document.archived.is_(None)))
                 .filter((Document.current_content == None) | (Document.current_content == ""))
             )
             inactive_q = _owner_session_filter(inactive_q, user)
             inactive_docs = inactive_q.all()
             for doc in inactive_docs:
-                db.delete(doc)
+                retire_document(doc, "inactive and empty", retired)
             deleted += len(inactive_docs)
 
+            if retired:
+                logger.info(
+                    "[doc-tidy] archived %d document(s) via /api/documents/tidy: %s",
+                    len(retired), "; ".join(f"{i} ({r})" for i, r in retired),
+                )
             db.commit()
             return {
                 "fixed_titles": fixed_titles,
                 "deleted": deleted,
-                "message": f"Fixed {fixed_titles} title{'s' if fixed_titles != 1 else ''}, removed {deleted} empty document{'s' if deleted != 1 else ''}",
+                "message": f"Fixed {fixed_titles} title{'s' if fixed_titles != 1 else ''}, archived {deleted} empty document{'s' if deleted != 1 else ''} — restore from the Archive tab",
             }
         except Exception as e:
             db.rollback()
@@ -1124,24 +1142,35 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
             deleted = 0
             reviewed = 0
+            _ai_retired: List[tuple] = []
             for i, doc in enumerate(batch):
                 if i >= len(verdicts):
                     break
                 verdict = str(verdicts[i] or "").lower().strip()
                 if verdict == "junk":
                     doc.tidy_verdict = "junk"
-                    db.delete(doc)
+                    # Archived, not deleted — docs/todo.md item 32. This path
+                    # destroys a document on a MODEL's one-word verdict, which
+                    # is the least defensible place in the codebase to make an
+                    # irreversible call.
+                    from src.document_actions import retire_document
+                    retire_document(doc, "ai verdict: junk", _ai_retired)
                     deleted += 1
                 else:
                     doc.tidy_verdict = "keep"
                 reviewed += 1
 
+            if _ai_retired:
+                logger.info(
+                    "[doc-tidy] archived %d document(s) via /api/documents/ai-tidy: %s",
+                    len(_ai_retired), "; ".join(f"{i} ({r})" for i, r in _ai_retired),
+                )
             db.commit()
             return {
                 "deleted": deleted,
                 "reviewed": reviewed,
                 "remaining": len(to_review) - len(batch),
-                "message": f"Reviewed {reviewed}, removed {deleted} junk document{'s' if deleted != 1 else ''}",
+                "message": f"Reviewed {reviewed}, archived {deleted} junk document{'s' if deleted != 1 else ''} — restore from the Archive tab",
             }
         except HTTPException:
             raise

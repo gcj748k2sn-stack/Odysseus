@@ -49,8 +49,15 @@ def test_tidy_survives_duplicate_with_null_timestamps(db_factory):
 
     db = db_factory()
     try:
-        remaining = db.query(Document).filter(Document.owner == "alice").count()
-        assert remaining == 1  # one duplicate kept, the other removed
+        # ⚠️ This assertion used to read `count() == 1` — "one duplicate kept,
+        # the other removed" — which pinned the HARD DELETE this test never set
+        # out to test. Changed 2026-07-30 with docs/todo.md item 32: the tidy
+        # archives instead of deleting, so both rows survive and exactly one is
+        # retired. The property this test exists for is unchanged: the run
+        # completes instead of raising TypeError on the NULL-timestamp sort.
+        rows = db.query(Document).filter(Document.owner == "alice").all()
+        assert len(rows) == 2, "a row was deleted — the tidy must archive, not destroy"
+        assert sorted(bool(r.archived) for r in rows) == [False, True]
     finally:
         db.close()
 

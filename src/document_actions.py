@@ -41,6 +41,33 @@ def _content_fingerprint(content: str) -> str:
     return c
 
 
+def retire_document(doc, reason: str, retired: list) -> None:
+    """Soft-remove a document: archive it and drop it from the tab bar.
+
+    **This function exists so that no tidy path calls `db.delete` on a
+    Document.** docs/todo.md item 32. On 2026-07-30 the duplicate pass
+    hard-deleted 8 documents in one run (`task_runs.ad505282`, *"Removed 8 of
+    70 … (+8 duplicate copies) · 62 kept"*) — a single group of nine
+    byte-identical clones, which were the *input* to item 20's experiment.
+    `DocumentVersion` is `cascade="all, delete-orphan"` with
+    `ondelete="CASCADE"`, so the entire version history went with each row and
+    nothing was recoverable.
+
+    `archived = True` puts it in the library's Archive tab, where the user can
+    restore it, and every tidy query filters archived rows out — so a second
+    run does not re-count what a first one retired. `is_active = False` removes
+    it from the chat's tab bar, which is the visible behaviour the tidy is
+    *for*; without it, "tidy" would leave the clutter on screen.
+
+    ⚠️ Callers must record the ids: `task_runs.result` holds a 40-character
+    title preview and nothing else, which is why the 07-30 deletions had to be
+    reconstructed from a result string rather than read from a log.
+    """
+    doc.archived = True
+    doc.is_active = False
+    retired.append((doc.id, reason))
+
+
 def _real_len(content: str) -> int:
     """Length of content with markdown noise stripped — a 'completeness' proxy."""
     content = content if isinstance(content, str) else ""
@@ -65,14 +92,23 @@ async def run_document_tidy(owner: str) -> str:
 
     db = SessionLocal()
     try:
+        # Already-archived documents are invisible to this pass. Retiring is
+        # idempotent only if a second run cannot see what the first one
+        # retired — otherwise every run re-counts the same rows and the
+        # duplicate pass re-picks a keeper among documents the user has
+        # already been told were removed. `None` is a legacy row that predates
+        # the column, i.e. not archived. docs/todo.md item 32.
+        from sqlalchemy import or_ as _or
+        _live = _or(Document.archived == False, Document.archived.is_(None))  # noqa: E712
         if owner:
             # Documents now carry their own owner column (robust to a deleted
             # session). Match on it directly; orphaned legacy rows are swept
             # to the admin at boot so they're attributed too.
-            docs = db.query(Document).filter(Document.owner == owner).all()
+            docs = db.query(Document).filter(Document.owner == owner).filter(_live).all()
         else:
-            docs = db.query(Document).all()
+            docs = db.query(Document).filter(_live).all()
 
+        retired: list = []
         deleted_examples = []
         deleted = 0
         kept = 0
@@ -140,19 +176,28 @@ async def run_document_tidy(owner: str) -> str:
                 if len(deleted_examples) < 5:
                     label = (doc.title or "(no title)")[:40]
                     deleted_examples.append(f"{label} ({reason})")
-                db.delete(doc)
+                retire_document(doc, reason, retired)
                 deleted += 1
             else:
                 survivors.append(doc)
 
         # --- Duplicate pass: group survivors by (normalized title, content
-        # fingerprint) and keep only the most complete copy of each group. ---
+        # fingerprint, SESSION) and keep only the most complete copy of each
+        # group. ---
+        #
+        # ⚠️ `session_id` is part of the key, and that is the point. Without it
+        # the pass reaches across chats, and "the same document cloned into
+        # five chats" is exactly what a duplicate looks like — same title, same
+        # bytes, different owner-session. That is not redundancy; it is five
+        # separate working copies, and collapsing them is what destroyed item
+        # 20's nine clones on 2026-07-30. Two copies in the SAME chat are still
+        # duplicates and are still collapsed. docs/todo.md item 32.
         groups: dict = {}
         for doc in survivors:
-            key = (_norm_title(doc.title), _content_fingerprint(doc.current_content))
+            key = (_norm_title(doc.title), _content_fingerprint(doc.current_content), doc.session_id)
             groups.setdefault(key, []).append(doc)
 
-        for (title_key, _fp), members in groups.items():
+        for (title_key, _fp, _sess), members in groups.items():
             if len(members) < 2:
                 kept += 1
                 continue
@@ -180,11 +225,18 @@ async def run_document_tidy(owner: str) -> str:
                 label = (keeper.title or "(no title)")[:40]
                 deleted_examples.append(f"{label} (+{len(dupes)} duplicate copies)")
             for d in dupes:
-                db.delete(d)
+                retire_document(d, f"duplicate of {keeper.id}", retired)
                 deleted += 1
 
         if deleted:
             db.commit()
+            # The ids, in the log, at the moment it happens. `task_runs.result`
+            # keeps a truncated title preview; that is not enough to answer
+            # "which document did this take" after the fact. docs/todo.md 32.
+            logger.info(
+                "[doc-tidy] archived %d document(s) for owner=%r: %s",
+                len(retired), owner, "; ".join(f"{i} ({r})" for i, r in retired),
+            )
 
         if deleted == 0:
             # Use sentinel so the scheduler can drop the run row entirely.
@@ -192,6 +244,8 @@ async def run_document_tidy(owner: str) -> str:
             raise TaskNoop(f"scanned {len(docs)} document(s), no junk")
         preview = "; ".join(deleted_examples)
         extra = f" (+{deleted - len(deleted_examples)} more)" if deleted > len(deleted_examples) else ""
-        return f"Removed {deleted} of {len(docs)}: {preview}{extra} · {kept} kept"
+        # "Archived", not "Removed" — the word in this string is the only
+        # account most people will ever read of what happened.
+        return f"Archived {deleted} of {len(docs)}: {preview}{extra} · {kept} kept · restore from the Archive tab"
     finally:
         db.close()
