@@ -816,6 +816,25 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             if not doc:
                 raise HTTPException(404, "Document not found")
             _verify_doc_owner(db, doc, user)
+
+            # [doc-del] report-only instrumentation — docs/todo.md items 31, 32.
+            # This is a SOFT delete, but it is the step that makes a document
+            # eligible for the permanent one: the Documents Tidy action
+            # hard-deletes is_active=0 rows whose content is empty, and
+            # document_versions cascades. Nothing recorded which document each
+            # close targeted, which is why the 2026-07-30 loss had to be
+            # reconstructed from a task_runs result string. `len` is the point:
+            # a close of a non-empty document is the browser deciding it was
+            # empty. Remove once items 31 and 32 are closed.
+            logger.info(
+                "[doc-del] doc=%s doc_session=%s versions=%s len=%d active=%s",
+                doc_id,
+                getattr(doc, "session_id", None),
+                getattr(doc, "version_count", None),
+                len(doc.current_content or ""),
+                getattr(doc, "is_active", None),
+            )
+
             doc.is_active = False
             # Closed/deleted — drop the in-memory active-doc pointer so it isn't
             # re-injected into a later, unrelated chat (#1160).

@@ -4671,9 +4671,46 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   // session makes it look like the document vanished from that chat.
   function _detachDocFromSession(docId, { toast = false } = {}) {
     const doc = docs.get(docId);
-    const hasContent = doc && doc.content && doc.content.trim().length > 0;
-    if (hasContent) {
-      saveDocument({ silent: true, reason: 'Autosave (doc detached)' }).catch(() => {});
+
+    // (a) Only the ACTIVE document has a buffer worth flushing.
+    //
+    // saveDocument() takes no target — it writes activeDocId. So closing tab X
+    // while Y was active issued a PUT for Y carrying Y's buffer: a no-op when
+    // the pairing was right, and a second write of already-corrupt content when
+    // it wasn't. c4da7609 took exactly two of those, 2026-07-30 14:24:08 and
+    // 14:26:51, over an `ai` version, with item 30's map guard already live.
+    // Nothing is lost for X by not saving here: X has no buffer, and the write
+    // that used to happen was never X's anyway. docs/todo.md item 31(a).
+    const isActive = docId === activeDocId;
+
+    // (b) Emptiness must not be inferred from the map alone.
+    //
+    // item 30 empties map entries (restoreFn → openPanel → switchToDoc →
+    // saveCurrentToMap), so `doc.content` can read as empty while the server
+    // copy is intact. `lastSyncedContent` is the last content the SERVER
+    // acknowledged, so a document that has ever held content is never junk to
+    // delete from here. A doc missing from the map entirely is UNKNOWN, not
+    // empty — it is never deleted.
+    //
+    // The asymmetry is deliberate: a false negative leaves a stray empty
+    // document behind, while a false positive is a soft delete (is_active=0)
+    // that the Documents Tidy action later makes PERMANENT — it hard-deletes
+    // is_active=0 rows with empty content, and versions cascade. See
+    // docs/todo.md item 32.
+    const mapLen    = (doc && typeof doc.content === 'string') ? doc.content.trim().length : 0;
+    const syncedLen = (doc && typeof doc.lastSyncedContent === 'string') ? doc.lastSyncedContent.trim().length : 0;
+    const known     = !!doc;
+    const hasContent = known && (mapLen > 0 || syncedLen > 0);
+    _trace('detachDoc', {
+      id: docId, active: activeDocId, isActive, known, mapLen, syncedLen, hasContent,
+    });
+    if (hasContent || !known) {
+      if (isActive) {
+        saveDocument({ silent: true, reason: 'Autosave (doc detached)' }).catch(() => {});
+      } else {
+        console.warn('[doc-detach] %s is not the active document (%s) — closing without a save',
+                     docId, activeDocId || '(none)');
+      }
       if (toast && uiModule) uiModule.showToast('Document closed');
     } else {
       fetch(`${API_BASE}/api/document/${docId}`, { method: 'DELETE' }).catch(() => {});
