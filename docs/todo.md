@@ -50,9 +50,9 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 29 | ~~Quoted phrases return locale filler~~ | S3 | S | built 2026-07-29, ⚠️ **UNCOMMITTED** | **tests (16) green on the M1** — not live |
 | 30 | Switching chats writes the editor buffer into the other chat's document | S2 | M | root-caused; guard ✅ **both branches now observed**, `restoreFn` open | **live ×3, reproduced on demand** |
 | 31 | Closing a document tab overwrites a *different* document | S2 | M | (a) ✅ **fixed + verified live**; (b) shipped, **not exercised**; (c) retracted | **live — 16:02 CEST** |
-| 32 | A scheduled tidy hard-deletes duplicate documents, versions and all | S2 | S | ✅ **fixed 2026-07-30** — archives, session-scoped, logged | **tests (7 + 3 mutations)** — one live run owed |
+| 32 | ~~A scheduled tidy hard-deletes duplicate documents, versions and all~~ | S2 | S | ✅ **fixed 2026-07-30** — archives, session-scoped, logged | **live** — 17:31, counts held · tests (7 + 3 mutations) |
 
-> **34 rows — 17 open, 17 closed or retired, as of 2026-07-30.** Measured, not counted by hand ([`CLAUDE.md`](../CLAUDE.md) §5 — *numbers in prose are claims with no test*). **Open: 3, 5, 8, 9b, 12, 13, 14, 16, 18, 20, 23, 25, 26, 27, 30, 31, 32.** A row is closed when its Item cell is struck through; that is the only definition, because a Status cell like *"detection live; prevention open"* is not machine-readable and should not be. Re-derive with:
+> **34 rows — 16 open, 18 closed or retired, as of 2026-07-30 (item 32 closed the same day it was filed).** Measured, not counted by hand ([`CLAUDE.md`](../CLAUDE.md) §5 — *numbers in prose are claims with no test*). **Open: 3, 5, 8, 9b, 12, 13, 14, 16, 18, 20, 23, 25, 26, 27, 30, 31.** A row is closed when its Item cell is struck through; that is the only definition, because a Status cell like *"detection live; prevention open"* is not machine-readable and should not be. Re-derive with:
 >
 > ```
 > cd /Users/cedrik/odysseus && python3 -c "
@@ -92,7 +92,9 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 >
 > **Closed and off this list:** item 11 (2026-07-28, built), item 22 (2026-07-28, disproved and retired), item 24 (2026-07-29, fixed).
 >
-> **Suite: measured `2 failed, 5768 passed, 4 skipped` in 109 s on the M1, 2026-07-29 21:2x** — 5,774 collected, item 18 only, both pre-existing. ⚠️ **This was run in the working tree, which held item 29's 16 uncommitted tests.** `HEAD` after `4a2dfdd0` collects **5,758** and passes **5,752** — subtract them before comparing this line to a clean clone, and **re-measure rather than adjusting once item 29 lands.** *(Prior readings: `5738/5744` earlier the same day, `5588` on 07-28, `5433` before ~1939 upstream commits. The `5,711` once predicted from a sandboxed `--collect-only` was 33 low — replace this line with a measurement, never a prediction.)* Item 8's active half stays parked — read its ❌ bullet first.
+> **Suite: measured `2 failed, 5775 passed, 4 skipped` in 109.30 s on the M1, 2026-07-30 17:5x** — 5,781 collected, item 18 only, both pre-existing. **Measured against a clean tree** (`git archive HEAD | tar -x` + `diff -rq` reports no drift), so unlike the reading below it describes what is committed. **Reconciles exactly: 5,774 → 5,781 is +7, item 32's seven tests, nothing else moved.**
+>
+> *(Superseded, kept for the arithmetic it warns about.)* **Suite: measured `2 failed, 5768 passed, 4 skipped` in 109 s on the M1, 2026-07-29 21:2x** — 5,774 collected, item 18 only, both pre-existing. ⚠️ **This was run in the working tree, which held item 29's 16 uncommitted tests.** `HEAD` after `4a2dfdd0` collects **5,758** and passes **5,752** — subtract them before comparing this line to a clean clone, and **re-measure rather than adjusting once item 29 lands.** *(Prior readings: `5738/5744` earlier the same day, `5588` on 07-28, `5433` before ~1939 upstream commits. The `5,711` once predicted from a sandboxed `--collect-only` was 33 low — replace this line with a measurement, never a prediction.)* Item 8's active half stays parked — read its ❌ bullet first.
 
 ---
 
@@ -332,8 +334,20 @@ task_runs  ad505282-1f59-4a5f-a345-61b5a6f5c5d5   task 0a71978a "Documents Tidy"
 Each mutation kills a **different** test and the negative controls stay green in all three states, so no test is passing for the wrong reason. The junk test also asserts the `DocumentVersion` rows survive — the `all, delete-orphan` cascade is what made the original deletion unrecoverable, so "the row is still there" is not enough.
 
 - ⚠️ **`tests/test_document_tidy_null_timestamp.py` asserted `count() == 1`, which pinned the hard delete** — a test written for the NULL-timestamp sort crash had quietly become the contract for destroying a row. Updated to assert both rows survive with exactly one archived; the property it exists for is untouched.
-- ⚠️ **Run in the LINUX SANDBOX on unpinned deps** (`sqlalchemy 2.0.51`, `pytest 9.1.1`), `DATABASE_URL=sqlite:///:memory:`, `8 passed` for the two tidy files plus `7 passed` for `test_document_actions_nonstring.py` / `test_model_helper_owner_scope.py`. **This is not the M1 suite and must not be quoted as one** — `./venv/bin/python -m pytest` on the M1 is still owed.
-- **Still owed, one run:** re-enable the task, create two identical documents in one chat and five across five chats, let it fire, and confirm the Archive tab holds the collapsed copies and `app.log` names their ids. **Until that runs, this is tests-only.**
+- ✅ **M1 suite, 2026-07-30 17:5x: `2 failed, 5775 passed, 4 skipped` in 109.30 s**, item 18 only. **The count reconciles exactly:** 5,781 collected against 5,774 before this work — **+7, the seven tests above** — so nothing else shifted under the change. *(The earlier sandbox run on unpinned Linux deps is superseded and should not be quoted.)*
+- ✅ **VERIFIED LIVE 2026-07-30 17:31:08, and it caught the right document.**
+
+  ```
+  [doc-tidy] archived 1 document(s) via /api/documents/tidy:
+             3840c215-… (inactive and empty)
+  documents 73 → 73   ·   document_versions 166 → 166   ·   archived 0 → 1
+  ```
+
+  **`3840c215` is the empty document from item 31's arm check** — created and closed at 15:54 to prove `[doc-del]` fired, and sitting at `is_active=0` with empty content ever since. **That is exactly the state item 31(b) leaves a document in, and the branch that used to `db.delete` it on sight.** It was archived instead: row intact, version row intact, restorable. `tidy_verdict` is NULL, so this was the regex pass, not the model's verdict.
+  - **Both counts held**, which is the assertion that matters — a hard delete would have moved `document_versions` too, via the cascade.
+  - **Nothing was collapsed**, which is also correct: the corpus had **zero** duplicate groups under the session-scoped key and **two groups totalling 7 rows** under the old one (a `Pink Oyster Mushroom Growth Phases` group of **7, across 7 distinct sessions**). **Same corpus, same run: 7 destroyed before, 0 touched after.**
+  - ⚠️ **The scheduled task never got to run it** — 7 of its runs today ended `aborted — "Queued — waiting for Odysseus to be idle…"`, including the one that fired at 17:24. **The event trigger queues and then loses its window while the browser polls**, so the library's Tidy button is the only reliable way to exercise this path. That button runs `/api/documents/tidy` **and** `/api/documents/ai-tidy` in sequence, so both fixed paths were exercised.
+- **Still owed:** a run with real duplicates in one chat, to see the collapse archive rather than no-op. The live run above proves the junk/inactive branch and the *absence* of cross-chat collapsing; it does not show a keeper being chosen.
 - ✅ **The pause is real, and it is enforced at two independent layers** — checked 2026-07-30 rather than assumed. `src/event_bus.py:82` filters `status == "active"` when *arming*, so a paused task's `trigger_counter` does not even increment; `src/task_scheduler.py:817` re-checks at execution time and marks an already-queued run `skipped` with `Task no longer active`. **A run queued before the pause cannot fire.** State as of the pause: `0a71978a` = `paused`, counter frozen at **2 of 5**.
   - ⚠️ **Pausing DEFERS the deletion, it does not cancel it.** Duplicates accumulate while it is off and the first run after re-enabling collapses every group in one pass — nine clones became one row on 07-30. **Snapshot or clean up deliberately before re-enabling**, and note it fires on the fifth document *after* that, not immediately.
   - ⚠️ **The manual routes stay live while the task is paused:** `POST /api/documents/tidy` and `POST /api/documents/ai-tidy`. Both need an explicit click, so neither is a background risk, but **ai-tidy asks a model to label documents `junk` and hard-deletes on its verdict** (`routes/document_routes.py:1114`).
