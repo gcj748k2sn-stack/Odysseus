@@ -6,7 +6,6 @@ from typing import List, Optional, Dict, Any
 
 from . import (
     comprehensive_web_search,
-    fetch_webpage_content,
     get_search_config,
 )
 
@@ -93,9 +92,19 @@ class SearchService:
             total=len(results),
         )
 
-    async def fetch_content(self, url: str) -> Optional[str]:
-        """Fetch content from a URL."""
-        return await fetch_webpage_content(url)
+    # `async def fetch_content(self, url)` used to live here and was deleted
+    # 2026-07-31. It carried three defects at once and could never run:
+    #   1. it awaited `fetch_webpage_content`, which is synchronous and returns
+    #      a dict — `await` on a dict raises TypeError;
+    #   2. it annotated itself `-> Optional[str]` while returning that dict;
+    #   3. `__init__` sets `self.fetch_content = fetch_content` (a bool), which
+    #      SHADOWS the method on every instance — `SearchService().fetch_content`
+    #      is `True`, and calling it raises "'bool' object is not callable".
+    # (3) is why (1) and (2) never surfaced: the method was unreachable by
+    # construction. Deleted rather than repaired — renaming it to free the
+    # attribute would have resurrected two live bugs. The `fetch_content`
+    # constructor and `search()` parameters are the real knob and stay.
+    # Callers wanting a single page use `services.search.fetch_webpage_content`.
 
     def get_config(self) -> Dict[str, Any]:
         """Get current search configuration."""

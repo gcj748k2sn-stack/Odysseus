@@ -8,6 +8,18 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-07-31 — 64k verified live, item 39 filed and fixed
+
+**Suite `5798 passed, 4 skipped, 0 failed` on the M1, committed as `179c515b`.** Started from the maintainer's *"websearch is still kinda weak"*; that turned out to be right and to be a retrieval defect, not a search-engine one.
+
+- ✅ **The 64k switch is live and measured.** `ollama ps` → `6.7 GB · 100% GPU · CONTEXT 65536`; session 93c1c383 ran on it at `context_length: 65536`. **tok/s median 7.16 vs 6.29 on the 32k baseline (n=5 vs 40), model wait 53.6 s vs 66.7 s — no regression.** ⚠️ **And the window change is invisible in that session: peak use was 17,869 tokens, 27 % of 64k and 54 % of 32k.** It would not have overflowed either way. **64k is insurance; nothing yet demonstrates it was needed.**
+- ❌ **Corrected my own claim from earlier the same day.** I wrote that the keep-alive defect means every pause over five minutes pays a 6.7 GB cold load, implying that was the felt latency. **Measured the gaps: 113 s, 86 s, 124 s, 58 s — not one exceeded the window, so nothing in that session paid a cold load.** The keep-alive finding stands and its priority drops to last.
+- 🆕 **The latency is a fixed round-1 penalty and it is not prompt size:** round 1 at 8,393 tokens took 45.4 s, round 2 at 11,485 took 15.4 s. Round 1 changed the tool list (42 → 13 schemas), so the prefix almost certainly missed cache. **Hypothesis, unchased — the largest per-turn win left.**
+- 🆕 **Item 39 filed and fixed** — a permanently-failing URL was re-fetched once per appearance; one 403 URL went out **four times in one turn**. Negative cache, 21 tests, **open pending live verification** (the cache is in memory, so an un-restarted app tests nothing and passes anyway).
+- ⚠️ **Two defects in that fix were found by re-reading it, not by running it** — an unlocked read-then-evict on a path that is genuinely threaded, and `clear_negative_cache` documenting itself as "the manual retry path" while being unexported. **Both would have shipped green.**
+- ✅ **Deleted `SearchService.fetch_content`** — it awaited a sync function, mis-annotated its return, and was **shadowed by `self.fetch_content`, a bool**, so no instance ever exposed it. **It carried the identical `await`-a-sync-function bug `test_searchservice_search_call.py` was written for: that fix swept `search()` and left its sibling, and nothing could notice because the method could not run.** Structural regression test added for the whole class.
+- ⚠️ **Two turns in 93c1c383 are worth their own items and have none:** the last turn produced `text_chars=0` on all five rounds with 2,320 chars of `thinking` (item 23's shape), and inside that thinking it converted 70–80 °F to *"~20-35°C"* — **wrong (21–27 °C), in the turn straight after one whose whole job was converting °F to °C.** The guard is the only reason it reached nobody. Also **42 tool schemas** on one turn against the documented 24–28, on the turn whose first `edit_document` failed as payload-as-text.
+
 ## 2026-07-31 — context window raised 32k → 64k
 
 **Scope: config and docs only. No source changed, no item closed.** Maintainer asked whether `qwen3.5:9b` could run a bigger context; the answer was measured before anything was built.
