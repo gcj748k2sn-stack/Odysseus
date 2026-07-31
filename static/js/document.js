@@ -4581,6 +4581,27 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     // last content the SERVER acknowledged, and a document that has ever held
     // content is not an empty scratch document. docs/todo.md item 33.
     const prevId = activeDocId;
+    // [switchAway] report-only — docs/todo.md item 33. Recorded UNCONDITIONALLY,
+    // including when the branch below is skipped, because item 33's three
+    // silent-failure modes are indistinguishable without it: the branch not
+    // being reached at all (prevId === docId, which is what item 35's
+    // early `activeDocId = target.id` does on every loadSessionDocs path), the
+    // flush being blocked so `prev.content` was never zeroed, and the autosave
+    // having landed so `everHadContent` is false. Four verification attempts on
+    // 2026-07-31 produced silence, and silence meant all three at once.
+    // `detachDoc` has carried exactly these fields since 07-30, which is the
+    // only reason item 31(b) could be verified. Remove when 33 closes.
+    try {
+      const _p = prevId ? docs.get(prevId) : null;
+      _trace('switchAway', {
+        prev: prevId, to: docId,
+        reached: !!(prevId && prevId !== docId && docs.has(prevId)),
+        mapLen: _p ? (_p.content || '').trim().length : null,
+        syncedLen: (_p && typeof _p.lastSyncedContent === 'string')
+          ? _p.lastSyncedContent.trim().length : null,
+        titleLen: _p ? (_p.title || '').trim().length : null,
+      });
+    } catch (_) {}
     if (prevId && prevId !== docId && docs.has(prevId)) {
       const prev = docs.get(prevId);
       const everHadContent =
@@ -7591,7 +7612,16 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         _markDocVisibleState(sessionId, 'minimized');
         _ensureDocChipRegistered();
         if (isOpen) {
-          try { switchToDoc(target.id); } catch (e) { console.error('Minimize restored doc failed:', e); }
+          // flush:false — activeDocId was reassigned to target.id two lines
+          // above, so saveCurrentToMap() would aim the flush at the document
+          // being arrived at while the buffer still holds the one being left.
+          // That mispairing is structural, not a race: it fired on 3 of 6
+          // switches in 40 seconds of ordinary use (2026-07-31), and item 30's
+          // stamp guard blocked every one. This removes the attempt, not a
+          // write — nothing legitimate can be flushed here, because :7557 may
+          // already have deleted the previous document's map entry.
+          // docs/todo.md item 35.
+          try { switchToDoc(target.id, { flush: false }); } catch (e) { console.error('Minimize restored doc failed:', e); }
           closePanel('down');
         } else {
           Modals.minimize('doc-panel');

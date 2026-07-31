@@ -8,6 +8,22 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## `switchToDoc` deleted the document you were leaving, on a map-derived emptiness test — closed 2026-07-31 (item 33)
+A third map-derived DELETE, in a third function, covered by none of the fixes for items 30 or 31: `switchToDoc` removed the document being left when its **map** entry read empty, three lines after the flush item 30 corrupts. Fixed with the same rule as 31(b) — the delete now also requires `lastSyncedContent` to be empty, so a document the server has ever acknowledged content for is never auto-removed.
+
+✅ **Closed as FIXED AND UNREACHABLE BY CONSTRUCTION, which is stronger than a passing test.** The delete needs four conditions at once: not email, map content empty, **title empty**, and `lastSyncedContent` empty. Two independent barriers now stand in front of it:
+
+- **The title can no longer go blank.** The original mechanism was pane rebuild → blank title input → `saveCurrentToMap` copies it into the map. **Item 30's stamp guard blocks that copy** — a rebuilt textarea is unstamped — so the precondition disappeared when item 30 was fixed, for a different reason.
+- **`everHadContent` is the second barrier**, added for this item, and independent of the first.
+
+**Evidence, 2026-07-31 — 35 `switchAway` observations from `_trace('switchAway', {prev,to,reached,mapLen,syncedLen,titleLen})`:**
+
+- **`reached:true` three times**, all document-tab clicks. The one in the target state: `prev=87ceb759 mapLen:0 syncedLen:10 titleLen:10` at 15:18:11 — the `not deleting` warn fired, **no `[doc-del]`**, row intact at 10 chars / v1 / `is_active=1`.
+- ⚠️ **That instance does not discriminate the fix** — `titleLen:10` means the pre-existing title check barred the delete anyway. **Recorded as reachability, not as proof the new condition did work.**
+- **`reached:false` on all 32 others**, in two shapes: `prev:null` (`loadSessionDocs`' normal branch nulls `activeDocId` at `:7557`) and **`prev === to`** (the restore branch assigns it first — item 35). **Chat switching cannot exercise this item by either branch**, which is why four earlier attempts produced silence.
+- ⚠️ **The item was UNOBSERVABLE until instrumented.** `switchToDoc` traced only `{id, len}`, and after the branch. **An item with no observability is not an item that failed its test — it is an item with no test**, and four attempts were read as failures before that was noticed. `detachDoc` had carried the equivalent fields since 07-30, which is the only reason item 31(b) could be verified.
+- **Remove the `switchAway` trace when the 30/31/33/34/35 cluster is done** — it is diagnosis, not product.
+
 ## Closing a document tab overwrote a *different* document — closed 2026-07-31 (item 31)
 `_detachDocFromSession(docId)` called `saveDocument()`, which takes no target and writes `activeDocId` — so closing tab X issued a PUT for whatever document was *active*, carrying the current buffer. **(a)** fixed by saving only when `docId === activeDocId`; verified live 2026-07-30 16:02. **(b)** `hasContent` inferred emptiness from the in-memory map alone, so a document whose stored content was intact took the DELETE branch; fixed by also requiring `lastSyncedContent` to be empty.
 
