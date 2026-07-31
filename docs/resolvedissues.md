@@ -8,6 +8,16 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## Tests asserting a security property nothing enforced — audit completed 2026-07-31 (item 16)
+`_public_http_url()` in `services/search/content.py` had no production callers while `tests/test_search_content_url_guards.py` asserted **3 of 3** cases against it and `test_web_fetch_size_caps.py` monkeypatched it to a no-op. **The live SSRF guard had no coverage at all and the suite was green throughout.** Fixed 2026-07-27 by making the orphan a thin delegate over `_resolve_public_ips`, so the assertions exercise the live path and the two cannot drift again. Find it with `git log -S_public_http_url -- services/search/content.py`.
+
+**The audit — the part that stayed open — was run 2026-07-31.** AST-collect every `_name` function in `src/`, `routes/`, `services/`, `core/`; count identifier occurrences across the same tree; subtract definition lines; zero means test-only. **271 files, 1,672 names, 3 hits.** *(Per-name regex scanning times out — count identifiers once per file into a `Counter`.)* What it produced is in item 38 and item 37; what must not be re-derived:
+
+- ⚠️ **The criterion cannot separate an orphan asserting a fiction from a deliberate test-facing delegate.** `_public_http_url` is *fixed* and still flags, forever, because the fix made it a zero-caller delegate on purpose. **The discriminator is delegates-to versus parallels the live path, and that needs reading.** Same for `_locate_upload` (`routes/document_helpers.py`), which now carries a docstring saying so — added because the absence of that note is the entire mechanism by which the next refactor recreates this bug.
+- ⚠️ **This sweep would never have caught item 25.** It finds zero-caller functions; item 25 is a vacuous assertion over a perfectly well-called one. **Two different audits, and only one of them exists.** A test can be worthless with a live function underneath it, and the only thing that surfaces it is running the function outside the test.
+- ⚠️ **The `_PRIVATE_NETWORKS` half is a FALSE LEAD — audited and closed 2026-07-28, do not re-walk it.** Four copies exist and differ; two are endpoint *classifiers*, not guards, and the two real guards agree. `webhook_manager`'s missing `0.0.0.0/8` is subsumed by the stdlib predicates above the list. The `100.64.0.0/10` difference is deliberate — `content.py` runs a two-tier design with `_GATED_PRIVATE_NETWORKS` so `web_fetch` can reach the LAN on purpose. **This item's own evidence was a `grep -l` count, and a count of files is not a count of behaviours.**
+- **Related smell, never fixed:** `test_web_fetch_size_caps.py` patches `content_mod.httpx.stream` while `_get_public_url` uses `httpx.Client(...).stream`. Those tests are not exercising what they claim either.
+
 ## Uncommitted work, four recurrences — closed 2026-07-31 by moving it, not by fixing it (item 5)
 **It was never a defect.** `todo.md` tracks what is wrong with the software; `CLAUDE.md` records how to work. A recurring process failure sat in the defect file for four recurrences, and each close was a state description ("committed today") that the next session's work invalidated within hours. **An item whose closure can be undone by doing more work is not an item.** The conclusion now lives in [`CLAUDE.md`](../CLAUDE.md) §6.
 
