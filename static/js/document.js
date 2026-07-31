@@ -35,6 +35,32 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     _docTrace.push(Object.assign({ t: new Date().toISOString().slice(11, 23), ev }, data || {}));
     if (_docTrace.length > 400) _docTrace.shift();
   }
+
+  /** Caller frames for a trace entry — TEMPORARY, docs/todo.md item 31.
+   *
+   * Measured 2026-07-31 in ~30 minutes of ordinary use: **14 saves, 2 with no
+   * stamp, 0 mismatched**, plus four FOREIGN-buffer copies blocked in
+   * saveCurrentToMap, all distinct document pairs, chained
+   * (fb071567 → 68647d12 → d53e717b → 3d072af4). So `activeDocId` routinely
+   * moves while the buffer still belongs to the previous document, on paths
+   * nobody has identified — the guard converts that into a blocked copy
+   * instead of corruption, which is why nothing visibly breaks.
+   *
+   * A warning without a caller cannot name the path that produced it. This
+   * attaches one to exactly the two branches that fire in that situation.
+   * **Remove once the paths are named** — it runs only on the blocked branches,
+   * but it is diagnosis, not product. Disable at runtime with
+   * `window.__docStacks = false`.
+   */
+  function _stackFrames(skip = 2, keep = 6) {
+    if (window.__docStacks === false) return undefined;
+    try {
+      return (new Error().stack || '')
+        .split('\n').map(s => s.trim()).filter(Boolean)
+        .slice(skip, skip + keep)
+        .map(s => s.replace(/^at\s+/, '').replace(/https?:\/\/[^/]+\/static\/js\//, ''));
+    } catch (_) { return undefined; }
+  }
   let _lastAutoSaveErrorAt = 0;
   let _animationInProgress = false;
   let _animationCancel = null;      // function to cancel current animation
@@ -4861,12 +4887,14 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const _mapLen = (doc.content || '').length;
     const _bothEmpty = _stamp === null && _bufLen === 0 && _mapLen === 0;
     const _blocked = !!textarea && _stamp !== activeDocId && !_bothEmpty;
+    const _via = _blocked ? _stackFrames() : undefined;
     _trace('saveCurrentToMap', {
       active: activeDocId, stamp: _stamp, bufLen: _bufLen, mapLen: _mapLen, blocked: _blocked,
+      ...(_via ? { via: _via } : {}),
     });
     if (_blocked) {
-      console.warn('[doc-map] buffer (stamp %s, %d chars) does not belong to %s (%d chars) — not copying',
-                   _stamp || '(none)', _bufLen, activeDocId, _mapLen);
+      console.warn('[doc-map] buffer (stamp %s, %d chars) does not belong to %s (%d chars) — not copying\n    via %s',
+                   _stamp || '(none)', _bufLen, activeDocId, _mapLen, (_via || []).join('\n    via '));
       return;
     }
     const titleInput = document.getElementById('doc-title-input');
@@ -9697,10 +9725,18 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const stampedDocId = textarea.dataset.docId;
     // Unconditional, so a save that slips past the guard is still explained:
     // an absent stamp and a matching stamp are different failures.
-    console.log('[doc-save] target=%s stamp=%s len=%d',
-                savingDocId, stampedDocId || '(none)', textarea.value.length);
+    // A MISSING stamp is measured, not blocked. 2 of 14 saves had none in
+    // ordinary use (2026-07-31), and in both the buffer matched the map
+    // exactly — so the content was right and only the label was absent.
+    // Failing closed here would have refused 14% of legitimate saves, which
+    // is why this records the caller instead of acting on it. docs/todo.md 31.
+    const _saveVia = stampedDocId ? undefined : _stackFrames();
+    console.log('[doc-save] target=%s stamp=%s len=%d%s',
+                savingDocId, stampedDocId || '(none)', textarea.value.length,
+                _saveVia ? '\n    via ' + _saveVia.join('\n    via ') : '');
     _trace('saveDocument', { target: savingDocId, stamp: stampedDocId || null,
-                             len: textarea.value.length });
+                             len: textarea.value.length,
+                             ...(_saveVia ? { via: _saveVia } : {}) });
     if (stampedDocId && stampedDocId !== savingDocId) {
       console.warn('[doc-save] editor buffer belongs to', stampedDocId,
                    '— refusing to write it to', savingDocId);
