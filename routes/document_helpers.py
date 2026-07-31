@@ -183,7 +183,18 @@ def _locate_upload(
     auth_manager=None,
     upload_handler: Any = None,
 ):
-    """Find an upload by its filename ID via UploadHandler.resolve_upload."""
+    """Find an upload by its filename ID via UploadHandler.resolve_upload.
+
+    Deliberately a thin delegate over :func:`_resolve_user_upload_path` rather
+    than a parallel implementation, and deliberately has no production callers
+    — the live path is ``_resolve_user_upload_path`` itself (see
+    ``routes/document_routes.py`` ``_locate_current_user_upload``). Tests assert
+    against this wrapper, so if it ever grows a body of its own those
+    assertions stop covering the live guard while staying green. That is
+    exactly how ``_public_http_url`` stranded its own SSRF tests; see
+    docs/resolvedissues.md, *"Tests asserting a security property nothing
+    enforced"*.
+    """
     if upload_handler is None:
         from src.upload_handler import UploadHandler
 
