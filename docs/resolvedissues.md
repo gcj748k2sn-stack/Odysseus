@@ -8,6 +8,20 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## A permanently-failing URL was re-fetched once per appearance — closed 2026-08-01 (item 39)
+A **successful** fetch was cached for 2 h; a **failed** one was not cached at all, so a URL that failed identically every time paid a network round trip on every appearance. One ResearchGate URL returning 403 went out **four times inside a single agent turn** — three because `comprehensive_web_search` fetches its own top results and it ranked top-3 for all three of the model's queries, plus one explicit `web_fetch`. Fixed with an in-memory negative cache (30-min TTL, 512-entry bound) in `services/search/content.py`.
+
+**Verified live 2026-08-01, and the ages are what make it a measurement rather than a flag check.** Three attempts at the same URL produced **one** network request — `search_engine_error.log` carries a single 403 at 00:47:05 — and two subsequent `web_fetch` calls returned `exit 1` with `cached: True` at ages **44 s** and **196 s**. Both resolve forward to fetch instants (00:47:49, 00:50:21) that fall inside their own turns and after the stored failure, so they are two reads of one stored event, not two events. ⚠️ **`age` is measured at fetch time, not at message-save time** — subtracting it from the row's timestamp gives a number that looks wrong and is not.
+
+**Three negative controls came free in the same session**, which is why the scope is trustworthy: a live failure (`mdpi.com`) carried `cached= None`, a live success carried `cached= None`, and positive cache hits still carried `cached= True` with their own ages. **Absence of the flag still means the request left the machine.**
+
+- ⚠️ **The verification precondition was the whole risk.** The cache is in memory, so an un-restarted app runs the old code and the check passes while testing nothing. Confirmed the restart landed at 00:15:52, *before* the run.
+- ⚠️ **The first verification attempt was inconclusive and was nearly recorded as a pass.** Two ordinary searches produced exactly one 403 — but from one *appearance*, so nothing was suppressed and nothing was proven. **A count of failures is not a count of suppressions; the denominator is how many times the URL was offered.** The deterministic form — ask for the same known-403 URL in two consecutive turns — is what produced the result above.
+- ⚠️ **Two defects in the fix were found by re-reading it, not by running it, and both would have shipped green:** an unlocked read-then-evict sequence on a genuinely threaded path (`comprehensive_web_search` fetches through a `ThreadPoolExecutor`), and `clear_negative_cache` documenting itself as "the manual retry path" while being unexported.
+- **The status set is a closed allowlist** (401/403/404/410/451). 429, 5xx and network errors stay uncached — caching a transient failure converts a blip into a self-inflicted 30-minute outage, which is the only way this change can make things worse. Four of the 21 tests exist solely to pin that, and widening the set kills exactly those.
+- **LAN targets are excluded** so a device you just fixed is still retried. `_is_local_target` is DNS-free by design.
+- **Not fixed, deliberately:** the dead URL still ranks top-3 and still occupies a line in the sources block. Only the network cost is gone.
+
 ## `switchToDoc` deleted the document you were leaving, on a map-derived emptiness test — closed 2026-07-31 (item 33)
 A third map-derived DELETE, in a third function, covered by none of the fixes for items 30 or 31: `switchToDoc` removed the document being left when its **map** entry read empty, three lines after the flush item 30 corrupts. Fixed with the same rule as 31(b) — the delete now also requires `lastSyncedContent` to be empty, so a document the server has ever acknowledged content for is never auto-removed.
 
