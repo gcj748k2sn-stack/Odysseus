@@ -627,6 +627,23 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         try:
             doc = db.query(Document).filter(Document.id == doc_id).first()
             if not doc:
+                # [doc-put-404] report-only instrumentation — docs/todo.md item 34.
+                # This raise is BEFORE the [doc-put] line below, so a PUT to an id
+                # the server has never had left no trace at all: the absence of
+                # `_streaming_` ids in app.log measured the logging, not the
+                # behaviour. The client can reach here with an orphaned
+                # `_streaming_<ts>` placeholder after a document stream is aborted
+                # — the placeholder has no lastSyncedContent, so the no-op skip in
+                # saveDocument cannot suppress the write. Counting these is what
+                # decides whether item 34 needs a fix or is already bounded by the
+                # 404 reaper at static/js/document.js:9835.
+                # Length only, never content. Remove once item 34 is closed.
+                logger.info(
+                    "[doc-put-404] doc=%s len=%d base_version=%s",
+                    doc_id,
+                    len(req.content or ""),
+                    req.base_version,
+                )
                 raise HTTPException(404, "Document not found")
             _verify_doc_owner(db, doc, user)
 
