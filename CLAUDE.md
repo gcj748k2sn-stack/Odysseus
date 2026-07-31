@@ -306,6 +306,23 @@ helper mechanics in [`tests/README.md`](tests/README.md). Read those. Additions:
     same failure: **the drift starts the moment an item is marked done.** The
     untracked file is a *test*, which `git add -u` does not pick up and
     `git add .` does.
+- **Marking an item done and handing back the commit command are ONE action,
+  not two.** This is what closed the uncommitted-work item on 2026-07-31, after
+  four recurrences and two reminder-shaped rules that did not stop it. Every
+  recurrence began in the message that wrote *"✅ fixed"* and did not write a
+  `git commit` line. The agent cannot commit — the bullet at the top of this
+  section forbids it — so **the handback is the only enforceable half**: full
+  commands, real absolute paths, in the same message as the claim. The check
+  afterwards is mechanical and needs no judgement: *did the message that said
+  "done" contain the commands to commit it?*
+  - **A periodic reminder is the wrong shape and has already failed twice.**
+    The failure has a trigger, not a cadence — it starts when an item is marked
+    done — so the rule has to attach to that moment. "Commit regularly" does
+    not.
+  - **Before writing "done" anywhere, run the tree diff below** — `git archive
+    HEAD | tar -x -C /tmp/x` then `diff -rq /tmp/x .`. It takes no index lock,
+    so a sandboxed agent may run it, and it names every first-party file that
+    is in no commit. **This is the check, not `git status`.**
 - **A sandboxed agent CAN answer "what is uncommitted" — with `git archive`, not
   with blob diffs.** `git archive HEAD | tar -x -C /tmp/x` then `diff -rq /tmp/x .`
   reads a tree, takes no index lock, and is what found the recurrence above.

@@ -8,6 +8,15 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## Uncommitted work, four recurrences — closed 2026-07-31 by moving it, not by fixing it (item 5)
+**It was never a defect.** `todo.md` tracks what is wrong with the software; `CLAUDE.md` records how to work. A recurring process failure sat in the defect file for four recurrences, and each close was a state description ("committed today") that the next session's work invalidated within hours. **An item whose closure can be undone by doing more work is not an item.** The conclusion now lives in [`CLAUDE.md`](../CLAUDE.md) §6.
+
+- **The four recurrences share one trigger, and it is not forgetfulness: the drift starts the moment an item is marked done.** Sixteen days accumulated the first time; the second broke `HEAD` (`src/agent_loop.py` committed while `src/known_facts.py`, imported at module top, was untracked); the third left the whole payload-as-text change out while `todo.md` recorded it as *"✅ built — tests (14)"*; the fourth left `docs/session-log.md` untracked while `CLAUDE.md` pointed at it, so a clean clone had a broken mandatory-reading link.
+- **Two reminder-shaped rules had already been written and did not stop it.** That is why the replacement is trigger-shaped — *marking an item done and handing back the commit command are one action* — and checkable after the fact: did the message that claimed "done" contain the commands to commit it?
+- ⚠️ **`git add -u` will not pick up a new test file; `git add .` will.** Two of the four recurrences were exactly this, and both times the untracked file was a test.
+- **The check is the tree diff, not `git status`:** `git archive HEAD | tar -x -C /tmp/x` then `diff -rq /tmp/x .` — it takes no index lock, so a sandboxed agent may run it. ⚠️ **One such check raced a commit landing mid-read and produced a stale tree**; only a second read is load-bearing.
+- ⚠️ **Reciprocal with item 26** (`#5↔#26`): repo-root test litter shows as untracked in `git status`, which is the noise this depended on seeing through. `tmp_pytest_probe/` is gitignored as of 2026-07-31, so that noise is gone — **which also means `git status` no longer shows it, and the tree diff above is now the only thing that would.**
+
 ## Three S1 warnings were suppressed whenever the model wrote its own summary — fixed 2026-07-28 (item 21)
 `_closing_doc_summary` returned early on `if existing and not preamble_only`, discarding the **whole** of `_doc_tool_summary` — item 3's `stale_values`, 2a's `fidelity` and 2b's `known_facts`. The finetune-break path had the same gate. **The user had been told what happened, but not that it was wrong.**
 
