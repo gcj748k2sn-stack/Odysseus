@@ -154,6 +154,19 @@ during the stream, and did not cover a save-path regex in
   bound what it can do, not merely assert it exists.
 - **A guard that passes in the failing case is not a guard.** Check it fails
   before you check it passes.
+- **A REPRODUCTION that makes the maintainer act can destroy data, and it is
+  handed over with none of the caution an acting guard gets.** The item 31(b)
+  procedure — *"select all, delete, then close the tab before the save lands"* —
+  emptied **four documents** on 2026-07-31, one of them 18,237 characters,
+  because the network throttle that was the entire safety mechanism silently
+  did not take. They turned out to be disposable test fixtures and all four
+  were recoverable from `document_versions` anyway — **but nothing in the
+  procedure knew either of those things.** That is luck twice over, not design.
+  **Any repro that deletes, empties or
+  closes must say which throwaway object to do it on, and must name the check
+  that the safety mechanism is actually engaged** — here, *type one character
+  and confirm no `[doc-save]` line appears*. **An unverified precondition is
+  not a precondition.**
 - **Measure a detector by MUTATING it, not by running it.** Running the shipped
   version over the corpus tells you it fires; breaking one branch and re-running
   tells you which branch is doing the work. The payload-as-text guard: the
