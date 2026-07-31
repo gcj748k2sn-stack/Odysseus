@@ -136,7 +136,30 @@ class WebFetchTool:
 
         if not text:
             if err:
-                return {"error": f"web_fetch: {url}: {err}", "exit_code": 1}
+                # A suppressed re-fetch must be visible in BOTH directions or
+                # the negative cache is unfalsifiable: the model cannot tell it
+                # is being handed a memory rather than a fresh 403, and
+                # `app.db` cannot tell a request that was skipped from one that
+                # left the machine and failed again. The success path has
+                # carried these labels since the frozen-device incident; the
+                # failure path never had them because failures were never
+                # cached. See services/search/content.py, negative cache.
+                failed = {"error": f"web_fetch: {url}: {err}", "exit_code": 1}
+                if result.get("cached"):
+                    age = result.get("cache_age_seconds")
+                    age_txt = (
+                        f"{age // 60} min {age % 60} s ago"
+                        if isinstance(age, int) else "earlier"
+                    )
+                    failed["error"] += (
+                        f" [this URL already failed {age_txt} and was NOT re-requested"
+                        f" — a remembered failure, not a fresh attempt."
+                        f" Another source is more likely to help than a retry.]"
+                    )
+                    failed["cached"] = True
+                    failed["cached_at"] = result.get("cached_at")
+                    failed["cache_age_seconds"] = result.get("cache_age_seconds")
+                return failed
             return {"error": f"web_fetch: {url}: no readable text content (not HTML, or the page needs JS/login)", "exit_code": 1}
 
         # Tell the model when the download budget cut the body short and how

@@ -9,6 +9,8 @@ import re
 import logging
 import socket
 import ssl
+import threading
+from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import Iterable, List, cast
 from urllib.parse import urljoin, urlparse
@@ -570,6 +572,123 @@ def _empty_result(url: str, error: str = "") -> dict:
 
 
 # ----------------------------------------------------------------------
+# Negative cache — URLs whose failure is not worth re-discovering
+# ----------------------------------------------------------------------
+# A SUCCESSFUL fetch is cached for 2 h. A FAILED one was not cached at all, so
+# a URL that fails the same way every time was re-requested every time it
+# appeared. Measured 2026-07-31 in session 93c1c383: one ResearchGate URL
+# returning 403 was fetched FOUR times inside a single agent turn — three
+# because ``web_search`` fetches its own top results (services/search/core.py)
+# and that URL ranked top-3 for all three queries, plus one explicit
+# ``web_fetch``. Requests 2, 3 and 4 could not have returned anything the
+# first did not, and the turn ended having gathered nothing.
+#
+# ⚠️ ONLY non-transient statuses are stored. A 429 is a rate limit, a 5xx is
+# the server having a bad minute, and a network error is a network error —
+# caching any of those converts a blip into a self-inflicted outage for that
+# URL. That is the failure mode this cache could introduce, so the status set
+# is a closed allowlist rather than "anything that raised".
+_PERMANENT_HTTP_STATUSES = frozenset({401, 403, 404, 410, 451})
+_NEGATIVE_CACHE_TTL = timedelta(minutes=30)
+_NEGATIVE_CACHE_MAX_ENTRIES = 512
+
+# url -> (status, error_text, stored_at). Ordered so the eviction below is
+# oldest-first. In memory rather than on disk: it clears on restart, it cannot
+# be poisoned by a stray script the way data/cache/content/ once was (see
+# docs/qwensetup.md, "never call fetch_webpage_content() against the live
+# tree"), and there is nothing to clean up.
+_negative_cache: "OrderedDict[str, tuple]" = OrderedDict()
+
+# ⚠️ This IS touched concurrently. `comprehensive_web_search` fetches its top
+# results through a ThreadPoolExecutor (services/search/core.py), which is the
+# very path that produced the repeated 403s — so the parallel case is the
+# normal case here, not an edge one. Individual dict operations are atomic
+# under the GIL, but the read-then-evict sequence below is not, and neither is
+# lookup's expire-then-pop. Guard the whole sequence rather than relying on
+# the GIL for a compound operation.
+_negative_cache_lock = threading.Lock()
+
+# Hosts that are being actively worked on must not be remembered as broken.
+# A LAN device answering 403 today is the exact case where the user changes
+# something and immediately retries — an ESP32, a NAS, a dev server behind
+# auth. Deliberately DNS-free: only IP literals and local-sounding suffixes
+# count, so this can never cost a resolution on the hot path. Getting it wrong
+# in the "not local" direction is harmless (the URL is simply cached, which is
+# the point); getting it wrong the other way only means no caching, i.e. the
+# behaviour that shipped before this block existed.
+_LOCAL_HOST_SUFFIXES = (".local", ".lan", ".internal", ".home", ".localdomain")
+
+
+def _is_local_target(url: str) -> bool:
+    """True for loopback/RFC-1918 literals and local-sounding hostnames."""
+    try:
+        host = (urlparse(url).hostname or "").strip().lower()
+    except Exception:
+        return False
+    if not host:
+        return False
+    if host == "localhost" or host.endswith(_LOCAL_HOST_SUFFIXES):
+        return True
+    try:
+        return _is_private_address(ipaddress.ip_address(host))
+    except ValueError:
+        # Not an IP literal, and not a local suffix. Treat as remote without
+        # resolving it — see the note above on which direction is safe.
+        return False
+
+
+def _negative_cache_lookup(url: str) -> "dict | None":
+    """A remembered permanent failure for ``url``, or None to go to the network.
+
+    The returned dict carries the SAME ``error`` string a live failure would,
+    so nothing downstream has to learn a second shape, plus the ``cached`` /
+    ``cached_at`` / ``cache_age_seconds`` labels the positive cache already
+    uses. **The labels are the point.** An unlabelled cache hit is
+    indistinguishable from a live call in ``app.db`` — that mistake has already
+    been made once here and produced a wrong conclusion about a frozen device.
+    """
+    with _negative_cache_lock:
+        entry = _negative_cache.get(url)
+        if entry is None:
+            return None
+        status, error_text, stored_at = entry
+        age = datetime.now() - stored_at
+        if age >= _NEGATIVE_CACHE_TTL:
+            _negative_cache.pop(url, None)
+            return None
+    served = _empty_result(url, error_text)
+    served["cached"] = True
+    served["cached_at"] = stored_at.isoformat()
+    served["cache_age_seconds"] = int(age.total_seconds())
+    served["http_status"] = status
+    return served
+
+
+def _negative_cache_store(url: str, status: int, error_text: str) -> bool:
+    """Remember a permanent failure. Returns whether it was stored."""
+    if status not in _PERMANENT_HTTP_STATUSES or _is_local_target(url):
+        return False
+    with _negative_cache_lock:
+        _negative_cache.pop(url, None)
+        _negative_cache[url] = (status, error_text, datetime.now())
+        while len(_negative_cache) > _NEGATIVE_CACHE_MAX_ENTRIES:
+            _negative_cache.popitem(last=False)
+    return True
+
+
+def clear_negative_cache() -> None:
+    """Drop every remembered failure — the manual retry path.
+
+    Exported from ``services.search`` so a user or caller who has just fixed
+    whatever was returning 401/403 can force the next fetch to leave the
+    machine, instead of waiting out the TTL. Without an export this docstring
+    would be describing a path that does not exist.
+    """
+    with _negative_cache_lock:
+        _negative_cache.clear()
+
+
+# ----------------------------------------------------------------------
 # Main content fetcher
 # ----------------------------------------------------------------------
 def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
@@ -622,6 +741,15 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
             cache_file.unlink(missing_ok=True)
             content_cache_index.pop(cache_key, None)
 
+    # A URL that already failed permanently is not worth another round trip.
+    # Checked AFTER the positive cache (a good body always wins) and before the
+    # network. Keyed on the URL alone, not on the byte budget the positive
+    # cache keys on: a 403 does not become a 200 because the caller raised
+    # `full`, and a size failure is not stored here at all.
+    remembered_failure = _negative_cache_lookup(url)
+    if remembered_failure is not None:
+        return remembered_failure
+
     # Fetch
     try:
         headers = {
@@ -645,7 +773,9 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
         return _empty_result(url, f"TooLarge: {e}")
     except httpx.HTTPStatusError as e:
         error_logger.warning(f"HTTP {e.response.status_code} fetching {url}: {e}")
-        return _empty_result(url, f"HTTP {e.response.status_code}: {e}")
+        _error_text = f"HTTP {e.response.status_code}: {e}"
+        _negative_cache_store(url, e.response.status_code, _error_text)
+        return _empty_result(url, _error_text)
     except httpx.RequestError as e:
         error_logger.error(f"NetworkError fetching {url} (attempt {retry_attempt}): {e}")
         return _empty_result(url, f"NetworkError: {e}")
