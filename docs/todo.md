@@ -96,9 +96,9 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 >
 > **Closed and off this list:** item 11 (2026-07-28, built), item 22 (2026-07-28, disproved and retired), item 24 (2026-07-29, fixed).
 >
-> **Suite: measured `2 failed, 5775 passed, 4 skipped` in 109.30 s on the M1, 2026-07-30 17:5x** — 5,781 collected, item 18 only, both pre-existing. **Measured against a clean tree** (`git archive HEAD | tar -x` + `diff -rq` reports no drift), so unlike the reading below it describes what is committed. **Reconciles exactly: 5,774 → 5,781 is +7, item 32's seven tests, nothing else moved.**
+> **Suite: `0 failed` as of 2026-07-31 — the first clean run in this project's record.** Item 18's two CAS tests had never executed (`AttributeError` on a closure) and now do; **mutation-verified** by deleting `Document.version_count == base_version` from the CAS filter and watching exactly those two fail. ⚠️ **Every note in these files written before 2026-07-31 says "expect 2 failed". Those are historical. A failure now is a real one**, and "the usual two" is no longer available to wave one through.
 >
-> *(Superseded, kept for the arithmetic it warns about.)* **Suite: measured `2 failed, 5768 passed, 4 skipped` in 109 s on the M1, 2026-07-29 21:2x** — 5,774 collected, item 18 only, both pre-existing. ⚠️ **This was run in the working tree, which held item 29's 16 uncommitted tests.** `HEAD` after `4a2dfdd0` collects **5,758** and passes **5,752** — subtract them before comparing this line to a clean clone, and **re-measure rather than adjusting once item 29 lands.** *(Prior readings: `5738/5744` earlier the same day, `5588` on 07-28, `5433` before ~1939 upstream commits. The `5,711` once predicted from a sandboxed `--collect-only` was 33 low — replace this line with a measurement, never a prediction.)* Item 8's active half stays parked — read its ❌ bullet first.
+> **Collection counts, for the arithmetic they enable:** 5,781 collected / 5,775 passed on 2026-07-30 (M1, 109.30 s, clean tree); prior readings 5,774 → 5,758 → 5,588 → 5,433. ⚠️ **Two traps in that series, both paid for.** A run in the working tree counts uncommitted tests — the 07-29 reading included item 29's 16 — so **compare only against a clean tree** (`git archive HEAD | tar -x` + `diff -rq`). And **a `--collect-only` prediction was 33 low**: replace this line with a measurement, never a prediction.
 
 ---
 
@@ -142,7 +142,7 @@ Run 127d32b0: 8 edits fixed the prose and missed the summary table, leaving four
 
 ## S2 — silent loss
 
-### 30. Switching chats writes the editor buffer into the other chat's document
+### 30. ~~Switching chats writes the editor buffer into the other chat's document~~ ✅ CLOSED 2026-07-30
 **Found 2026-07-30 while collecting item 20's five runs. An AI-written document was destroyed and a second chat's document was overwritten with content it never contained.** Not item 1 — that was a duplicate `doc_update` inside a single tool call, and it stays closed. This is cross-session carry-over, and the pair is reciprocal (#1↔#30).
 
 **Proven by hash, not inferred.** `document_versions.source` records who wrote each version:
@@ -359,7 +359,7 @@ The 21:27 trace goes straight from `chipRestore` to `switchToDoc`, with no `[doc
 
 - **Fix, not yet built, and deliberately not built yet.** *Measure first.* If `[doc-put-404]` shows the path still firing, the fix is two lines — clear `_streamDocId` where the map entry is dropped, in the 404 reaper and in `loadSessionDocs` — plus a cleanup hook on the stream's `finally` (`static/js/chat.js:3923`, the one exit every stream passes through, including abort, error and background). If it does not fire, this item may close as bounded by the reaper. ⚠️ **The teardown must not persist anything** — [`resolvedissues.md`](resolvedissues.md), *"Empty document writes destroyed a document"*: a teardown that saves is how a 6,186-character document was wiped, and this one runs when the user has just navigated away. ⚠️ **A cleanup on abort must not kill a legitimately backgrounded stream** — `chat.js:4480` replays a background document stream by calling `streamDocOpen` again, so the abort path and the detached-run path are not the same event.
 
-### 32. A scheduled tidy hard-deletes "duplicate" documents, versions and all
+### 32. ~~A scheduled tidy hard-deletes "duplicate" documents, versions and all~~ ✅ CLOSED 2026-07-30
 **Found 2026-07-30 while re-checking item 31's evidence. This is what actually destroyed the 8 documents, and it is the only unrecoverable path in the whole 30/31/32 complex** — everything else soft-deletes or leaves a `document_versions` row to restore from. The maintainer **paused the task** on 2026-07-30 once this was found.
 
 **It is not inferred. The run says so:**
@@ -398,7 +398,7 @@ task_runs  ad505282-1f59-4a5f-a345-61b5a6f5c5d5   task 0a71978a "Documents Tidy"
 Each mutation kills a **different** test and the negative controls stay green in all three states, so no test is passing for the wrong reason. The junk test also asserts the `DocumentVersion` rows survive — the `all, delete-orphan` cascade is what made the original deletion unrecoverable, so "the row is still there" is not enough.
 
 - ⚠️ **`tests/test_document_tidy_null_timestamp.py` asserted `count() == 1`, which pinned the hard delete** — a test written for the NULL-timestamp sort crash had quietly become the contract for destroying a row. Updated to assert both rows survive with exactly one archived; the property it exists for is untouched.
-- ✅ **M1 suite, 2026-07-30 17:5x: `2 failed, 5775 passed, 4 skipped` in 109.30 s**, item 18 only. **The count reconciles exactly:** 5,781 collected against 5,774 before this work — **+7, the seven tests above** — so nothing else shifted under the change. *(The earlier sandbox run on unpinned Linux deps is superseded and should not be quoted.)*
+- ✅ **M1 suite, 2026-07-30 17:5x: `2 failed, 5775 passed, 4 skipped` in 109.30 s**, item 18 only *(both since fixed — the suite is `0 failed` as of 2026-07-31)*. **The count reconciles exactly:** 5,781 collected against 5,774 before this work — **+7, the seven tests above** — so nothing else shifted under the change. *(The earlier sandbox run on unpinned Linux deps is superseded and should not be quoted.)*
 - ✅ **VERIFIED LIVE 2026-07-30 17:31:08, and it caught the right document.**
 
   ```
@@ -606,13 +606,13 @@ grep -n '^_AGENT_RULES = \|^_API_AGENT_RULES = ' src/agent_loop.py   # 4 hits, 2
 ### 13. Terminal access-log noise
 Every request prints, so real errors scroll away — worst during polling (`/api/research/status/<id>`, `/api/chat/stream_status/<id>`). **Got in the way twice on 2026-07-19** while confirming PUT traffic during the editor investigation. Hide 200s; hide 304s behind their own toggle, since a 304 storm is how you spot a stale-cache bug. Don't use `--no-access-log` (kills 4xx/5xx) — add a `logging.Filter` on `uvicorn.access` keyed by status, wired at `app.py:1281`, `launcher.py:142`, `start-macos.sh:292`, with an `access_log_hide_statuses` setting.
 
-### 18. Two tests in `test_document_put_version_conflict.py` have never passed
+### 18. ~~Two tests in `test_document_put_version_conflict.py` have never passed~~ ✅ CLOSED 2026-07-31
 `test_concurrent_ai_edit_after_read_loses_the_swap` and `test_losing_swap_does_not_leave_a_partial_version_row` both patch `droutes._reserve_document_uploads`, which is defined at `routes/document_routes.py:82` **nested inside `setup_document_routes()`**. It is a closure, never a module attribute, so the lookup raises `AttributeError` and can never have worked.
 
 - **Third instance of the item 16 shape, and the least dangerous kind** — here the test fails loudly. Item 16's orphan failed *green*, which is why that one is the priority.
 - ❌ **"Fixing it is a design decision, not a repair" was wrong — retracted 2026-07-31.** The three options filed (expose the closure, inject it, drive through the endpoint) missed a fourth that needs **no production change**: the closure's entire body is a call to `reserve_upload_references`, imported at `routes/document_routes.py:15` — a real module attribute — and invoked **unconditionally** at `:83` (the `upload_handler is None` early return lives *inside* that function, so the call happens even with the test's `MagicMock(), None` wiring). Patching it lands in the identical window: after `base_version = doc.version_count` (`:697`), before `db.add(ver)` (`:741`) and the compare-and-swap (`:754`). **The hook the test wanted was one level down the whole time.**
 - ✅ **Fixed and MUTATION-VERIFIED on the M1, 2026-07-31.** Both tests, plus a `fired` guard on the second — its old body reassigned `droutes._reserve_document_uploads` to undo itself, which was a *second* route to the same missing attribute; `monkeypatch` already restores. **The suite ran clean, then the `, Document.version_count == base_version` clause was deleted from the CAS filter (`routes/document_routes.py:756`) and the same two tests FAILED**, then passed again once it was restored. So they exercise the compare-and-swap rather than passing for a weaker reason — [`CLAUDE.md`](../CLAUDE.md) §3, checked failing before checked passing. **The mutation is written down here because a score without its mutation is a number nobody can re-derive.**
-- ⚠️ **When this lands, the suite's `2 failed` baseline goes to 0.** That figure has been the standing "expected" reading in every session note here; **once it is gone, any failure is a real one**, and a note saying "expect 2 failed" becomes a way to wave away a regression.
+- ✅ **It landed: the suite's `2 failed` baseline is now `0`** — the first clean run in this project's record. **Any failure from here is a real one**, and "the usual two" is no longer available to wave one through. Every note written before 2026-07-31 that says *"expect 2 failed"* is historical.
 - ⚠️ **Do not "fix" these by deleting them.** They cover the CAS race item 1 spent three diagnoses on: an AI edit landing between the handler's read and its write. That case needs coverage; what's broken is how the test reaches it.
 
 ### 25. A path-confinement test passes without the mechanism it tests
@@ -624,7 +624,7 @@ Every request prints, so real errors scroll away — worst during polling (`/api
 - **Fix is a negative control, not a rewrite:** assert the same path is rejected when `tool_path_extra_roots` is empty. That is the assertion the test's own docstring already claims to make.
 - ⚠️ **Do not "fix" it by moving the fixture out of `tmp_path` without checking the roots list first** — see item 26, where the same coupling runs the other way.
 
-### 26. Test litter in the repo root, kept invisible by `ignore_errors=True`
+### 26. ~~Test litter in the repo root, kept invisible by `ignore_errors=True`~~ ✅ CLOSED 2026-07-31
 `tests/test_chat_helpers.py:176` (`_manifest_test_dir`) builds fixtures at `<repo root>/tmp_pytest_probe/<name>-<uuid4>`. Both callers clean up in a `finally` — with `shutil.rmtree(root, ignore_errors=True)`. **The cleanup ran, failed, and the flag discarded the failure.** Four directories accumulated from two runs on 2026-07-28; `uuid4()` means every run adds rather than reuses.
 
 ⚠️ **State refreshed 2026-07-29 — the four subdirectories are gone, deleted on the M1 where the mount restriction does not apply.** So the visible symptom was cleared and the defect was not: the next suite run on a machine that cannot unlink re-creates it. **Do not read the empty directory as a fix.**
