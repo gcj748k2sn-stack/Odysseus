@@ -33,7 +33,8 @@ UPDATE model_endpoints SET supports_tools=1 WHERE base_url LIKE '%11434%';
 ```
 
 **3. Sampling.** The "custom" preset resets to temp=1.0 on every new session; re-check it (high temp → hallucinated bash instead of tool calls).
-- **Current (9B, thinking ON):** temp **0.6**, top_p 0.95, max_tokens 8192. Do NOT drop to 0.2 — Qwen warns that near-greedy sampling in thinking mode causes endless repetition.
+- **Current (9B, thinking ON):** temp **0.6**, top_p 0.95, max_tokens **8192**. Do NOT drop to 0.2 — Qwen warns that near-greedy sampling in thinking mode causes endless repetition.
+- ⚠️ **This line states the INTENDED setting; the slider has repeatedly not matched it.** Measured across `app.log*`: `max_tokens=4352` (61 rounds), `8192`, `6656`, `6400`, `6144`, `4096`, and **`0` (179 rounds)**. Temperature matched 0.6 throughout, so it is the token cap that drifts. **`max_tokens` is per ROUND and thinking is spent from the same budget**, so a long document — emitted as one tool call in one round — is where a low cap bites; measured whole-turn output is median 1,111 / p95 3,785 / max 9,043 tokens (n=176, real usage), and per-round need is lower still. **8192 costs nothing to over-provision** (it is a ceiling, not a reservation) and at 64k context still leaves ~57k for input. ⚠️ **`max_tokens=0` travels with `Preset None: temp=1.0`** — the reset described above, i.e. the setting that produces hallucinated bash instead of tool calls. 🔴 **A clipped generation is currently undetectable — `finish_reason` is recorded nowhere** ([todo.md](todo.md) item 41), so a truncated document is indistinguishable from a short one and no measurement here can tell you the cap bound.
 - Thinking-off escape hatch, if ever needed: temp 0.3, top_p 0.8, max_tokens 6400.
 
 **4. ChromaDB (port 8100, tool RAG) — venv breaks if the repo folder moves** (absolute paths). Fix: `rm -rf venv && ./start-macos.sh`. Note: rebuilds wipe extra pip packages (see Web search below).
