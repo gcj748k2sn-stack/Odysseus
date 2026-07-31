@@ -753,7 +753,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             update_values["version_count"] = new_ver
             matched = (
                 db.query(Document)
-                .filter(Document.id == doc_id)
+                .filter(Document.id == doc_id, Document.version_count == base_version)
                 .update(update_values, synchronize_session=False)
             )
             if not matched:
