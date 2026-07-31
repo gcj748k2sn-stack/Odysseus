@@ -8,6 +8,17 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## Closing a document tab overwrote a *different* document — closed 2026-07-31 (item 31)
+`_detachDocFromSession(docId)` called `saveDocument()`, which takes no target and writes `activeDocId` — so closing tab X issued a PUT for whatever document was *active*, carrying the current buffer. **(a)** fixed by saving only when `docId === activeDocId`; verified live 2026-07-30 16:02. **(b)** `hasContent` inferred emptiness from the in-memory map alone, so a document whose stored content was intact took the DELETE branch; fixed by also requiring `lastSyncedContent` to be empty.
+
+✅ **(b) verified live 2026-07-31 16:55 CEST, after three failed attempts.** Two closes, `detachDoc` recording **`mapLen:0, syncedLen:5, hasContent:true`** and **`mapLen:0, syncedLen:9270, hasContent:true`** — the discriminating state. **No `[doc-del]` for either; `[doc-put] len=0` instead, and both rows are still `is_active=1`.** Pre-fix, `hasContent` was `mapLen > 0` alone and both would have been soft-deleted.
+
+- **The three failed attempts became the negative control, and it is a better one than anything designed.** The 12:01:58 and 12:07:55 closes the same day recorded `syncedLen:0` and **did** produce `[doc-del]` — *same procedure, same code, different `syncedLen`, different branch.* **The fix is discriminating, not merely present.**
+- ❌ **Two of the three original claims were wrong and the headline number belonged to something else.** The item said this path *"can hard-DELETE a document whose stored content is intact"* and cited **70 → 62** rows. `DELETE /api/document/{id}` is a **soft** delete; the 8 destroyed rows were the Documents Tidy action (item 32), and `70 → 62` is that task run's own result string. **(c)** — that this path produces session-less documents — retracted: `session_id → NULL` comes from session deletion.
+- ⚠️ **The reproduction took three attempts and the first two destroyed content, because the safety mechanism I specified was inapplicable.** Safari's network throttling does not affect loopback, and this app runs on `127.0.0.1`. **The real window is the 2-second autosave debounce, not a network round-trip** — ⌘A, Delete, then close the tab within 2 seconds. The tell that an attempt did not count is a `[doc-save] … len=0` line before the close. See `CLAUDE.md` §3, *a reproduction that makes the maintainer act can destroy data*.
+- **Clocks:** trace `14:55:17.293` UTC ↔ `app.log` `16:55:17,313` CEST, 20 ms apart. Second event this day tying both clocks together.
+- ⚠️ **This does NOT verify item 33**, which applies the same rule in `switchToDoc`. Different function, different caller, still unexercised.
+
 ## Tests asserting a security property nothing enforced — audit completed 2026-07-31 (item 16)
 `_public_http_url()` in `services/search/content.py` had no production callers while `tests/test_search_content_url_guards.py` asserted **3 of 3** cases against it and `test_web_fetch_size_caps.py` monkeypatched it to a no-op. **The live SSRF guard had no coverage at all and the suite was green throughout.** Fixed 2026-07-27 by making the orphan a thin delegate over `_resolve_public_ips`, so the assertions exercise the live path and the two cannot drift again. Find it with `git log -S_public_http_url -- services/search/content.py`.
 
