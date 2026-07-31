@@ -2,6 +2,7 @@ import asyncio
 import os
 import shutil
 import uuid
+import warnings
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -173,9 +174,39 @@ class _ManifestUploadHandler:
 
 
 def _manifest_test_dir(name):
+    # The repo-root location is LOAD-BEARING, not litter. DATA_DIR is
+    # <repo>/data, so a repo-root path sits outside every entry in
+    # _tool_path_roots() — which is the only reason the tool_path_extra_roots
+    # patch below discriminates. Under tmp_path every assertion still passes
+    # and the patch stops mattering, i.e. the test goes green for a weaker
+    # reason. See docs/todo.md items 25 and 26, and CLAUDE.md §4.
     root = Path(__file__).resolve().parents[1] / "tmp_pytest_probe" / f"{name}-{uuid.uuid4().hex}"
     root.mkdir(parents=True, exist_ok=False)
     return root
+
+
+def _cleanup_manifest_dir(root):
+    """Remove a fixture tree, and SAY SO when it survives.
+
+    ``shutil.rmtree(root, ignore_errors=True)`` reads as "cleanup is handled"
+    and means "cleanup may or may not have happened, and you will not be
+    told". Four fixture directories accumulated in the repo root that way
+    (docs/todo.md item 26): a sandboxed run cannot unlink under the mount, the
+    rmtree raised ``PermissionError``, and the flag discarded it.
+
+    This must not fail the test — the sandbox genuinely cannot delete, and that
+    is the environment's limitation, not the suite's. It must not be silent
+    either. So: warn, name the path, and leave the tree for the maintainer,
+    which is what CLAUDE.md §1 asks for about anything a sandboxed run leaves
+    behind.
+    """
+    try:
+        shutil.rmtree(root)
+    except OSError as exc:
+        warnings.warn(
+            f"fixture tree not removed, left at {root}: {exc}",
+            stacklevel=2,
+        )
 
 
 def test_build_uploaded_file_manifest_filters_and_nulls_unreadable_paths(monkeypatch):
@@ -248,7 +279,7 @@ def test_build_uploaded_file_manifest_filters_and_nulls_unreadable_paths(monkeyp
             ("bad", "alice"),
         ]
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        _cleanup_manifest_dir(root)
 
 
 def test_build_uploaded_file_manifest_hides_paths_read_file_cannot_open(monkeypatch):
@@ -271,7 +302,7 @@ def test_build_uploaded_file_manifest_hides_paths_read_file_cannot_open(monkeypa
 
         assert manifest[0]["path"] is None
     finally:
-        shutil.rmtree(root, ignore_errors=True)
+        _cleanup_manifest_dir(root)
 
 
 @pytest.mark.parametrize("name,expected", [
