@@ -8,6 +8,19 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-07-31 — context window raised 32k → 64k
+
+**Scope: config and docs only. No source changed, no item closed.** Maintainer asked whether `qwen3.5:9b` could run a bigger context; the answer was measured before anything was built.
+
+- ✅ **`qwen3.5:9b-64k` created (`num_ctx 65536`) and verified at load** — `ollama show` → `num_ctx 65536`; `ollama.log` → `offloaded 34/34 layers to GPU`, `n_ctx_slot = 65536`, prompt served. **Fully on GPU at 64k on the 16 GB M1 Pro.** `qwen3.5:9b-32k` kept as fallback.
+- ✅ **Measured the corpus before changing anything, and it argued for a smaller raise than the one made.** 104 `request_context_tokens` rows: median 11,724, p95 22,713, max 40,857 — **2 of 104 over 32,768, zero over 49,152.** 48k covers every recorded turn; 64k is headroom. **The overflow item 9b rests on is 1.9 % of turns, not a standing condition.**
+- **A real defect surfaced by the arithmetic, not by a failure:** at 32,768 with `max_tokens 8192`, input room is 24,576 while the auto budget is 27,852 — **the app could assemble prompts that cannot fit alongside a full-length answer.** 64k removes the overlap. Nobody had noticed because it degrades quietly.
+- ⚠️ **The check I specified as "the one that matters" returned nothing and I nearly wrote the result up anyway.** `ollama ps` printed **headers with no rows**, so footprint and the `100% GPU` column are **unmeasured**; `offloaded 34/34` answers a different question. **The load was also measured on an empty machine — 64k co-resident with `nemotron-3-nano:4b` + `all-minilm` is untested**, and that is the steady state. Recorded as unverified in [qwensetup.md](qwensetup.md) rather than rounded up to "verified".
+- ⚠️ **New arrival path for item 9b's symptom:** if the 64k KV stops fitting, layers spill to CPU, throughput collapses and the inactivity timeout fires — **a memory fault presenting as a 504.** `grep offloaded …/ollama.log | tail -3` is the discriminator, noted in both files.
+- 🆕 **Open question, not chased:** an empty `ollama ps` straight after a successful `ollama run` contradicts `OLLAMA_KEEP_ALIVE=30m`. Either the variable does not reach the brew-managed server or the model unloads early. **Left as a question rather than a finding.**
+- **Owed:** update `default_model` / `research_model` **in the UI, not `settings.json`** (the save path rewrites the file from memory); then `ollama ps` during a real chat.
+- **Edited:** `docs/qwensetup.md` (Models, Context window), `docs/todo.md` (item 9b amendments, 9b summary row, two *Notes & constraints* entries), this file. Two settled facts written down that were previously only derivable from source: the name suffix is the *only* channel for the served window, and `agent_input_token_budget`'s default value is the auto sentinel.
+
 ## 2026-07-31 — later session (the 30/31/32/33 cluster closed)
 
 **19 open → 12, 40 rows. Closed 5, 16, 18, 26, 31, 33, 36; retired 37 and 38; filed 34's amendments and 35. Suite went from a standing `2 failed` to `0`.** The document-corruption cluster that has dominated since 07-29 is finished apart from item 34's frequency count and item 35's owed verification. Detail is in [todo.md](todo.md) and [resolvedissues.md](resolvedissues.md); what follows is scope and method only.
