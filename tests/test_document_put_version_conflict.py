@@ -182,7 +182,15 @@ async def test_concurrent_ai_edit_after_read_loses_the_swap(monkeypatch):
     put = _endpoint("PUT", "/api/document/{doc_id}")
     doc_id = _seed(content="v3 body", version_count=3)
 
-    original = droutes._reserve_document_uploads
+    # Patch `reserve_upload_references`, NOT `_reserve_document_uploads`.
+    # The latter is a closure nested in setup_document_routes() and never a
+    # module attribute, so the old patch raised AttributeError on this line and
+    # these two tests had never once run (docs/todo.md item 18). The closure's
+    # whole body is a call to reserve_upload_references, imported at
+    # routes/document_routes.py:15 and invoked unconditionally, so patching it
+    # lands in the identical window: after `base_version = doc.version_count`,
+    # before `db.add(ver)` and the compare-and-swap.
+    original = droutes.reserve_upload_references
     fired = {"done": False}
 
     def _interleave(*args, **kwargs):
@@ -200,7 +208,7 @@ async def test_concurrent_ai_edit_after_read_loses_the_swap(monkeypatch):
                 db.close()
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(droutes, "_reserve_document_uploads", _interleave)
+    monkeypatch.setattr(droutes, "reserve_upload_references", _interleave)
 
     with pytest.raises(HTTPException) as exc:
         await put(_req(None), doc_id, DocumentUpdate(content="stale v3 content", base_version=3))
@@ -223,20 +231,26 @@ async def test_losing_swap_does_not_leave_a_partial_version_row(monkeypatch):
     put = _endpoint("PUT", "/api/document/{doc_id}")
     doc_id = _seed(content="body", version_count=1)
 
-    original = droutes._reserve_document_uploads
+    # See the note in the test above — same reason, same window.
+    original = droutes.reserve_upload_references
+    fired = {"done": False}
 
     def _interleave(*args, **kwargs):
-        db = _TS()
-        try:
-            d = db.query(Document).filter(Document.id == doc_id).first()
-            d.version_count = 9
-            db.commit()
-        finally:
-            db.close()
-        droutes._reserve_document_uploads = original
+        # Guarded rather than self-restoring: the old body reassigned
+        # droutes._reserve_document_uploads to undo itself, which was a second
+        # route to the same missing attribute. monkeypatch already restores.
+        if not fired["done"]:
+            fired["done"] = True
+            db = _TS()
+            try:
+                d = db.query(Document).filter(Document.id == doc_id).first()
+                d.version_count = 9
+                db.commit()
+            finally:
+                db.close()
         return original(*args, **kwargs)
 
-    monkeypatch.setattr(droutes, "_reserve_document_uploads", _interleave)
+    monkeypatch.setattr(droutes, "reserve_upload_references", _interleave)
 
     with pytest.raises(HTTPException) as exc:
         await put(_req(None), doc_id, DocumentUpdate(content="new body", base_version=1))
