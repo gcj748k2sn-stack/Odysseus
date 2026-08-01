@@ -1265,6 +1265,13 @@ _THINKING_MODEL_PATTERNS = (
     "qwen3", "qwq", "deepseek-r1", "deepseek-reasoner", "minimax",
     "m2-reap", "gemma", "stepfun", "step-3", "step3",
     "magistral", "mistral-small", "mistral-medium",
+    # "nemotron" added 2026-08-01 — docs/todo.md item 44. Its absence meant no
+    # thinking suppression was ATTEMPTED for the utility model, and the
+    # measurement says that cost ~220 tokens of a 200-token budget:
+    # `/api/documents/ai-tidy` returned `finish_reason=length chars=0` every
+    # run, while the same call at 700 finished cleanly after ~300 generated
+    # tokens for an 80-token answer.
+    "nemotron",
 )
 
 def _supports_thinking(model: str) -> bool:
@@ -1276,8 +1283,11 @@ def _supports_thinking(model: str) -> bool:
 
 
 # Qwen hybrid-reasoning models (Qwen3 family, QwQ). Deliberately narrower than
-# _THINKING_MODEL_PATTERNS: Ollama rejects a `think` param for models without
-# the thinking capability, so only send it where we know it's supported.
+# _THINKING_MODEL_PATTERNS: Ollama rejects `reasoning_effort` for models
+# without the thinking capability, so only send it where we know it is
+# supported. (This comment said "a `think` param" until 2026-08-01; the gate
+# below has only ever controlled `reasoning_effort` — `think` is sent outside
+# it. Corrected, not changed.)
 _QWEN_THINKING_PATTERNS = ("qwen3", "qwq")
 
 
@@ -1286,6 +1296,21 @@ def _is_qwen_thinking_model(model: str) -> bool:
         return False
     m = model.lower()
     return any(p in m for p in _QWEN_THINKING_PATTERNS)
+
+
+# Models known to accept `reasoning_effort` on Ollama's /v1 endpoint.
+# docs/todo.md item 44. Deliberately a SUPERSET of the Qwen list rather than a
+# rename: `_is_qwen_thinking_model` also gates the agent/streaming path, where
+# widening the set would change chat behaviour, and this fault is on the
+# utility path only. Keep the two separate until something measures the other.
+_REASONING_EFFORT_PATTERNS = _QWEN_THINKING_PATTERNS + ("nemotron",)
+
+
+def _accepts_reasoning_effort(model: str) -> bool:
+    if not model:
+        return False
+    m = model.lower()
+    return any(p in m for p in _REASONING_EFFORT_PATTERNS)
 
 
 def _agent_thinking_disabled() -> bool:
@@ -2102,7 +2127,14 @@ async def llm_call_async(
         # token waste here.
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
-            if _is_qwen_thinking_model(model):
+            # `_accepts_reasoning_effort`, not `_is_qwen_thinking_model`:
+            # docs/todo.md item 44. This is the UTILITY path (naming, summaries,
+            # tidy verdicts) where thinking is pure token waste, and the
+            # utility model was excluded from suppression purely because
+            # "nemotron" was in neither pattern list. The agent/streaming gates
+            # still use the Qwen predicate — widening those would change chat
+            # behaviour and nothing has measured that.
+            if _accepts_reasoning_effort(model):
                 payload["reasoning_effort"] = "none"
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
@@ -2148,10 +2180,18 @@ async def llm_call_async(
                     # [finish-reason] report-only — docs/todo.md item 41.
                     # `llm_call_async` returns a bare `str`, so the only channel
                     # for this is the log; changing the return type would touch
-                    # every caller. Quiet on a clean stop, loud otherwise —
-                    # `length` here is a silently truncated utility result, and
-                    # an empty body with `stop` is the model genuinely saying
+                    # every caller. Quiet when the caller got usable text, loud
+                    # otherwise — `length` is a silently truncated utility
+                    # result, and an empty body with `stop` is the model saying
                     # nothing. Those two are what item 44 could not separate.
+                    #
+                    # The `elif not response` deliberately fires even for
+                    # `tool_calls`: this path sends no `tools` key, so it cannot
+                    # legitimately produce one, and the caller gets `""` either
+                    # way. The reason EXPLAINS the empty body, it does not
+                    # excuse it. A negative control was filed asserting the
+                    # opposite and caught this on its first run —
+                    # tests/test_finish_reason_recorded.py.
                     _fr = _choice0.get("finish_reason")
                     if _fr and _fr not in ("stop", "tool_calls"):
                         logger.warning(
@@ -2177,7 +2217,14 @@ async def llm_call_async(
             await asyncio.sleep(LLMConfig.RETRY_DELAY)
         except (httpx.RequestError, httpx.HTTPStatusError) as e:
             duration = time.time() - start
-            logger.warning(f"LLM async call attempt {attempt} failed after {duration:.2f}s: {e}")
+            # `str(httpx.ReadTimeout())` is EMPTY, so this line read
+            # "failed after 30.02s: " with no reason at all — indistinguishable
+            # from a failure whose message got lost. Name the type.
+            # docs/todo.md item 44.
+            logger.warning(
+                f"LLM async call attempt {attempt} failed after {duration:.2f}s: "
+                f"{type(e).__name__}: {e or '(no message)'}"
+            )
             if attempt >= max_retries:
                 raise HTTPException(502, f"POST {target_url} failed after {max_retries} attempts: {e}")
             await asyncio.sleep(LLMConfig.RETRY_DELAY)

@@ -120,19 +120,31 @@ def test_reasons_sit_beside_stream_errors_not_instead_of_them():
 @pytest.mark.parametrize(
     "finish_reason,content,expect_log",
     [
-        ("stop", "some text", False),        # negative control: the normal case
-        ("tool_calls", "", False),           # negative control: a tool call has no text
-        ("length", "half a sen", True),      # truncated, and it used to be invisible
-        ("stop", "", True),                  # item 44's exact observation
-        (None, "", True),                    # empty with no reason at all
+        ("stop", "some text", False),          # negative control: the normal case
+        ("tool_calls", "some text", False),    # negative control: text arrived, reason is odd, caller is fine
+        ("length", "half a sen", True),        # truncated, and it used to be invisible
+        ("stop", "", True),                    # item 44's exact observation
+        ("tool_calls", "", True),              # see the docstring — this one was filed WRONG first
+        (None, "", True),                      # empty with no reason at all
     ],
 )
 def test_utility_calls_warn_only_when_something_is_wrong(finish_reason, content, expect_log, caplog):
     """`llm_call_async` returns a bare `str`, so the log is the only channel.
 
-    Quiet on a clean stop and on a tool call; loud on a truncation or an empty
-    body. Without the two negative controls a handler that logged on every
-    call would pass every positive case in this file.
+    Quiet when the caller got usable text; loud on a truncation or an empty
+    body. Without the negative controls a handler that logged on every call
+    would pass every positive case in this file.
+
+    ⚠️ **`("tool_calls", "", …)` was filed as a negative control and that was
+    wrong — the control caught it on the first run.** The reasoning that
+    produced it was *"a tool call legitimately has no text, so stay quiet"*.
+    It does not apply here: **`llm_call_async` never sends a `tools` key**
+    (grep the payload builder), so this path cannot legitimately produce a
+    tool call, and whatever the reason the caller receives `""` and proceeds
+    as though the model answered. **An empty body is always the caller's
+    problem; `finish_reason` explains it rather than excusing it** — and the
+    emitted line says `finish_reason='tool_calls'`, so nothing is misleading.
+    The genuine exemption is the row above: a tool-call reason *with* text.
 
     This mirrors the branch in `llm_call_async`; it is asserted here rather
     than by driving an HTTP request so the rule stays readable. ⚠️ That makes

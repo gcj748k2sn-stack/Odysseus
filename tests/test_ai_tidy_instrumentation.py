@@ -177,7 +177,10 @@ async def test_reply_without_array_is_logged_before_the_500(ai_tidy, monkeypatch
     errors = [r for r in _records(caplog) if r.levelno >= logging.ERROR]
     assert errors, "the 500 must not be raised without a logged reason"
     msg = errors[0].getMessage()
-    assert "no JSON array" in msg
+    # Was "no JSON array" until 2026-08-01. The message changed with the
+    # condition: the parser now accepts the `N: verdict` lines the model
+    # actually writes, so reaching here means no verdicts of ANY shape.
+    assert "no verdicts parsed" in msg
     assert "stub-model:4b" in msg, "the model must be named — it is not derivable from app.log otherwise"
 
 
@@ -208,6 +211,14 @@ async def test_malformed_array_is_logged_distinctly(ai_tidy, monkeypatch, caplog
 
     Conflating them is how "the tidy is broken" stays one undiagnosable bug
     instead of two findable ones.
+
+    ⚠️ **This test caught a real regression on 2026-08-01, hours after it was
+    written.** Replacing the inline parse with `_parse_tidy_verdicts` moved the
+    `json.loads` failure *inside* the parser, where it is swallowed so the line
+    form can be tried — which silently collapsed both faults into one message.
+    The distinction is now re-derived at the log site. **The change that broke
+    this looked like a pure refactor and the docstring above is the only reason
+    anyone noticed.**
     """
     _seed(1)
     _stub_llm(monkeypatch, '["junk", ,]')
@@ -217,7 +228,7 @@ async def test_malformed_array_is_logged_distinctly(ai_tidy, monkeypatch, caplog
 
     msgs = [r.getMessage() for r in _records(caplog) if r.levelno >= logging.ERROR]
     assert any("did not parse" in m for m in msgs)
-    assert not any("no JSON array" in m for m in msgs), "the two branches must not both fire"
+    assert not any("no verdicts parsed" in m for m in msgs), "the two branches must not both fire"
 
 
 # --------------------------------------------------------------------------

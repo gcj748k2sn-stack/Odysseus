@@ -67,6 +67,64 @@ def _email_source_key(content: str) -> tuple[str, str]:
     return uid, folder
 
 
+def _parse_tidy_verdicts(response: str) -> Dict[int, str]:
+    """Map document index -> verdict string from an AI tidy reply.
+
+    Two shapes, because the model does not reliably produce the one the prompt
+    asks for — docs/todo.md item 44. Measured 2026-08-01: at `max_tokens=700`
+    `nemotron-3-nano:4b` finished cleanly and returned
+    ``0: keep\\n1: keep\\n2: keep…`` — 28 correct verdicts, no array, no
+    brackets — and the endpoint 500'd anyway. **It would have kept 500ing on an
+    unlimited token budget**, so the cap was never the whole fault.
+
+        ["keep","junk",…]        the requested JSON array — mapped POSITIONALLY
+        0: keep / 1. junk / …    line per index — mapped by the STATED index
+
+    **The stated index is used, never the line's position.** A reply that skips
+    an index must leave that document alone rather than shifting every verdict
+    after it by one — this function decides what gets ARCHIVED, so an off-by-one
+    is a document retired on another document's verdict.
+
+    Returns only indices that carried a recognised verdict; **an unparseable
+    reply returns `{}` and the caller archives nothing.** Verdict strings are
+    returned as written (lowercased) rather than as a boolean, so the caller
+    keeps its existing "anything that isn't `junk` is `keep`" rule and this
+    change stays a parsing change.
+    """
+    import json as _json
+    import re as _re
+
+    text = response or ""
+    if not text.strip():
+        return {}
+
+    # The requested shape first, so its positional semantics are untouched.
+    m = _re.search(r"\[.*?\]", text, _re.DOTALL)
+    if m:
+        try:
+            parsed = _json.loads(m.group())
+        except Exception:
+            parsed = None
+        if isinstance(parsed, list) and parsed:
+            out = {}
+            for i, v in enumerate(parsed):
+                if isinstance(v, str) and v.strip():
+                    out[i] = v.strip().lower()
+            if out:
+                return out
+
+    # Fall back to what the model actually writes. Anchored per line and
+    # restricted to the two known verdicts: a bare "12: maybe" is not a
+    # verdict, and leaving it unparsed leaves the document unreviewed for the
+    # next run, which is the safe direction.
+    out: Dict[int, str] = {}
+    for line in text.splitlines():
+        lm = _re.match(r"\s*(\d{1,4})\s*[:.)\-]\s*(junk|keep)\b", line, _re.IGNORECASE)
+        if lm:
+            out[int(lm.group(1))] = lm.group(2).lower()
+    return out
+
+
 from routes.document_helpers import (
     DocumentCreate, DocumentUpdate, DocumentPatch,
     _doc_to_dict, _version_to_dict,
@@ -1151,31 +1209,29 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 [{"role": "system", "content": "You classify documents as junk or keep. Respond only with a JSON array."},
                  {"role": "user", "content": prompt}],
                 temperature=0.1,
-                # docs/todo.md item 44. Was 200, and every recorded run came
-                # back `chars=0`. 200 is shared with THINKING (qwensetup.md §3)
-                # and the answer itself needs ~60 (30 verdicts of one word).
-                #
-                # 700 is not a guess at a safe number, it is the measured
-                # headroom: the real 30-document prompt is 12,157 chars ~= 3,039
-                # tokens against the utility model's observed CONTEXT 4096,
-                # leaving 1,057. Raising it further would overflow the window
-                # and trade one silent failure for another.
-                #
-                # ⚠️ This is the DISCRIMINATOR, not the fix. Output appearing
-                # means the cap was the cause; another `chars=0` means it was
-                # not, and the `[finish-reason]` line added for item 41 now
-                # says which. Change nothing else in the same run.
-                max_tokens=700,
+                # docs/todo.md item 44. ⚠️ REVERTED 700 -> 200 on 2026-08-01
+                # after trying it: at 700 the call does not finish inside the
+                # 30 s read timeout below, so it never returns and the
+                # `[finish-reason]` line added for item 41 never gets to speak.
+                # **Raising the cap destroyed the observation it was meant to
+                # produce.** At 200 the call completes in ~20 s, returns, and
+                # the reason is recorded — which is the measurement to take
+                # first. Do not raise this again until the timeout is raised
+                # WITH it, and not in the same run as anything else.
+                max_tokens=200,
                 headers=headers,
+                # ⚠️ Load-bearing, and smaller than the route's own 45 s cap:
+                # at 30 s this times out and retries, and the route gives up
+                # mid-retry. Both numbers are suspects once the reason is known.
                 timeout=30,
             )
 
-            # Parse verdicts
-            import re
+            # Parse verdicts — docs/todo.md item 44. Accepts the requested JSON
+            # array AND the `N: verdict` lines the model actually produces.
             _chars = len(response or "")
             _preview = (response or "")[:400]
-            match = re.search(r'\[.*?\]', response, re.DOTALL)
-            if not match:
+            verdicts = _parse_tidy_verdicts(response)
+            if not verdicts:
                 # [ai-tidy] report-only instrumentation — docs/todo.md item 44.
                 # Every recorded ai-tidy 500 reaches a `raise HTTPException`,
                 # and until 2026-08-01 none of them wrote anything: the
@@ -1183,31 +1239,46 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 # logging, so the only trace was the slow_request middleware.
                 # ⚠️ Do NOT "fix" that by widening the generic except — the
                 # missing reason is the defect, not the raise.
-                logger.error(
-                    "[ai-tidy] no JSON array in response — model=%s chars=%d preview=%r",
-                    model, _chars, _preview,
-                )
+                #
+                # ⚠️ The two shapes are logged DISTINCTLY and that is
+                # load-bearing: "the model wrote no verdicts" and "the model
+                # wrote a broken array" have different causes and different
+                # fixes. `_parse_tidy_verdicts` swallows the JSON error while
+                # falling through to the line form, so the distinction has to
+                # be re-derived here — which is why this re-runs the bracket
+                # search instead of trusting the empty dict. Conflating them is
+                # how this stayed one undiagnosable bug for three days.
+                import re as _re_shape
+                _bracket = _re_shape.search(r"\[.*?\]", response or "", _re_shape.DOTALL)
+                if _bracket:
+                    logger.error(
+                        "[ai-tidy] a JSON array was present and did not parse, and no verdict "
+                        "lines either — model=%s matched=%r preview=%r",
+                        model, _bracket.group()[:200], _preview,
+                    )
+                else:
+                    logger.error(
+                        "[ai-tidy] no verdicts parsed — model=%s chars=%d preview=%r",
+                        model, _chars, _preview,
+                    )
                 raise HTTPException(500, "AI returned invalid response")
 
-            import json as _json
-            try:
-                verdicts = _json.loads(match.group())
-            except Exception:
-                # Distinct from the branch above: brackets were present and did
-                # not parse. Logged separately so the two are never conflated.
-                logger.error(
-                    "[ai-tidy] JSON array did not parse — model=%s matched=%r preview=%r",
-                    model, match.group()[:200], _preview,
-                )
-                raise
+            logger.info(
+                "[ai-tidy] parsed %d verdict(s) of %d document(s) — model=%s chars=%d",
+                len(verdicts), len(batch), model, _chars,
+            )
 
             deleted = 0
             reviewed = 0
             _ai_retired: List[tuple] = []
             for i, doc in enumerate(batch):
-                if i >= len(verdicts):
-                    break
-                verdict = str(verdicts[i] or "").lower().strip()
+                verdict = verdicts.get(i)
+                if verdict is None:
+                    # Not covered by this reply — a truncated answer stops
+                    # partway (measured: 28 of 30), and a document the model did
+                    # not judge must stay UNREVIEWED so the next run picks it up.
+                    # `continue`, not `break`: the shape is a gap, not a tail.
+                    continue
                 if verdict == "junk":
                     doc.tidy_verdict = "junk"
                     # Archived, not deleted — docs/todo.md item 32. This path
@@ -1230,7 +1301,9 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             return {
                 "deleted": deleted,
                 "reviewed": reviewed,
-                "remaining": len(to_review) - len(batch),
+                # `reviewed`, not `len(batch)` — a partial reply leaves the
+                # documents it skipped unreviewed, and they are still remaining.
+                "remaining": len(to_review) - reviewed,
                 "message": f"Reviewed {reviewed}, archived {deleted} junk document{'s' if deleted != 1 else ''} — restore from the Archive tab",
             }
         except HTTPException as _http:
