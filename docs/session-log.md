@@ -8,6 +8,19 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-08-01 — reassessment: the next-step list re-ranked, items 42 and 43 filed
+
+**Scope: docs only. No source changed, no item closed, no test run.** Started from *"reassess the situation, especially the next step"*; the two checks that list ranks first were run, and neither says what the list assumes.
+
+- ✅ **Repo state clean.** `git archive HEAD | tar -x` + `diff -rq` → no tracked drift, no untracked first-party file. Item 5 clean, 08-01 work committed through `1c3809d4`. **No `git status` was run** ([`CLAUDE.md`](../CLAUDE.md) §6).
+- 🆕 **Item 42 — the 64k raise reached 2 sessions of 79.** `sessions.model` is a per-row column and a **third** channel pinning the tag, which qwensetup did not name alongside `default_model`/`research_model`. **72 sessions on `-32k`, 36 of them touched since 07-31 12:00.** Seen live in one uptime: a six-round turn on `-32k` at 00:19–00:28, `-64k` from 00:30:51, **2m31s apart**. 🔴 **This inverts a standing recommendation** — two 6.7 GB 9B variants is ~13 GB of 16 GB, and the 5-minute keep-alive default is the only thing currently preventing it. **Fix the tags before `OLLAMA_KEEP_ALIVE`, not after.** `research_model` is still `-32k`: the 07-31 entry's own *"Owed"* line, half done.
+- 🆕 **Item 43 — the preset is at `max_tokens=4352` and `8192` occurs 0 times in the current log** (77 in the rotated one). Checked that the logged number is the preset value read verbatim rather than a clamp (`src/chat_handler.py:112`) — **worth checking, because 4352/6656/6144 look computed and the item would not exist if they were.** Split out of item 41's third bullet, which had the spread and not the trend.
+- ⚠️ **Item 35's observable cannot be read from `app.log`, and my first check nearly recorded a pass off it.** `[doc-map] … not copying` has one emitter — `console.warn` at `document.js:4917`. `grep -c` over `app.log*` returns **0 and always would have**. Against an item whose whole observable is an *absence*, that zero is indistinguishable from success. Written into the item and into the next-step list.
+- ✅ **Item 34's step-1 count was run and does NOT decide the item.** 1 hit total, and it is **the scripted repro itself** (`len=500`). Spontaneous: **0 — against only 5 `Doc streaming: open` events** since instrumentation. n=5. **Not closed, fix not built, instrumentation stays.** The denominator to quote is `Doc streaming: open`; `[doc-put]` (8) is the wrong one.
+- **Next-step list re-ranked** — it was written 07-31 and ranked neither 40 nor 41, both filed 08-01. New order: three config corrections (43, 42, snapshot) → item 35's browser check → **item 41 as the next thing built**, because it is the discriminator under 8, 9b, 23 and 40. Steps renumbered; the one cross-reference by number inside the list was repointed to a description.
+- ⚠️ **Owed and untouched:** the snapshot is still `odysseus-evidence-2026-07-29.tar.gz` and covers **none** of the 30/31/32/33/34/35/39 evidence.
+- **Edited:** `docs/todo.md` (two rows, two bodies, item 34 and 35 amendments, next-step list, counts re-derived with the file's own script), `docs/qwensetup.md` (Models, §3 Sampling), this file.
+
 ## 2026-07-31 — 64k verified live, item 39 filed and fixed
 
 **Suite `5798 passed, 4 skipped, 0 failed` on the M1, committed as `179c515b`.** Started from the maintainer's *"websearch is still kinda weak"*; that turned out to be right and to be a retrieval defect, not a search-engine one.
