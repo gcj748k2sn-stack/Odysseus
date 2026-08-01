@@ -103,10 +103,19 @@ just the evidence.**
   from task_runs order by started_at desc limit 20` is the ten-second check.
 - **Do not test for hard deletes by looking for orphaned child rows.**
   `DocumentVersion` is `cascade="all, delete-orphan"` with
-  `ondelete="CASCADE"`, so a hard-deleted document takes its versions with it
-  and the orphan count is **zero either way**. That sweep was run, came back
-  clean, and proved nothing. **Check the cascade before believing an
-  absence** — same shape as the DEBUG-level greps above.
+  `ondelete="CASCADE"`, so a document hard-deleted **through the app** takes its
+  versions with it and the orphan count is **zero either way**. That sweep was
+  run, came back clean, and proved nothing. **Check the cascade before believing
+  an absence** — same shape as the DEBUG-level greps above.
+  - ⚠️ **BOTH halves of that cascade are ORM/PRAGMA-dependent, and neither fires
+    from the `sqlite3` CLI — measured 2026-08-01.** `cascade="all,
+    delete-orphan"` is SQLAlchemy-level, and `ondelete="CASCADE"` needs
+    `PRAGMA foreign_keys=ON`, which **SQLite defaults to OFF per connection**
+    and the CLI does not set. A hand-run `DELETE FROM documents WHERE
+    session_id IS NULL` removed 12 rows and left **23 version rows dangling**.
+    **So orphaned children are uninformative about an APP delete and are the
+    signature of a RAW one** — the count answers a different question depending
+    on who deleted. Prepend `PRAGMA foreign_keys=ON;` to any hand-run delete.
 - **`app.db` lags live activity.** Rows are written on `save_sessions()`, so
   "the newest row" is not "the last turn". A query can miss the run you are
   looking for and look perfectly healthy doing it.
