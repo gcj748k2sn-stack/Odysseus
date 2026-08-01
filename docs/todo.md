@@ -60,7 +60,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 | 39 | ~~A permanently-failing URL is re-fetched once per appearance~~ | S4 | XS | ✅ **closed 2026-08-01 — fixed, tests (21), verified live** | **3 attempts → 1 request**; ages 44 s / 196 s off one stored failure |
 | 40 | Round 1 of every turn re-prefills the whole prompt | S3 | M | **measured 2026-08-01, cause not identified** | **275 rounds**; 4–8× slower than later rounds at matched size |
 | 41 | A truncated answer is indistinguishable from a short one | S2 | XS | **filed 2026-08-01 — no detector exists** | `finish_reason` recorded **nowhere**; 0 hits in either log |
-| 42 | The 64k raise reached 2 sessions of 79 — `sessions.model` pins the tag per row | S3 | S | **filed 2026-08-01 — measured, not fixed** | **72 of 79 sessions on `-32k`**; two 9B variants in one uptime, 2m31s apart |
+| 42 | The 64k raise reached 2 sessions of 79 — `sessions.model` pins the tag per row | S3 | S | **filed 2026-08-01; fix DRAFTED, nothing built — stages 1 and 2 are measurements** | **72 of 79 sessions on `-32k`**; two 9B variants in one uptime, 2m31s apart |
 | 43 | The sampling preset drifted to `max_tokens=4352` | S3 | XS | **filed 2026-08-01 — measured, not fixed** | **`8192` occurs 0 times** in the current log, 77 in the rotated one |
 
 > **45 rows — 16 open, 29 closed or retired, as of 2026-08-01 (re-measured with the script below after filing 42 and 43).** ⚠️ **Items 16 and 37 closed the same day; their bodies are in [`resolvedissues.md`](resolvedissues.md) and in the retirement banner below, and `item 16` still resolves to a row here.** ⚠️ **The suite is `0 failed` as of 2026-07-31 (item 18). Every earlier note here says "expect 2 failed"; those are historical. A failure now is a real one.** Items 32 and 33 were filed and fixed on 07-30, 30 closed the same day; 34 filed on 07-31, then 35 and 36 the same day — **both found while investigating 34 rather than by looking for them**, which is the argument for reproductions over inference. **Item 5 closed by leaving this file**: it was a working rule, not a defect, and four closures failed because a state description ("committed today") is undone by the next hour's work. Measured, not counted by hand ([`CLAUDE.md`](../CLAUDE.md) §5 — *numbers in prose are claims with no test*). **Open: 3, 8, 9b, 12, 13, 14, 20, 23, 25, 27, 34, 35, 40, 41, 42, 43.** ✅ **Item 39 filed, fixed, verified live and closed inside one session (2026-07-31 → 08-01)** — the only item so far to go the whole way without a recurrence, and the reason is that the observable was named *before* the fix was written. ✅ **The 30/31/32/33 document-corruption cluster is fully closed as of 2026-07-31; only 34 and 35 remain, both S4-today.** ⚠️ **31 and 33 are *fixed but not verified* and deliberately still count as open** — a fix nobody has watched fail is not a closed item, and both share the same predicament: item 30's fix removed the condition that would trigger them. A row is closed when its Item cell is struck through; that is the only definition, because a Status cell like *"detection live; prevention open"* is not machine-readable and should not be. Re-derive with:
@@ -741,7 +741,46 @@ sessions touched since 2026-07-31 12:00:  36 on -32k, 2 on -64k
 - ⚠️ **The 32k arithmetic defect the 64k raise was made to remove is therefore still live on 72 sessions.** At 32,768 with `max_tokens 8192` the real input room is 24,576 against an auto budget of 27,852 — the app can assemble prompts that cannot fit alongside a full answer. It degrades quietly, which is why nobody noticed it the first time.
 - ⚠️ **Three sessions are pinned to `qwen3.5:4b-32k`**, the model retired on 2026-07-18 for a correctness floor it did not clear (item 4). None has been touched since 07-18. **Not established: what happens when one is reopened** — whether Ollama still has that tag, and whether the resolver falls back or pulls. Check before assuming item 4's closure covers it.
 - **Not established, and it decides the shape of the fix:** whether the 00:19 turn ran on `-32k` because of the session row or because of `research_model`. Both are `-32k`, so this log cannot separate them. The discriminating test is one turn in a `-32k`-pinned session **after** `research_model` is moved to `-64k`.
-- **Fix, not built.** The dropdown is thirty seconds. The 72 rows are a decision, not a bug: leave them (old chats stay on 32k and cost a second resident model whenever one is reopened), or migrate them with an `UPDATE`. ⚠️ **If migrating, snapshot first and do it with the app down** — `sessions.model` is read on every turn, and [`CLAUDE.md`](../CLAUDE.md) §1 is explicit that the running app holds `app.db`.
+**Fix — DRAFTED 2026-08-01, nothing built. Staged, and the first two stages are measurements. Do not skip to stage 3.**
+
+The reason for the staging is that **this item's headline number is arithmetic, not a measurement.** *"Two 9B variants ≈ 13 GB"* multiplies one observed `ollama ps` reading by two. Nothing has watched both be resident. [`CLAUDE.md`](../CLAUDE.md) §3 — measure a claim by mutating it, not by restating it.
+
+**Stage 0 — free, no risk, do it regardless.** `research_model` → `qwen3.5:9b-64k` in the **UI**. It changes no session row and needs no migration.
+
+**Stage 1 — does the second model actually become resident?** This is the whole severity of the item and it is one command.
+
+```
+# open a -32k chat, send one message, wait for the answer, then open a -64k chat
+# and send one, all inside five minutes. Then:
+ollama ps
+```
+
+**Two rows = the item stands. One row = it does not**, the keep-alive default is evicting between turns, and 42 drops to S4 with the 72 sessions a tidiness question. ⚠️ **Do not read a single row as proof of safety if more than five minutes passed** — that is the eviction, not co-residency. The discriminator for the failure mode is unchanged: `grep offloaded /opt/homebrew/var/log/ollama.log | tail -3`, anything other than `34/34`.
+
+**Stage 2 — is the dead-tag branch real?** Predicted from source, not observed, and it is what decides whether stage 3 exists.
+
+- ✅ **The endpoint's cached model list, from `model_endpoints` on 2026-08-01:** `qwen3.5:9b-64k`, `qwen3.5:9b-32k`, `nemotron-3-nano:4b`, `all-minilm:l6-v2`, `qwen3.5:9b-16k`, `qwen3:8b-16k`, `qwen3:8b`, `qwen3.5:9b`. **`qwen3.5:4b-32k` is not among them** — Ollama no longer serves the tag those three sessions are pinned to. All three are **`archived=0`**, i.e. live in the sidebar, with 4–6 messages each.
+- **Predicted chain, read from source:** `_match_cached_model_id` (`routes/chat_helpers.py`) is exact-match plus a `basename` compare that is a no-op for a tag containing no slash → `None`; `normalize_model_id` (`src/llm_core.py:1804`) applies the identical two rules to the live list → `None`; the caller is `if norm: sess.model = norm`, so **`None` leaves the dead tag in place** and the request goes to Ollama naming a model it does not have. `try_fallback_endpoint` cannot rescue it — it **skips the current endpoint** and only fires when the endpoint itself is unreachable, not when one model is missing.
+- **The test is one message** in session `11ea1727` *(or `fae8323e` / `f4da3893`)*. **If it answers instead of failing, the reading above is wrong and stage 3 is not needed.** ⚠️ It appends a user row to a real old chat — that is the whole cost, and it is reversible by deleting the message.
+
+**Stage 3 — the code fix, ONLY if stage 2 confirms.** The defect is not the pinning; it is that **`normalize_model_id` returns `None` for two different conditions and the caller cannot tell them apart**: *"the endpoint answered and does not have this model"* (`avail` non-empty, no match) and *"the endpoint did not answer"* (`avail` empty, `return None` at `:1814`). Only the first is safe to act on. Shape: distinguish them at the call site, and on the first, fall back to `default_model` **and log it**. ⚠️ **Report before acting** — log the remap for a few days before letting it change the model, per [`CLAUDE.md`](../CLAUDE.md) §3; a guard that silently answers as a different model than the chat says is a wrong-output path, and this item is not S1 today. ⚠️ **Negative control is mandatory**: an unreachable endpoint must still leave the tag alone.
+
+**Stage 4 — the 72 rows, ONLY if stage 1 confirms.**
+
+- ✅ **The migration destroys no evidence — checked before proposing it, not after.** `chat_messages.metadata` carries **`model` and `requested_model` per assistant message**: 161 rows on `-32k`, 9 on `-64k`, 8 on `4b-32k`. The per-turn record is independent of `sessions.model`, so rewriting the session rows loses nothing these docs reason from. *(Falsifier, also run: `requested_model != model` on **0 of 179** rows — normalization has never remapped anything, which is the same conclusion the source reading gives.)*
+
+```
+# app DOWN and snapshot taken first — see the snapshot block in qwensetup.md.
+# Confirm nothing holds the file; app.db-journal does NOT answer this (CLAUDE.md §1):
+lsof /Users/cedrik/odysseus/data/app.db
+sqlite3 /Users/cedrik/odysseus/data/app.db \
+  "UPDATE sessions SET model='qwen3.5:9b-64k' WHERE model='qwen3.5:9b-32k';"
+sqlite3 /Users/cedrik/odysseus/data/app.db \
+  "SELECT model, count(*) FROM sessions GROUP BY model;"
+```
+
+⚠️ **Leave the three `qwen3.5:4b-32k` rows out of it.** They are stage 2's only test fixture, and migrating them onto a working model destroys the one reproduction this item has.
+⚠️ **This does not prevent recurrence.** The next tag change re-creates the split; stage 3 is what makes it self-correcting. **Doing stage 4 alone and calling the item fixed is how it comes back.**
 
 ### 43. The sampling preset drifted to `max_tokens=4352`
 **Filed 2026-08-01, split out of item 41's third bullet, which recorded the spread and not the trend.** [qwensetup.md](qwensetup.md) §3 states a single intended value of **8192** and already warns that *"the slider has repeatedly not matched it"*. It is sharper than that now.

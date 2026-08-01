@@ -35,10 +35,25 @@ just the evidence.**
   lines had moved to `app.log.1` forty minutes earlier. **The whole 12–28 July
   evidence base these docs reason about is now in `app.log.1`**, and three more
   rotations delete it — copy it into the snapshot tarball alongside `app.db`.
-- **Copy `app.db` before querying it.** The running app holds it;
-  `data/app.db-journal` on disk is how you tell it's running. A direct read can
-  fail with `disk I/O error`, and importing app modules runs migrations against
-  the real database.
+- **Copy `app.db` before querying it.** A direct read can fail with `disk I/O
+  error`, and importing app modules runs migrations against the real database.
+  ⚠️ **And copy it in the SAME bash call that queries it** — each call is a
+  fresh sandbox, `sqlite3.connect` silently *creates* a missing file, and a
+  query against the empty result returns `no such table` that reads like a
+  schema change. Cost this twice on 2026-08-01.
+  - 🔴 **`data/app.db-journal` does NOT tell you whether the app is running —
+    corrected 2026-08-01.** `PRAGMA journal_mode` is **`delete`**, the rollback
+    journal: the file exists only *while a write transaction is in flight* and
+    is removed on commit. **An app that is running but idle leaves no journal**,
+    so its absence means "no write in flight this instant", not "safe to copy".
+    The other direction was already known and is recorded above — a *stale*
+    journal reads as running when nothing is. **The signal is wrong in both
+    directions and this file asserted it as fact.** What actually answers the
+    question is `lsof /Users/cedrik/odysseus/data/app.db` — it names the
+    process, or prints nothing. *(If the app is ever switched to WAL the
+    sidecars become `-wal`/`-shm` and persist for the life of the connection,
+    which would make presence meaningful and absence still not. `core/database.py`
+    already tracks all three in `_SQLITE_SIDECARS`.)*
 - **Set `DATABASE_URL=sqlite:///:memory:` before importing anything under
   `src/`.** This is what the line above costs when you forget it: an import
   from `src.agent_loop` ran five migrations against the live `data/app.db`,
