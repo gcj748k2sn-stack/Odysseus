@@ -3544,6 +3544,7 @@ def _compute_final_metrics(
     backend_gen_tps: float = 0,
     backend_prefill_tps: float = 0,
     stream_errors: Optional[list] = None,
+    finish_reasons: Optional[list] = None,
 ) -> dict:
     """Compute token counts, TPS, and build the final metrics dict."""
     if has_real_usage:
@@ -3602,6 +3603,12 @@ def _compute_final_metrics(
     # convention as item 17's cache flag, where absence means live.
     if stream_errors:
         metrics["stream_errors"] = stream_errors
+    # [finish-reason] docs/todo.md item 41 — same convention, one row up.
+    # Absence means the provider reported nothing, NEVER "it finished cleanly".
+    # Per ROUND, because `max_tokens` is per round and a turn total cannot say
+    # which round was clipped.
+    if finish_reasons:
+        metrics["finish_reasons"] = finish_reasons
     if prep_timings:
         prep_total = round(sum(prep_timings.values()), 3)
         metrics["agent_prep_time"] = prep_total
@@ -4577,6 +4584,10 @@ async def stream_agent_loop(
     time_to_first_token = None
     first_token_received = False
     _stream_errors = []  # error events from stream_llm, persisted into metrics
+    # [finish-reason] per-round completion reasons — docs/todo.md item 41.
+    # Same convention as _stream_errors: an empty list means nothing was
+    # reported, NOT that every round finished cleanly.
+    _round_finish_reasons = []
     tool_events = []   # Persist tool executions for history reload
     round_texts = []   # Cleaned text per round for history reload
     # Completion-verifier state (mechanism 3a). _effectful_used flips on when
@@ -4875,6 +4886,13 @@ async def stream_agent_loop(
                             backend_gen_tps = u["gen_tps"]
                         if u.get("prefill_tps"):
                             backend_prefill_tps = u["prefill_tps"]
+                        # [finish-reason] report-only — docs/todo.md item 41.
+                        # Recorded per round, because `max_tokens` is per round:
+                        # a turn total cannot say which round was clipped.
+                        if u.get("finish_reason"):
+                            _round_finish_reasons.append(
+                                {"round": round_num, "reason": u["finish_reason"]}
+                            )
                     elif data.get("type") == "fallback":
                         # The selected model failed and another answered; surface
                         # the notice so a misconfigured provider isn't masked.
@@ -4989,15 +5007,28 @@ async def stream_agent_loop(
                 yield chunk
             # Intercept [DONE] — don't forward until all rounds finish
 
+        # [finish-reason] item 41 — on the round_stream_done line because that
+        # is the line every zero-text investigation starts from, and `?` (not
+        # absent) so a missing value is visibly missing rather than assumed.
+        _this_round_fr = next(
+            (e["reason"] for e in reversed(_round_finish_reasons) if e["round"] == round_num),
+            None,
+        )
         logger.info(
-            "[agent-timing] round_stream_done round=%s elapsed=%.3fs text_chars=%s tool_calls=%s first_event=%s first_token=%s",
+            "[agent-timing] round_stream_done round=%s elapsed=%.3fs text_chars=%s tool_calls=%s first_event=%s first_token=%s finish_reason=%s",
             round_num,
             time.time() - _round_start,
             len(round_response),
             len(native_tool_calls),
             _round_first_event_logged,
             _round_first_token_logged,
+            _this_round_fr or "?",
         )
+        if _this_round_fr == "length":
+            logger.warning(
+                "[finish-reason] round %s hit the token cap — output is TRUNCATED (text_chars=%s tool_calls=%s)",
+                round_num, len(round_response), len(native_tool_calls),
+            )
         _normalized_doc_round = (
             _normalize_stream_document_fences(
                 round_response,
@@ -6329,6 +6360,7 @@ async def stream_agent_loop(
         backend_gen_tps=backend_gen_tps,
         backend_prefill_tps=backend_prefill_tps,
         stream_errors=_stream_errors,
+        finish_reasons=_round_finish_reasons,
     )
     metrics["requested_model"] = requested_model
     yield f"data: {json.dumps({'type': 'metrics', 'data': metrics})}\n\n"

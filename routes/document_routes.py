@@ -1151,10 +1151,21 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 [{"role": "system", "content": "You classify documents as junk or keep. Respond only with a JSON array."},
                  {"role": "user", "content": prompt}],
                 temperature=0.1,
-                # ⚠️ 200 tokens is shared with THINKING on a thinking model —
-                # qwensetup.md §3. Deliberately not changed here: item 44's
-                # first step is to record what comes back, not to guess.
-                max_tokens=200,
+                # docs/todo.md item 44. Was 200, and every recorded run came
+                # back `chars=0`. 200 is shared with THINKING (qwensetup.md §3)
+                # and the answer itself needs ~60 (30 verdicts of one word).
+                #
+                # 700 is not a guess at a safe number, it is the measured
+                # headroom: the real 30-document prompt is 12,157 chars ~= 3,039
+                # tokens against the utility model's observed CONTEXT 4096,
+                # leaving 1,057. Raising it further would overflow the window
+                # and trade one silent failure for another.
+                #
+                # ⚠️ This is the DISCRIMINATOR, not the fix. Output appearing
+                # means the cap was the cause; another `chars=0` means it was
+                # not, and the `[finish-reason]` line added for item 41 now
+                # says which. Change nothing else in the same run.
+                max_tokens=700,
                 headers=headers,
                 timeout=30,
             )

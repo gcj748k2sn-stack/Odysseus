@@ -2142,8 +2142,27 @@ async def llm_call_async(
                 elif provider == "ollama":
                     response = _parse_ollama_response(data)
                 else:
-                    msg = data["choices"][0]["message"]
+                    _choice0 = (data.get("choices") or [{}])[0] or {}
+                    msg = _choice0.get("message") or data["choices"][0]["message"]
                     response = msg.get("content") or msg.get("reasoning_content") or ""
+                    # [finish-reason] report-only — docs/todo.md item 41.
+                    # `llm_call_async` returns a bare `str`, so the only channel
+                    # for this is the log; changing the return type would touch
+                    # every caller. Quiet on a clean stop, loud otherwise —
+                    # `length` here is a silently truncated utility result, and
+                    # an empty body with `stop` is the model genuinely saying
+                    # nothing. Those two are what item 44 could not separate.
+                    _fr = _choice0.get("finish_reason")
+                    if _fr and _fr not in ("stop", "tool_calls"):
+                        logger.warning(
+                            "[finish-reason] non-stop completion model=%s finish_reason=%s chars=%d",
+                            model, _fr, len(response),
+                        )
+                    elif not response:
+                        logger.warning(
+                            "[finish-reason] EMPTY completion model=%s finish_reason=%r chars=0",
+                            model, _fr,
+                        )
                 _set_cached_response(cache_key, response)
                 return response
             except Exception:
@@ -2571,6 +2590,12 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     _harmony_active = False       # sticky: gpt-oss harmony <|channel|> stream detected
     _actual_model = ""
     _actual_model_announced = False
+    # [finish-reason] report-only — docs/todo.md item 41. Without this a
+    # generation that stopped at the token cap is indistinguishable from one
+    # that finished, and every claim about output length is unfalsifiable.
+    # Carried on the `usage` event rather than a new SSE type so nothing new
+    # reaches the browser; `None` means the provider did not report one.
+    _finish_reason = None
 
     def _emit_tool_calls():
         """Build the tool_calls event string if any were accumulated."""
@@ -2639,6 +2664,16 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                         yield f'data: {json.dumps({"type": "model_actual", "requested_model": model, "model": _actual_model})}\n\n'
                                 # Usage chunk (from stream_options)
                                 _choices = j.get("choices") or []
+                                # [finish-reason] item 41. The FINAL content
+                                # chunk carries it; with include_usage the usage
+                                # chunk arrives after, so capturing here and
+                                # attaching below is ordered correctly. Kept out
+                                # of the gating below on purpose — that logic has
+                                # been debugged twice and is not to be disturbed.
+                                if _choices and isinstance(_choices[0], dict):
+                                    _fr = _choices[0].get("finish_reason")
+                                    if _fr:
+                                        _finish_reason = _fr
                                 _delta0 = _choices[0].get("delta") if (_choices and _choices[0] is not None) else None
                                 # Capture usage whenever the chunk carries it and
                                 # the delta has no actual output. Some gateways /
@@ -2671,6 +2706,11 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                         _usage_data["model"] = _actual_model
                                         if not _same_model_identity(_actual_model, model):
                                             _usage_data["requested_model"] = model
+                                    # [finish-reason] item 41 — absence means the
+                                    # provider did not report one, never "it
+                                    # finished cleanly".
+                                    if _finish_reason:
+                                        _usage_data["finish_reason"] = _finish_reason
                                     yield f'data: {json.dumps({"type": "usage", "data": _usage_data})}\n\n'
                                 elif "choices" in j:
                                     _c0 = (j["choices"] or [None])[0]
