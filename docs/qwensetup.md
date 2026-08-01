@@ -100,13 +100,31 @@ Most of the diagnosis in [resolvedissues.md](resolvedissues.md) came from here, 
 > the originals; keeping the copy outside the tree is what puts it beyond reach
 > of any git command.
 >
-> - **Latest: `~/odysseus-snapshots/odysseus-evidence-2026-07-29.tar.gz`, 1,429,813 bytes,
->   taken 21:36 CEST with the app down.** Holds `app.db`, `app.log` and `app.log.1`;
->   hashes taken before the copy verified `OK` on all three afterwards.
-> - Verify: `tar xzf …tar.gz && cd evidence-2026-07-29 && sha256sum -c SHA256SUMS.snapshot`
+> - **Latest: `~/odysseus-snapshots/odysseus-evidence-2026-08-01.tar.gz`, taken
+>   ~13:30 CEST with the app confirmed down.** ⚠️ *Byte count not recorded — fill it
+>   from `ls -l`; a size here is only useful if it was measured.*
+> - **FIVE files, not the three the 07-29 snapshot held.** `search_engine_error.log`
+>   became evidence when item 39's verification cited the 403 in it, and
+>   `data/settings.json` is items 42 and 43's ground truth (`default_model`,
+>   `research_model`, the preset values). **Committed fingerprint, so the contents
+>   are pinned even if the tarball is lost** — first 12 hex of each SHA-256:
+>   `app.db 3f67f8422d49` · `app.log f313765c60bf` · `app.log.1 be38a3a181a0` ·
+>   `search_engine_error.log f6e51982897f` · `settings.json 89ccb64e5502`.
+> - **The copy is verified, not assumed:** hashes taken before and after the copy
+>   were identical across ~33 minutes, so nothing was written mid-copy.
+> - Verify: `tar xzf …tar.gz && cd evidence-2026-08-01 && shasum -a 256 -c SHA256SUMS.snapshot`
 >   checks the archive. `SHA256SUMS.source` holds the same hashes under
->   repo-relative paths — run `sha256sum -c SHA256SUMS.source` **from the repo
+>   repo-relative paths — run `shasum -a 256 -c SHA256SUMS.source` **from the repo
 >   root** to ask the different question of whether the originals still match.
+>   ⚠️ **Extract to a scratch directory and check THAT** — verifying the folder you
+>   just built passes even if `tar` wrote a broken archive. *(These lines said
+>   `sha256sum` until 2026-08-01; that is the Linux name. macOS is `shasum -a 256`,
+>   [`CLAUDE.md`](../CLAUDE.md) §7.)*
+> - ⚠️ **`lsof /Users/cedrik/odysseus/data/app.db`, not `ls data/app.db-journal`,
+>   is how you confirm the app is down** — and expect a `com.apple…`
+>   Virtualization process holding it at mode `r`. That is an agent sandbox's
+>   folder share (26,052 repo files on 2026-08-01), read-only, and not a reason to
+>   wait. Full rule in [`CLAUDE.md`](../CLAUDE.md) §1.
 > - **Verify by hash, never by `PRAGMA integrity_check`** — an intact database
 >   that quietly lost a row passes that. Hash the source *before* the copy and
 >   again *after*, so a mid-copy write is visible; do not import anything under

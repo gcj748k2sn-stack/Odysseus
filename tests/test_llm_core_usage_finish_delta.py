@@ -89,7 +89,17 @@ def test_usage_on_finish_delta_with_role_is_captured(monkeypatch):
     ]
     usage = _usage_events(_drive(monkeypatch, lines))
     assert usage, "usage on a non-empty finish delta was dropped"
-    assert usage[-1] == {"input_tokens": 9, "output_tokens": 1}
+    # `finish_reason` joined this payload on 2026-08-01 — docs/todo.md item 41.
+    # The chunk under test carries `"finish_reason": "stop"`, so it is expected
+    # HERE and only here; `test_usage_on_empty_choices_chunk_still_captured`
+    # below sends no reason and still asserts a two-key dict, which is what
+    # pins "absent means the provider reported nothing".
+    #
+    # ⚠️ Kept as exact equality on purpose. This event is yielded into the SSE
+    # stream the browser reads, so a whole-payload assertion is what catches a
+    # field leaking into it by accident — loosening this to a subset check
+    # would trade a real property for a smaller diff.
+    assert usage[-1] == {"input_tokens": 9, "output_tokens": 1, "finish_reason": "stop"}
 
 
 def test_usage_on_empty_choices_chunk_still_captured(monkeypatch):

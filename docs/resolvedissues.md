@@ -8,6 +8,19 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## A truncated answer was indistinguishable from a short one — closed 2026-08-01 (item 41)
+**Filed out of a retraction and closed the same day.** Asked whether a zero-text turn was `max_tokens` exhaustion, I swept both logs for `finish_reason=length`, got zero, and called it decisive. **It was not: `finish_reason` appeared 0 times in `app.log` and `app.log.1` and was passed to no logger anywhere in `src/`** — the grep measured the logging configuration, the trap §1 already records twice. **The retraction exposed a real S2 the wrong claim had been hiding.**
+
+Report-only, both LLM paths. Streaming: captured from whichever chunk carries it and attached to the existing **`usage` event** — not a new SSE type, so nothing unfamiliar reaches the browser — collected **per round** (`max_tokens` is per round, so a turn total cannot say which round clipped), persisted as `metrics["finish_reasons"]`, and appended to **`round_stream_done`**, the line every zero-text investigation already starts from. Non-streaming `llm_call_async` logs it instead, because it returns a bare `str` and widening that would touch every caller.
+
+**Verified live on both paths, 2026-08-01.** Non-streaming: `finish_reason=length chars=0` **settled item 44's core question in one line** after four sessions of `500`s. Streaming: real chat turns logging `finish_reason=stop` and `finish_reason=tool_calls`, with **no `?`**, so this backend does report it.
+
+**What survives re-reading:**
+- **The convention is the design: absence means the provider reported nothing. It never means the generation finished cleanly.** Same rule as `stream_errors` (9b) and the cache flag (17). Two negative controls pin it — an empty or missing list must produce **no key**, because a default of `"stop"` re-creates the exact state the retraction found.
+- ⚠️ **`finish_reason=?` on `round_stream_done` means *unknown*, not clean** — it prints where the backend sends no usage chunk, and reading it as clean is the failure this item exists to prevent.
+- ⚠️ **A negative control caught a defect in the SPEC, not the code.** I filed `finish_reason="tool_calls"` with an empty body as a case that should stay quiet — *"a tool call legitimately has no text"*. **`llm_call_async` sends no `tools` key**, so that path cannot legitimately produce a tool call, and the caller receives `""` and proceeds as though the model answered. **An empty body is always the caller's problem; the reason explains it rather than excusing it.** The genuine exemption is a tool-call reason *with* text.
+- ⚠️ **The `usage` payload is asserted by exact equality in `test_llm_core_usage_finish_delta.py` and that is deliberate** — the event is yielded into the SSE stream the browser reads, so a whole-payload assertion is what catches a field leaking into it. Adding this key broke that test correctly.
+
 ## `/api/documents/ai-tidy` failed every logged call for three days — closed 2026-08-01 (item 44)
 Five recorded calls, five failures (4× `500`, 1× `504`, across 07-30 and 08-01), and **none of them wrote an ERROR or a traceback**: `except HTTPException: raise` re-raised unlogged, so the only trace was `app.slow_request` — a middleware warning that exists to flag slow requests, not failed ones. **That silence is why it ran three days unnoticed, and it is the reusable part.**
 

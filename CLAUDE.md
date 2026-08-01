@@ -50,7 +50,28 @@ just the evidence.**
     journal reads as running when nothing is. **The signal is wrong in both
     directions and this file asserted it as fact.** What actually answers the
     question is `lsof /Users/cedrik/odysseus/data/app.db` — it names the
-    process, or prints nothing. *(If the app is ever switched to WAL the
+    process, or prints nothing.
+    - **Read the MODE column, not just the presence of a line.** `lsof` prints
+      the fd and mode together (`86r` = fd 86, read-only; `w`/`u` = write /
+      read-write). **A read-only handle cannot make your copy inconsistent** —
+      what the copy rule is defending against is a *writer* mid-transaction.
+      macOS daemons (`com.apple…`, truncated at 9 chars, so use
+      `ps -p <pid> -o comm,args` to see which) routinely hold `data/app.db`
+      open `r` for indexing. **That is not the app and is not a reason to
+      wait.** ⚠️ **`bird` / `CloudDocs` / `FileProvider` would be** — a live
+      SQLite database inside an iCloud-synced tree is a separate problem.
+    - ⚠️ **An AGENT'S OWN SANDBOX shows up here, and it will read as "something
+      is holding the database" to the next person — seen 2026-08-01.** A
+      `/System/Library/Frameworks/Virtualization.framework/…` process held
+      `data/app.db` at fd `86r` while the app was down. **The agent's Linux
+      sandbox mounts this repo, and that session had been copying `app.db` all
+      afternoon**; Docker Desktop uses the same framework and this repo ships a
+      compose file, so either fits. `lsof -p <pid> | grep -c odysseus` tells
+      them apart and settled it: **26,052 repo files — a folder share, not a
+      database client.** Read-only either way, so it changes nothing except how
+      long you stare at it.
+    - **The before/after source hash is the check that cannot be argued with**,
+      whatever `lsof` says. Hash, copy, hash again, `diff`. *(If the app is ever switched to WAL the
     sidecars become `-wal`/`-shm` and persist for the life of the connection,
     which would make presence meaningful and absence still not. `core/database.py`
     already tracks all three in `_SQLITE_SIDECARS`.)*
