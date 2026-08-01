@@ -8,6 +8,25 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## `/api/documents/ai-tidy` failed every logged call for three days — closed 2026-08-01 (item 44)
+Five recorded calls, five failures (4× `500`, 1× `504`, across 07-30 and 08-01), and **none of them wrote an ERROR or a traceback**: `except HTTPException: raise` re-raised unlogged, so the only trace was `app.slow_request` — a middleware warning that exists to flag slow requests, not failed ones. **That silence is why it ran three days unnoticed, and it is the reusable part.**
+
+**Two independent faults, each hiding the other**, and neither was what four sessions of `500`s suggested — not the endpoint, not the resolver, not the error handling, not the context window:
+
+- **(a) Thinking ate the token budget.** `"nemotron"` was in **neither** `_THINKING_MODEL_PATTERNS` nor the `reasoning_effort` gate, so on the utility path **no suppression was attempted at all** — nothing was sent. Measured: ~220 tokens of thinking before an ~80-token answer, against `max_tokens=200`.
+- **(b) The model does not emit the JSON array the prompt asks for.** It writes `0: keep\n1: junk\n…`; the parser required `[...]`. **The endpoint would have kept failing on an unlimited budget.**
+
+**Verified live 2026-08-01 12:03:19 — `status=200`, the first success in the endpoint's recorded history.** `succeeded in 17.82s (attempt 1)`, no retries, `parsed 28 verdict(s) of 30`, and **no `[finish-reason]` line at all**, which is the positive result: absence means `stop` with a non-empty body. Against the 11:55 baseline on the same batch — `finish_reason=length chars=0` — this is the same call 9 s faster and working.
+
+**What survives re-reading:**
+- ⚠️ **A cause eliminated by argument is not eliminated.** Four were struck off by measurement or source before the real ones were found; **one of them — a `_parse_ollama_response` schema mismatch that would return `""` for every `/v1` call — was two minutes from being filed as the root cause** and is gated behind `_is_ollama_native_url`, so it is never on this path.
+- ⚠️ **`finish_reason` settled (a) in one line, and nothing else could have.** *"The model returned nothing"* vs *"the model was cut off"* had been indistinguishable across four sessions — item 41.
+- ⚠️ **A predicate that gates two paths must not be widened for one of them.** `_is_qwen_thinking_model` also gates the agent/streaming path; the fix added a separate `_accepts_reasoning_effort` rather than growing it, because widening it would have silently changed chat rounds. **`gemma3` is why that gate is narrow** — Ollama rejects `reasoning_effort` for it.
+- ⚠️ **`reasoning_effort` is nested inside `_supports_thinking`, so BOTH lists had to change.** Adding the model to one only is a no-op that looks like a fix.
+- ⚠️ **The parser maps by the STATED index, never by line position** — this endpoint archives on its output, and positional reading of a reply that skips an index retires a document on another document's verdict.
+- ⚠️ **The model returns 28 of 30 verdicts, twice, at two different caps.** The caller uses `continue`, not `break`, so the two it skips stay **unreviewed** for the next run.
+- 🔴 **NOT verified: the archiving branch.** All 28 verdicts were `keep`, so `retire_document` never ran. **The destructive half of this endpoint has still never been observed live.** ⚠️ And at 11:40, before suppression, the same endpoint returned mostly `junk` on an overlapping set — **verdict quality under a suppressed reasoning channel is unmeasured**, and the two runs are not a controlled comparison (different document set, different config).
+
 ## A permanently-failing URL was re-fetched once per appearance — closed 2026-08-01 (item 39)
 A **successful** fetch was cached for 2 h; a **failed** one was not cached at all, so a URL that failed identically every time paid a network round trip on every appearance. One ResearchGate URL returning 403 went out **four times inside a single agent turn** — three because `comprehensive_web_search` fetches its own top results and it ranked top-3 for all three of the model's queries, plus one explicit `web_fetch`. Fixed with an in-memory negative cache (30-min TTL, 512-entry bound) in `services/search/content.py`.
 
