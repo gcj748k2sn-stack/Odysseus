@@ -8,6 +8,16 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## The editor buffer was flushed into the document being switched TO — closed 2026-08-01 (item 35)
+`loadSessionDocs`' restore branch set `activeDocId = target.id` **before** calling `switchToDoc(target.id)`, whose first act is `saveCurrentToMap()` — which reads `activeDocId`. So the flush was aimed at the document being *arrived at* while the buffer still held the one being *left*. Structural, not a race: it happened on every restore-mode chat switch with the panel open. Measured at **3 of 6 switches in 40 seconds** of ordinary use. Fixed with `switchToDoc(target.id, { flush: false })`, using the parameter item 30's fix had already added.
+
+**Verified live 2026-08-01, positively.** `window.__docTrace` showed **four `switchAway` entries with `prev === to`** — the signature — and **zero `[doc-map] … not copying` warnings**. The branch fired and the flush was not attempted.
+
+- ⚠️ **The verification plan as first written could not have failed.** It said to look for the absence of the warning; on a window where the branch never fires, that absence appears regardless. **The positive control — count the `prev === to` entries — is what makes it a test.**
+- 🔴 **The observable is a browser `console.warn`, and `grep` of `data/logs/app.log*` returns 0 whether the fix works, fails, or was never applied.** That grep was run and measured the logging configuration.
+- ⚠️ **`reached` in the trace is derived** (`prevId !== docId && docs.has(prevId)`), so it restates the signature rather than observing the fix.
+- ✅ **Unstaged negative control for item 33:** three `prev !== to` switches in the same window had its delete-on-empty branch genuinely reachable and deleted nothing. **`flush:false` does not change `prevId`/`docId`, so fixing 35 did not expose 33** — a prediction this item carried and which did not hold.
+
 ## A truncated answer was indistinguishable from a short one — closed 2026-08-01 (item 41)
 **Filed out of a retraction and closed the same day.** Asked whether a zero-text turn was `max_tokens` exhaustion, I swept both logs for `finish_reason=length`, got zero, and called it decisive. **It was not: `finish_reason` appeared 0 times in `app.log` and `app.log.1` and was passed to no logger anywhere in `src/`** — the grep measured the logging configuration, the trap §1 already records twice. **The retraction exposed a real S2 the wrong claim had been hiding.**
 
