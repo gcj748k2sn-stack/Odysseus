@@ -1105,6 +1105,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # Fall back to default endpoint
             url, model, headers = resolve_endpoint("default", owner=user or None)
         if not url or not model:
+            # [ai-tidy] report-only instrumentation — docs/todo.md item 44.
+            logger.error("[ai-tidy] no endpoint configured (task role, then default)")
             raise HTTPException(500, "No endpoint configured for AI tidy")
 
         db = SessionLocal()
@@ -1138,11 +1140,20 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 + "\n".join(doc_list)
             )
 
+            # [ai-tidy] report-only instrumentation — docs/todo.md item 44.
+            # This line answers "which model does ai-tidy actually run on",
+            # which was previously only derivable by reading
+            # `resolve_task_endpoint` and could not be checked against a run.
+            logger.info("[ai-tidy] start model=%s batch=%d unreviewed=%d", model, len(batch), len(to_review))
+
             response = await llm_call_async(
                 url, model,
                 [{"role": "system", "content": "You classify documents as junk or keep. Respond only with a JSON array."},
                  {"role": "user", "content": prompt}],
                 temperature=0.1,
+                # ⚠️ 200 tokens is shared with THINKING on a thinking model —
+                # qwensetup.md §3. Deliberately not changed here: item 44's
+                # first step is to record what comes back, not to guess.
                 max_tokens=200,
                 headers=headers,
                 timeout=30,
@@ -1150,12 +1161,34 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
             # Parse verdicts
             import re
+            _chars = len(response or "")
+            _preview = (response or "")[:400]
             match = re.search(r'\[.*?\]', response, re.DOTALL)
             if not match:
+                # [ai-tidy] report-only instrumentation — docs/todo.md item 44.
+                # Every recorded ai-tidy 500 reaches a `raise HTTPException`,
+                # and until 2026-08-01 none of them wrote anything: the
+                # `except HTTPException: raise` below re-raises without
+                # logging, so the only trace was the slow_request middleware.
+                # ⚠️ Do NOT "fix" that by widening the generic except — the
+                # missing reason is the defect, not the raise.
+                logger.error(
+                    "[ai-tidy] no JSON array in response — model=%s chars=%d preview=%r",
+                    model, _chars, _preview,
+                )
                 raise HTTPException(500, "AI returned invalid response")
 
             import json as _json
-            verdicts = _json.loads(match.group())
+            try:
+                verdicts = _json.loads(match.group())
+            except Exception:
+                # Distinct from the branch above: brackets were present and did
+                # not parse. Logged separately so the two are never conflated.
+                logger.error(
+                    "[ai-tidy] JSON array did not parse — model=%s matched=%r preview=%r",
+                    model, match.group()[:200], _preview,
+                )
+                raise
 
             deleted = 0
             reviewed = 0
@@ -1189,11 +1222,17 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 "remaining": len(to_review) - len(batch),
                 "message": f"Reviewed {reviewed}, archived {deleted} junk document{'s' if deleted != 1 else ''} — restore from the Archive tab",
             }
-        except HTTPException:
+        except HTTPException as _http:
+            # [ai-tidy] report-only instrumentation — docs/todo.md item 44.
+            # This bare re-raise is why five recorded failures (4x500, 1x504
+            # across 2026-07-30 and 08-01) left no ERROR and no traceback:
+            # the only trace of any of them was `app.slow_request`, which
+            # exists for another purpose. Every exit now names itself.
+            logger.warning("[ai-tidy] returning HTTP %s: %s", _http.status_code, _http.detail)
             raise
         except Exception as e:
             db.rollback()
-            logger.error(f"AI tidy failed: {e}")
+            logger.error(f"[ai-tidy] AI tidy failed: {e}", exc_info=True)
             raise HTTPException(500, f"AI tidy failed: {e}")
         finally:
             db.close()
