@@ -8,6 +8,18 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## Switching chats wrote the editor buffer into the other chat's document — closed 2026-07-30 (item 30)
+An AI-written document was destroyed and three others overwritten with content they never contained. **Proven by hash, not inferred:** `document_versions.source` showed the model finishing `d1c934f7` at 12:09:53, the identical bytes appearing 88 seconds later as a `user` version of a *different* session's document, and the model's own document overwritten with the clone content twenty minutes after that. Both writes `source=user` — the editor's PUT path, not the agent. All four documents were recovered by hash, and the bad versions kept as evidence.
+
+**Root cause, and it was not the filed proposal.** *"`openPanel` should render the active document"* was the wrong shape. The defect is one line earlier: **`switchToDoc` flushed the buffer into the map unconditionally, and after a pane rebuild that buffer is a fresh empty node** — so the document was emptied in memory and then rendered from the entry that had just been emptied. Fixed with `switchToDoc(docId, { flush = true } = {})`, `false` from callers that just rebuilt. **Verified live: the trace goes straight from `chipRestore` to `switchToDoc len=8579` with no `saveCurrentToMap` at all** — not blocked, not attempted.
+
+**What survives re-reading:**
+- ❌ **A proposed guard was retracted before any code was touched: *"reject a PUT whose session doesn't match `documents.session_id`"* would not have prevented this.** The write targeted a document that *did* belong to the chat the user was in — session and document agreed. **It would have caught only the second event and read as a fix for both.** A guard has to be checked against the actual failing write, not against the story about it.
+- ⚠️ **Four fix attempts were argued from reading `document.js` and three were wrong.** `window.__docTrace` — a rolling in-page trace of the binding transitions — settled it in one run. **Two runs before that were wasted on preconditions that silently disabled the mechanism**: a closed panel makes `saveDocument` return early, and an `is_active=0` document gives the editor nothing to carry. **A protocol whose precondition disables the bug produces a negative that reads as evidence.**
+- ⚠️ **`restoreFn` was not the only site — three more had the same shape** (`_restoreDetachedEmailDoc`, the email-draft path, both branches of `loadDocument`), all `_ensureDocPaneMounted()` → `switchToDoc(…)`. It rebuilds only *sometimes*, so it returns whether it did and callers pass `flush: !_rebuilt`.
+- **The pattern across items 30, 31 and 33 is one sentence:** *nothing should infer a document's emptiness from the in-memory map.* Three functions did; the map is a render cache, not a source of truth.
+- ⚠️ **It corrupted item 20's experiment silently** — the five-clone protocol assumes five copies sharing no version history. One run is unusable and its refusal cannot be attributed to the model. **Re-hash the clones before scoring.**
+
 ## The editor buffer was flushed into the document being switched TO — closed 2026-08-01 (item 35)
 `loadSessionDocs`' restore branch set `activeDocId = target.id` **before** calling `switchToDoc(target.id)`, whose first act is `saveCurrentToMap()` — which reads `activeDocId`. So the flush was aimed at the document being *arrived at* while the buffer still held the one being *left*. Structural, not a race: it happened on every restore-mode chat switch with the panel open. Measured at **3 of 6 switches in 40 seconds** of ordinary use. Fixed with `switchToDoc(target.id, { flush: false })`, using the parameter item 30's fix had already added.
 

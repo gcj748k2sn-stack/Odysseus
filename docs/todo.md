@@ -85,15 +85,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 
 > **Next, in order.** Ordering follows leverage, not severity. **Re-ranked 2026-08-01 (second pass), after items 41 and 44 landed and item 42's headline was disproved.** Everything the 07-31 list ranked first has now been either done or shown to be the wrong question.
 >
-> **0. ✅ DONE 2026-08-01 — snapshot taken and verified.** `~/odysseus-snapshots/odysseus-evidence-2026-08-01.tar.gz`, **five** files (the three from 07-29 plus `search_engine_error.log` and `data/settings.json`, both of which became evidence this week), app confirmed down with `lsof`, before/after source hashes identical. Fingerprints and the corrected verify commands are in [qwensetup.md](qwensetup.md). **This was the only irreversible item on the list.**
->
-> **1. ✅ DONE — item 41 closed.** Both paths verified live; the streaming samples ruled the token cap out of items 8 and 23 and made item 40 look worse than documented. See below.
->
-> **2. Item 40's discriminating test — NOW THE TOP ITEM, and it just got bigger.** Two `round=1` measured at **110.161 s** and **110.092 s** on 2026-08-01, against the 40–50 s this item documents. *"Compare round-1 time for turns with a document open against turns without."* **All three named causes are now eliminated, and the cold-load one with the load independently attested** (a confirmed 6.7 GB reload cost **~2.6 s** against a ~55 s penalty). Only mid-array volatile blocks remain. ⚠️ **Do not move the block on the strength of the hypothesis** — the placement is deliberate and this project has shipped that trade backwards before.
->
-> **3. ✅ DONE — item 35 closed 2026-08-01, verified positively:** four `prev === to` switches in the trace, zero `[doc-map]` warnings. The plan as first written (read the absence of the warning) could not have failed; the count of signatures is what made it a test.
->
-> **4. ✅ DONE — item 42 stage 2 confirmed 2026-08-01.** A session pinned to a removed tag 404s on every turn, **visibly** (`model 'qwen3.5:4b-32k' not found`). Severity stays S3 because the user is told. **The fix matters because deleting `qwen3.5:9b-32k`, which qwensetup plans, would do this to 72 sessions at once.**
+> **✅ Done 2026-08-01, in this order:** the **snapshot** (five files, verified, first since 07-29); **item 41** built and closed; **item 35** closed — verified *positively* by counting `prev === to` entries, because the planned check (absence of a warning) could not have failed; **item 42 stage 2** confirmed; and **item 40's discriminating test**, which did not support its own hypothesis.
 >
 > **5. Item 44's two uncovered halves, if the tidy is going to be trusted.** Its **archiving branch has never run live** (all 28 verdicts came back `keep`, so `retire_document` was not exercised) and **verdict quality under a suppressed reasoning channel is unmeasured** — before suppression the same endpoint said mostly `junk`, after it says all `keep`. *"The junk detector now finds no junk"* is worth one deliberate look.
 >
@@ -168,96 +160,7 @@ Run 127d32b0: 8 edits fixed the prose and missed the summary table, leaving four
 ## S2 — silent loss
 
 ### 30. ~~Switching chats writes the editor buffer into the other chat's document~~ ✅ CLOSED 2026-07-30
-**Found 2026-07-30 while collecting item 20's five runs. An AI-written document was destroyed and a second chat's document was overwritten with content it never contained.** Not item 1 — that was a duplicate `doc_update` inside a single tool call, and it stays closed. This is cross-session carry-over, and the pair is reciprocal (#1↔#30).
-
-**Proven by hash, not inferred.** `document_versions.source` records who wrote each version:
-
-```
-d1c934f7  v1  12:09:53  src=ai    10,877  sha=59879c9e   model output, session 67c53dab
-986c425e  v2  12:11:21  src=user  10,877  sha=59879c9e   same bytes, session c9c2b615
-d1c934f7  v2  12:29:21  src=user   8,578  sha=ea089a2f   clone content — the AI version is gone
-```
-
-The model finished writing `d1c934f7` at 12:09:53. **88 seconds later the identical bytes appear as a `user` version of a different session's document**, and twenty minutes after that the model's own document is overwritten with the pristine clone content. Both writes are `source=user`, i.e. the editor's PUT path, not the agent.
-
-- ⚠️ **The turn that followed was handed the wrong document and produced nothing.** `[doc-inject] found by ID … content_len=10877` at 12:11:22, one second after the overwrite — the model was given another chat's document, ran **433.1 s**, and logged `text_chars=0 tool_calls=0`. **No assistant row was ever saved for it.** Whether the empty turn is caused by this or merely downstream of it is unestablished.
-- **Scope swept across all nine documents of 2026-07-30:** one AI document destroyed (`d1c934f7`), one clone contaminated (`986c425e`), the other two AI outputs (54,390 and 11,756 chars) intact. **`source` + a content hash is the sweep** — length alone is not, and two unrelated documents in this corpus happen to share a length.
-- ⚠️ **It corrupts item 20's experiment silently.** The five-clone protocol assumes "five independent copies sharing no version history". Run `c9c2b615` refused to create a document while holding a buffer that had been replaced one second earlier — **that run is unusable, and the refusal cannot be attributed to the model.** Until this is fixed the protocol needs a step: do not return to a finished run's chat, and re-hash the clones before scoring.
-- **Two structural defects are confirmed by reading the source; the exact pairing is not.**
-  1. **Nothing cancels a pending autosave on a session switch.** `_autoSaveDebounce` is armed at **10 sites** in `static/js/document.js` (800 ms, and 2000 ms on two paths). Every `clearTimeout` on it is the debounce re-arming itself — grep and read the next line. `loadSessionDocs` and `sessions.js`'s switch path never touch it.
-  2. **The switch is deferred by 300 ms** — `setTimeout(() => documentModule.loadSessionDocs(id, …), 300)` at `sessions.js:2104`, same shape at `:3412` — against autosave timers of 800/2000 ms.
-  - `switchToDoc` itself is **not** the hole: it calls `saveCurrentToMap()` before assigning `activeDocId`, in that order. `loadSessionDocs` is the one that drops other sessions' docs from the map and sets `activeDocId = null` with **no flush and no timer cancel**.
-- ⚠️ **Do not file the mechanism as settled.** The above explains *that* a stale write can survive a switch; it does not yet explain the observed pairing (new document id, old buffer content). **This repo has twice recorded a mechanism from a symptom string.** Reproduce it in the UI before writing one down.
-- ✅ **The trigger is `chat.js:1596`, not an autosave timer.** `sendMessage` calls `await documentModule.saveDocument()` on **every send** whenever a document is active (again at `:1638` with `silent: true`, which the `lastSyncedContent` equality check then skips). That is the 12:11:21.478 write — **11 ms before** the `[doc-inject]` line for the same send. The debounce timers are a second, slower path to the same hole; they are not what fired here.
-- ⚠️ **`saveDocument` has no user-edit check on the happy path.** It PUTs `textarea.value` to whatever `activeDocId` is. `_userDirtyDocId` exists and is consulted **only inside the 409 branch** (`:9587`), where the comment already states the principle — *"any code path that writes the textarea programmatically diverges too … or the retry becomes a way to resurrect content the user never typed"*. The non-409 path never asks. `base_version` matched, so the CAS passed legitimately — **the same conclusion item 1 reached about this guard.**
-- ❌ ~~"Fix (a): reject a PUT whose session doesn't match `documents.session_id`"~~ — **retracted 2026-07-30, hours after being written, before any code was touched.** It would not have prevented this. The write targeted `986c425e`, which *belongs to* `c9c2b615`, the chat the user was in — session and document agreed. **It would have caught only the second event and would have read as a fix for both.** A guard has to be checked against the actual failing write, not against the story about it.
-- ✅ **REPRODUCED 2026-07-30 13:32:45, with the `[doc-put]` log naming both halves in one line:** `doc=b1754908 doc_session=5bc3c70f base_version=1 len=16294 sha=db92c4f2ae7c`. `b1754908` is chat P's 8,578-char clone; the content is chat Q's 16,293-char AI document. **Removing the single character that was typed makes it byte-identical to `ea73565d` v1** — the divergence is at offset 1454 and nothing else differs. The editor was displaying Q's document while bound to P's id, and **one keystroke persisted it**. No send was involved.
-  - **The panel was MINIMIZED to the composer chip across the switch.** With it minimized, switching chats and waiting produced **no PUT at all** (`r1-before` == `r1-after`, zero `[doc-put]`) — `saveDocument` returns early when `doc-editor-textarea` is not in the DOM. The damage happened on *restore*: `openPanel` removes and rebuilds `#doc-editor-pane`, and `_minimizedDocId` / `Modals.isMinimized('doc-panel')` carry the chip across the session switch while `loadSessionDocs` has already repointed `activeDocId`. **Minimize in chat Q → switch to chat P → restore → type.**
-  - ⚠️ **The first attempt at this repro was VOID, not clean.** It ran with the panel closed and was read as "the switch is innocent". A protocol whose precondition silently disables the mechanism produces a negative that looks like evidence. **Arm-check first: type one character and confirm a `[doc-put]` line before believing any zero.**
-- ✅ **`[doc-put]` instrumentation added 2026-07-30**, `routes/document_routes.py`, before the identical-content skip and before the CAS so a cross-session write is visible even when later rejected. **This bug cost a document precisely because nothing recorded which document each PUT carried.** Keep it until the fix is verified.
-- **Candidate fix, not yet safe to build:** gate automatic saves on `_userDirtyDocId === savingDocId`. ⚠️ **`_markUserDirty` is wired to only three inputs** — the textarea, the email rich body, and the four email header fields (`:2562`, `:5612`, `:5873`). **Not the title input, not the language select**, so gating on it as-is would silently stop saving title-only and language-only edits. And `chat.js:1596` passes no `silent` flag, so gating on `silent` misses the very call that caused this.
-- ⚠️ **This is a guard that SUPPRESSES writes, so a false positive loses user typing** — the same severity as the bug. Per [`CLAUDE.md`](../CLAUDE.md) §3 it must be bounded and seen failing first, and **there is no JS harness**. Do the reproduction and a report-only PUT log before touching `document.js`.
-
-**Attempted fix, 2026-07-30 — built, and it did NOT hold. Do not read the diff as a fix.**
-`static/js/document.js` now stamps `textarea.dataset.docId` in `switchToDoc` and `populateEditor`, and `saveDocument` re-renders instead of writing when the stamp disagrees with `activeDocId`. **A second keystroke wrote through it anyway** — `13:42:23 [doc-put] doc=b1754908 base_version=2 len=16295`, one character on top of the bad v2. Two branches remain and they need different patches:
-
-- **`stamp=(none)`** — the pane was rebuilt with no render, so a fresh `<textarea>` carries no stamp and the guard fails open *by design* (it must, or a legitimate first save would be blocked). Then the fix belongs in `restoreFn` / `openPanel`, not in `saveDocument`.
-- **`stamp=<the other document>`** — the guard should have fired and something saved regardless.
-
-An unconditional `console.log('[doc-save] target=… stamp=…')` was added to separate them. ⚠️ **It was `console.debug` first, which Safari hides behind the console's level filter** — a log line nobody can see is not instrumentation.
-
-- ❌ ~~"`loadSessionDocs` has no `res.ok` check, so a 404 leaves the pane holding stale content"~~ — **retracted the same hour.** The `res.ok` gap is real but is not what happened: the 404s in the browser console resolve to `/api/research/status/<session>` and `/api/chat/stream_status/<session>`, the two polling endpoints **item 13** already files as noise. They 404 whenever no run is in flight. The document fetch was never failing. **Third theory this item has killed** — the session-ownership guard, the switch-time autosave, and now this.
-- ✅ **All four damaged documents recovered 2026-07-30 and verified by hash** — `986c425e` v3 `ea089a2f7fd8`, `d1c934f7` v3 `59879c9e9631` (`ai`), `c4da7609` v5 `d036765bedd7` (`ai`), `b1754908` v4 `2a6319146b84`. **Appended as a new version rather than overwriting `current_content` in place** — restoring the column alone leaves `version_count` naming a version whose content is no longer there, so the badge and the diff view both lie. The corrupt versions are kept deliberately: they are this item's evidence and the only proof the write crossed chats.
-- ⚠️ **Superseded, kept for the shape of it — State as of 2026-07-30 14:00: `b1754908` is still corrupt at v3** (16,295 chars where the clone was 8,578) and the editor displays it inside chat `5bc3c70f`. **v1 is intact at `ea089a2f7fd8` and Q's original at `65580c429b7c`, so nothing is unrecoverable.** Restoring it over the API returns **401** — auth is on and a bare `urllib`/`curl` PUT carries no session cookie. Restore from the UI, or stop the app first.
-**Root cause, found 2026-07-30 by tracing instead of reading. `restoreFn` empties the document before rendering it.**
-
-`Modals.register('doc-panel').restoreFn` (`static/js/document.js`) calls `openPanel()` — which builds a **fresh, empty, unstamped** `#doc-editor-textarea` — and then `switchToDoc()`, whose first act is `saveCurrentToMap()`. `activeDocId` still points at the minimized document, so **0 characters are copied over its map entry**, and `switchToDoc` then renders the entry it just emptied:
-
-```
-12:48:03.016  saveCurrentToMap  active=aa87b1ce  stamp=null  len=0   blocked=false
-12:48:03.016  switchToDoc       id=aa87b1ce      len=0
-```
-
-That is the *"the chip opened an empty untitled document"* report, exactly. **No PUT followed, so the 17,085-character server copy survived by luck — one keystroke would have persisted the empty version.** The 14:24 cross-chat write is the *same call* with different timing: instead of empty text the buffer held another chat's document.
-
-- ⚠️ **The first stamp guard let it through because a missing stamp failed open.** `blocked=false` above. **A missing stamp is not permission** — that was the error, and it is the same shape as the guard-that-cannot-fire this file records twice already (items 16, 25).
-- ✅ **FIXED and VERIFIED 2026-07-30.** `saveCurrentToMap` now writes only on an explicitly matching stamp, with one exception: a genuinely new document where buffer and map entry are both empty. Same sequence re-run:
-
-  ```
-  12:52:28.890  saveCurrentToMap  active=aa87b1ce  stamp=null  bufLen=0  mapLen=17085  blocked=true
-  12:52:28.890  switchToDoc       id=aa87b1ce      len=17085
-  ```
-
-  **The 12:48 run is the negative control** — identical steps with that branch unguarded, document emptied — so "check it fails before you check it passes" is satisfied without reverting anything. The minimize immediately after logs `bufLen=17085 mapLen=17085 blocked=false`, so a legitimate copy still passes and the guard does not over-block.
-- ⚠️ ~~**Only the empty-buffer branch has been observed being blocked.** The foreign-buffer branch (the 14:24 write into `c4da7609`) falls under the same `_stamp !== activeDocId` condition but **has not been triggered on demand**.~~ ✅ **OBSERVED 2026-07-30 ~16:02 CEST, blocking:**
-
-  ```
-  [doc-map] buffer (stamp b1754908…, 8579 chars) does not belong to 79879a2f… (5 chars) — not copying
-  ```
-
-  A buffer rendered from `b1754908` while `activeDocId` had already moved to `79879a2f` — **8,579 characters of one chat's document, one map-copy away from a 5-character entry in another.** That is the shape of the 14:24 write into `c4da7609`, caught this time. It fell out of item 31's verification run, not from a protocol aimed at it. **Both branches of the guard have now been seen blocking, and row 1 of item 31's trace shows the delete branch still firing when it should** — so neither is a guard that cannot act.
-  - ⚠️ **The same run shows the underlying defect is still firing in normal use**, twice in one session: `[doc-map] buffer (stamp (none), 0 chars) does not belong to aa87b1ce… (17085 chars)`. **The guard is doing real work on ordinary chat switches, not just in a staged repro.** `restoreFn` is still the fix that is owed.
-  - ⚠️ **And the guard was already live when those writes happened** — re-checked 2026-07-30. `[doc-put]` records `14:17:24 doc=b1754908 … sha=2a6319146b84` (the recovery) and then `14:24:08 doc=c4da7609 … sha=2a6319146b84` — **byte-identical, into another chat's document seven minutes later** — followed by `14:26:51 … len=1757`. The guard was verified at 12:52 and the file last edited at 14:51, so both writes fall inside the guarded window. They are **item 31(a)**, which this guard was never meant to cover: `saveDocument` writes `activeDocId` with a correctly stamped buffer, so nothing fires. **The distinction matters — *"guard ✅ verified"* is true of the map, and reads as though it covered the writes.**
-- ✅ **`window.__docTrace` is why this was found.** A rolling in-page trace of `loadSessionDocs` / `chipRestore` / `switchToDoc` / `closePanel` / `saveCurrentToMap` / `saveDocument`, dumped with `console.log(JSON.stringify(window.__docTrace))`. **Four fix attempts were argued from reading a 10,000-line file and three were wrong; the trace settled it in one run.** ⚠️ It relies on nothing being open at the time, which is the property the console lacked — two runs were wasted on "was the console open, was the panel open, was the precondition met".
-✅ **ROOT CAUSE FIXED AND VERIFIED LIVE 2026-07-30 21:27. The item is closed.**
-
-**Not** by making `openPanel` render — that was the filed proposal and it is the wrong shape: `openPanel` is **1,353 lines** (4891–6243) with 23 `activeDocId` references, all inside event-handler closures except a three-line tail (`renderTabs()`, then `showEmptyState()` when `!activeDocId`). Threading a document through it is a large change to a large function.
-
-**The defect is one line earlier: `switchToDoc` flushes the buffer into the map UNCONDITIONALLY**, and after a pane rebuild that buffer is a fresh empty node. So `switchToDoc(docId, { flush = true } = {})`, and the callers that have just rebuilt the pane pass `false`.
-
-- **The flush at restore is not merely wrong, it is redundant** — `closePanel('down')` already flushed while the pane was intact and stamped. Confirmed by observation, not argument: `21:26:47 saveCurrentToMap … bufLen=8579 mapLen=8579 blocked=false` at minimize, and the restore 25 s later renders exactly those 8,579 characters.
-- **It could not have lost data either way.** By the time it runs the buffer is already gone, and the stamp guard was blocking the call regardless — so removing it is *outcome-identical*, an attempt removed rather than a write.
-- ⚠️ **`restoreFn` was not the only site. Three more were found while checking the call list**, all `_ensureDocPaneMounted()` → `switchToDoc(…)`: `_restoreDetachedEmailDoc`, the email-draft path, and both branches of `loadDocument`. **`_ensureDocPaneMounted` rebuilds only *sometimes***, so they cannot hard-code `flush: false` — it now returns whether it rebuilt and each caller passes `flush: !_rebuilt`. **The guard is why these were harmless; nobody had noticed they were the same shape.**
-
-**The three stages of one sequence, all recorded 2026-07-30:**
-
-```
-12:48  saveCurrentToMap len=0        →  switchToDoc len=0       17,085 chars emptied
-12:52  saveCurrentToMap blocked=true →  switchToDoc len=17085   guard catches it
-21:27  (no saveCurrentToMap at all)  →  switchToDoc len=8579    nothing wrong is attempted
-```
-
-The 21:27 trace goes straight from `chipRestore` to `switchToDoc`, with no `[doc-map]` warning, no `[doc-put]` and no `[doc-del]`. **The guard stays as defence in depth** — it is what caught the foreign-buffer branch at 16:02 and the three call sites above, and it costs nothing.
+**An AI-written document destroyed and three overwritten. Body in [resolvedissues.md](resolvedissues.md), *"Switching chats wrote the editor buffer into the other chat's document"*.**
 
 ### 38. ~~Four functions look like calls that were never wired up~~ ⊘ RETIRED — 4 of 4 disproved
 
@@ -276,33 +179,8 @@ The 21:27 trace goes straight from `chipRestore` to `switchToDoc`, with no `[doc
 
 **~250 further lines are unreferenced and plausibly deletable** — seven `_cookbook_*` helpers, `_ssh`/`_ssh_ps`, `_format_error_response` (defined twice, across a *forked* `research_handler.py`, which is the larger smell), `_embed` (defined three times, in `rag_vector.py`, `memory_vector.py` and `tool_index.py`), `_is_local_openai_compat_url`. **Nothing was deleted:** removing production code on a grep is the failure item 16 exists to describe, and no suite run is available from the sandbox.
 
-### 37. ~~Model probes ignore session-backed credentials, so subscription endpoints report as failing~~ ⊘ RETIRED
-
-> ⊘ **Retired 2026-07-31 — out of scope for this deployment. NOT disproved: the divergence below is real and unfixed.** The maintainer will not add a subscription endpoint, so the branch never executes here. **The condition is falsifiable and is written down precisely so this is not "forgotten":**
->
-> ```
-> cp /Users/cedrik/odysseus/data/app.db /tmp/probe.db && sqlite3 /tmp/probe.db \
->   "select count(*) from provider_auth_sessions; select id,name,provider_auth_id from model_endpoints;"
-> ```
->
-> **If that count is ever non-zero, this item is live again.** Recorded this way because *"settled constraints"* in this project have been false before — *"local models get no tool schemas at all"* was the stated reason item 8's active half had to be a text nudge, and that nudge destroyed a document. **A retirement that rests on a premise must carry the test of the premise.**
-
-**Found 2026-07-31 by answering item 16's open question** — *"what does `resolve_endpoint_runtime` do that a raw `api_key` does not?"* — which was filed as the check that would decide whether `_resolve_probe_key` was a defect or deletable dead code. **It is a defect.**
-
-`resolve_endpoint_runtime` (`src/endpoint_resolver.py`) branches on `provider_auth_id`: when set, it resolves **refreshable credentials at call time** via `resolve_runtime_credentials(auth_id, owner=…)` **and overrides the base URL**. Static-key providers use `ModelEndpoint.api_key`; session-backed ones cannot.
-
-**Every live probe caller takes the raw column instead.** `endpoints_cache[ep_id] = {"base_url": ep.base_url, "api_key": ep.api_key}` (`routes/model_routes.py:1812`, same shape at `:2259`), then `_probe_single_model(base, ep_data.get("api_key"), …)` at `:1825`, `:1887`, `:2273`.
-
-- **Consequence:** for any endpoint with `provider_auth_id` set, the probe sends a static key that is null or stale, against a base URL that may be wrong, and reports the model **unreachable when it is fine**. S3 — the task visibly fails and the user is told the wrong reason.
-- 🔴 **`_resolve_probe_key` (`routes/model_routes.py:684`) does it correctly and nothing calls it**, while 5 tests assert on it. **This is item 16's shape with a user-visible consequence, and it is the first instance the audit found rather than inherited.** Reciprocal (#16↔#37).
-- **Fix is to call the function that already exists** — route the probe callers through `_resolve_probe_key`, which is what its 5 tests already describe.
-- ⚠️ **TESTED 2026-07-31 AND IT CANNOT FIRE HERE — severity S3 → S4 today, S3 latent.** Against a copy of `app.db`: **one endpoint total** (`localhost:11434`), `provider_auth_id` **NULL**, and `provider_auth_sessions` holds **0 rows**. There is no session-backed endpoint on this installation, so the branch that diverges is never taken. **The defect is real in source and dormant in practice**, and it becomes live the day a subscription endpoint is added — which is the least likely day for anyone to suspect the probe. Re-derive with:
-  ```
-  cp /Users/cedrik/odysseus/data/app.db /tmp/probe.db && sqlite3 /tmp/probe.db \
-    "select id,name,provider_auth_id from model_endpoints; select count(*) from provider_auth_sessions;"
-  ```
-- ❌ **The unit-level demonstration could not be run in the sandbox** — `import src.endpoint_resolver` fails on `ModuleNotFoundError: httpx`, the unpinned-dependency problem [`CLAUDE.md`](../CLAUDE.md) §4 describes. So the divergence is established **by reading, not by executing**, and that is the whole of the evidence.
-- **The verification that does not need a subscription account is a wiring test:** assert the probe path resolves credentials rather than reading `ModelEndpoint.api_key` off the row. It fails today, passes after the fix, and needs no session-backed endpoint to exist — the deliberate structural-test exception in §4, and the only way this gets checked before someone hits it in production.
+### 37. ~~Model probes ignore session-backed credentials~~ ⊘ RETIRED 2026-07-31
+**Out of scope for this deployment, NOT disproved** — source-level only; 0 session-backed endpoints and 0 auth sessions exist here, so nothing could exercise it. Re-open if a subscription endpoint is ever configured.
 
 ### 36. ~~The document-tab actions menu is unreachable — its button is never rendered~~ ✅ ACCEPTED AS IS
 
@@ -385,64 +263,7 @@ The 21:27 trace goes straight from `chipRestore` to `switchToDoc`, with no `[doc
 - **Fix, not yet built, and deliberately not built yet.** *Measure first.* If `[doc-put-404]` shows the path still firing, the fix is two lines — clear `_streamDocId` where the map entry is dropped, in the 404 reaper and in `loadSessionDocs` — plus a cleanup hook on the stream's `finally` (`static/js/chat.js:3923`, the one exit every stream passes through, including abort, error and background). If it does not fire, this item may close as bounded by the reaper. ⚠️ **The teardown must not persist anything** — [`resolvedissues.md`](resolvedissues.md), *"Empty document writes destroyed a document"*: a teardown that saves is how a 6,186-character document was wiped, and this one runs when the user has just navigated away. ⚠️ **A cleanup on abort must not kill a legitimately backgrounded stream** — `chat.js:4480` replays a background document stream by calling `streamDocOpen` again, so the abort path and the detached-run path are not the same event.
 
 ### 32. ~~A scheduled tidy hard-deletes "duplicate" documents, versions and all~~ ✅ CLOSED 2026-07-30
-**Found 2026-07-30 while re-checking item 31's evidence. This is what actually destroyed the 8 documents, and it is the only unrecoverable path in the whole 30/31/32 complex** — everything else soft-deletes or leaves a `document_versions` row to restore from. The maintainer **paused the task** on 2026-07-30 once this was found.
-
-**It is not inferred. The run says so:**
-
-```
-task_runs  ad505282-1f59-4a5f-a345-61b5a6f5c5d5   task 0a71978a "Documents Tidy"
-2026-07-30 12:01:09 UTC (14:01 CEST)   status=success
-"Removed 8 of 70: Pink Oyster Mushroom Growth Phases - Ple (+8 duplicate copies) (+7 more) · 62 kept"
-```
-
-**`70 → 62` is this string**, not an independent count — item 31 cited the same numbers as evidence for a different path, and `app.log` carries only `Task 'Documents Tidy' completed (run ad505282)`, with the result kept in the database. It had done it before: `4389c8b9`, 2026-07-29 18:23, *"Removed 2 of 53 … (+2 duplicate copies)"*.
-
-- **The mechanism is by design, in `src/document_actions.py`.** Survivors are grouped by `(_norm_title(title), _content_fingerprint(content))`, sorted by real length, and every member but the first is `db.delete(doc)` — a **hard** delete. `DocumentVersion` is `cascade="all, delete-orphan"` with `ondelete="CASCADE"` (`core/database.py:312`), **so the version history goes with it.** There is no archive, no soft flag, no undo.
-- ⚠️ **It fires automatically, on an event, not on a clock.** `src/task_scheduler.py:241` — `trigger_type="event"`, `trigger_event="document_created"`, `trigger_count=5`. **Every fifth document created runs it.** `app.log`: *"Event 'document_created' triggered task 'Documents Tidy' (every 5)"*. As of the pause, `trigger_counter` was **2 of 5**.
-- 🔥 **It destroys item 20's experiment by construction.** The five-clone protocol creates five documents with the same title and identical content — that is **one duplicate group and the trigger count in the same act**. Four of the five clones are hard-deleted, with their version rows, and the run leaves nothing in `app.log` to explain where they went. **Item 20 cannot be run while this task is active**; the precondition is now written into item 20.
-- **It is also the second half of item 31(b), and of item 30.** `routes/document_routes.py` `tidy_documents` hard-deletes `is_active == False` rows whose `current_content` is `NULL` or `''`, and the same file hard-deletes *active* documents whose content is empty or whose title is in `_JUNK_TITLES`. **An emptied document plus a closed tab is a permanent loss at the next five-document boundary** — that is the chain, and no single step in it looks dangerous on its own.
-- **Current exposure, measured on a copy of `app.db` 2026-07-30 ~15:20:** 62 documents, 38 `is_active = 0`, and **0 rows with empty content**, so nothing is currently queued for destruction. The four documents recovered from items 30/31 all still hash to their recorded values, and in each case `current_content` equals the newest version row.
-✅ **FIXED 2026-07-30 — (a), (b) and (c). (d) deliberately not done.**
-
-`retire_document()` in `src/document_actions.py` is now the only way a tidy path removes a document: `archived = True` (Archive tab, restorable, and every tidy query filters it out) plus `is_active = False` (gone from the chat's tab bar, which is the visible behaviour the feature is *for*). **`db.delete` no longer appears on any Document in any tidy path** — the scheduled action, `POST /api/documents/tidy` and `POST /api/documents/ai-tidy` all call the same helper, so the two implementations the source comments ask to *"keep in sync"* cannot drift on what removal means.
-
-- **(b)** the duplicate key is now `(normalized title, content fingerprint, session_id)`. Two copies in the **same** chat are still collapsed; the same document cloned into five chats is five working copies.
-- **(c)** every retirement is logged with its id and reason — `[doc-tidy] archived N document(s) …` — at the moment it happens. Result strings say **"Archived"**, not "Removed", and name the Archive tab.
-- **Archived rows are excluded from the query**, which is what makes retiring terminal instead of a step: without it a second run re-counts what the first one retired, and the duplicate pass re-picks a keeper among documents the user was already told were gone.
-- ⚠️ **The `/api/documents/tidy` inactive-and-empty sweep was item 31(b)'s second half and is now closed by the same change.** A document emptied by item 30 and closed by item 31 arrives there as `is_active=0` with empty content, and used to be hard-deleted on arrival. It is archived instead, and archived rows are skipped.
-- ❌ **(d) — the event trigger is unchanged, on purpose.** With nothing destructive left to fire, *when* it fires is a scheduling preference, not a safety property. Re-open it only if the archive itself starts to hurt.
-
-**Tests: `tests/test_document_tidy_soft_delete.py`, 7 of them, 2 negative controls. Each branch was checked by MUTATION, and the mutations are written down** ([`CLAUDE.md`](../CLAUDE.md) §3 — a score without its mutation is a number nobody can re-derive):
-
-| mutation | tests it kills |
-|---|---|
-| group key back to `(title, fingerprint)` — the 07-30 behaviour | `…cloned_into_five_chats_is_not_a_duplicate_group` |
-| `retire_document` calls `session.delete(doc)` again | `…junk_is_archived_not_deleted`, `…duplicates_in_one_chat…`, `…session_less_documents…` |
-| drop the archived filter from the query | `…second_run_does_not_re_report_what_the_first_archived` |
-
-Each mutation kills a **different** test and the negative controls stay green in all three states, so no test is passing for the wrong reason. The junk test also asserts the `DocumentVersion` rows survive — the `all, delete-orphan` cascade is what made the original deletion unrecoverable, so "the row is still there" is not enough.
-
-- ⚠️ **`tests/test_document_tidy_null_timestamp.py` asserted `count() == 1`, which pinned the hard delete** — a test written for the NULL-timestamp sort crash had quietly become the contract for destroying a row. Updated to assert both rows survive with exactly one archived; the property it exists for is untouched.
-- ✅ **M1 suite, 2026-07-30 17:5x: `2 failed, 5775 passed, 4 skipped` in 109.30 s**, item 18 only *(both since fixed — the suite is `0 failed` as of 2026-07-31)*. **The count reconciles exactly:** 5,781 collected against 5,774 before this work — **+7, the seven tests above** — so nothing else shifted under the change. *(The earlier sandbox run on unpinned Linux deps is superseded and should not be quoted.)*
-- ✅ **VERIFIED LIVE 2026-07-30 17:31:08, and it caught the right document.**
-
-  ```
-  [doc-tidy] archived 1 document(s) via /api/documents/tidy:
-             3840c215-… (inactive and empty)
-  documents 73 → 73   ·   document_versions 166 → 166   ·   archived 0 → 1
-  ```
-
-  **`3840c215` is the empty document from item 31's arm check** — created and closed at 15:54 to prove `[doc-del]` fired, and sitting at `is_active=0` with empty content ever since. **That is exactly the state item 31(b) leaves a document in, and the branch that used to `db.delete` it on sight.** It was archived instead: row intact, version row intact, restorable. `tidy_verdict` is NULL, so this was the regex pass, not the model's verdict.
-  - **Both counts held**, which is the assertion that matters — a hard delete would have moved `document_versions` too, via the cascade.
-  - **Nothing was collapsed**, which is also correct: the corpus had **zero** duplicate groups under the session-scoped key and **two groups totalling 7 rows** under the old one (a `Pink Oyster Mushroom Growth Phases` group of **7, across 7 distinct sessions**). **Same corpus, same run: 7 destroyed before, 0 touched after.**
-  - ⚠️ **The scheduled task never got to run it** — 7 of its runs today ended `aborted — "Queued — waiting for Odysseus to be idle…"`, including the one that fired at 17:24. **The event trigger queues and then loses its window while the browser polls**, so the library's Tidy button is the only reliable way to exercise this path. That button runs `/api/documents/tidy` **and** `/api/documents/ai-tidy` in sequence, so both fixed paths were exercised.
-- **Still owed:** a run with real duplicates in one chat, to see the collapse archive rather than no-op. The live run above proves the junk/inactive branch and the *absence* of cross-chat collapsing; it does not show a keeper being chosen.
-- ✅ **The pause is real, and it is enforced at two independent layers** — checked 2026-07-30 rather than assumed. `src/event_bus.py:82` filters `status == "active"` when *arming*, so a paused task's `trigger_counter` does not even increment; `src/task_scheduler.py:817` re-checks at execution time and marks an already-queued run `skipped` with `Task no longer active`. **A run queued before the pause cannot fire.** State as of the pause: `0a71978a` = `paused`, counter frozen at **2 of 5**.
-  - ⚠️ **Pausing DEFERS the deletion, it does not cancel it.** Duplicates accumulate while it is off and the first run after re-enabling collapses every group in one pass — nine clones became one row on 07-30. **Snapshot or clean up deliberately before re-enabling**, and note it fires on the fifth document *after* that, not immediately.
-  - ⚠️ **The manual routes stay live while the task is paused:** `POST /api/documents/tidy` and `POST /api/documents/ai-tidy`. Both need an explicit click, so neither is a background risk, but **ai-tidy asks a model to label documents `junk` and hard-deletes on its verdict** (`routes/document_routes.py:1114`).
-- ⚠️ **`tidy_sessions` is the same shape, is STILL ACTIVE, and was not examined.** It ran ten seconds earlier the same day (*"Cleaned 3 sessions"*, `task_runs.ddbf6bb3`) and `src/session_actions.py:91,137` uses `db.delete(row)` on `Session`. It is what leaves documents with `session_id = NULL` (item 31(c)). **`tidy_research` is a third, also unexamined.**
-
-## S3 — visible task failure
+**The only unrecoverable path in the 30/31/32 complex. Body in [resolvedissues.md](resolvedissues.md), cited by title.**
 
 ### 8. The agent gathers information, then stops
 Four attempts at one task in 16 minutes, **zero files produced**. 0b12aadb read 10,035 chars, correctly identified the embedded HTML page, ended its thinking with *"Let me write out the extracted content:"* — and emitted nothing.
@@ -777,121 +598,24 @@ task 951  prompt eval  12336 ms /  2224 tokens     <- DELTA only
 
 
 ### 42. Sessions pin the model tag per row; a tag Ollama no longer serves does not fall back
-> ⊘ **THE HEADLINE THIS ITEM WAS FILED ON IS DEAD — disproved 2026-08-01, hours after filing, by the maintainer running the one command the draft asked for.** It was filed as *"two 9B variants ≈ 13 GB of a 16 GB machine"*. **Ollama does not co-reside them; it evicts.** What survives is the dead-tag branch below, which was found while drafting the fix for the claim that turned out to be wrong. **The arithmetic was the whole severity and it was never a measurement** — see *"Stage 1 — ANSWERED"*.
-**Filed 2026-08-01, from re-checking the previous session's own claim that *"the 64k switch is live and measured"*.** That claim is true and it is narrower than it reads: it was verified on session `93c1c383`, which is **one of only two sessions on the new tag**.
+**Filed 2026-08-01 from re-checking *"the 64k switch is live and measured"* — true, and narrower than it reads: it was verified on one of only two sessions then on the new tag.**
 
-**`sessions.model` is a per-row column and it is a THIRD channel pinning the model tag.** [qwensetup.md](qwensetup.md) names two settings — `default_model` and `research_model` — as *"the two settings that pin the model tag"*. There is a third, it is per session, and nothing in these docs mentioned it.
-
-```
-sessions by model, data/app.db copied 2026-08-01
-  72   'qwen3.5:9b-32k'    newest 2026-07-31 15:32
-   3   'qwen3.5:4b-32k'    newest 2026-07-18 19:23   ← the model retired 2026-07-18, item 4
-   2   'qwen3.5:9b-64k'    newest 2026-07-31 22:50
-   2   ''                  newest 2026-07-12 11:31
-sessions touched since 2026-07-31 12:00:  36 on -32k, 2 on -64k
-```
-
-- ✅ **Observed live, in one app uptime.** Startup at `2026-08-01 00:15:52`; a full six-round agent turn on **`qwen3.5:9b-32k`** at 00:19:01–00:28:20, then every round from **00:30:51** on `qwen3.5:9b-64k`. **2 minutes 31 seconds apart, no restart between them.** `grep round_start data/logs/app.log` — the model is on the line.
-- 🔴 **This inverts a documented recommendation, and that is the reason to file it rather than just change a dropdown.** Two 9B variants are ~6.7 GB each: **~13 GB of a 16 GB M1 Pro before `nemotron-3-nano:4b` and `all-minilm`.** [qwensetup.md](qwensetup.md)'s co-residency warning counts the 4B utility model and the embedder — **it does not count a second copy of the 9B, because nobody knew there was one.** Right now the **5-minute `OLLAMA_KEEP_ALIVE` default is the only thing preventing both being resident**, and qwensetup's standing plan is to fix that to 30m. **Do the tag cleanup first; fixing keep-alive first is the memory-exhaustion case.** The arrival path is already written down there: KV spills to CPU, throughput collapses, the inactivity timeout fires, and it presents as item 9b's 504.
-- ⚠️ **`research_model` is still `qwen3.5:9b-32k` in `data/settings.json`** — the *"Owed"* line in [session-log.md](session-log.md)'s 07-31 entry, half done. `default_model` was changed; its sibling was not.
-- ⚠️ **The 32k arithmetic defect the 64k raise was made to remove is therefore still live on 72 sessions.** At 32,768 with `max_tokens 8192` the real input room is 24,576 against an auto budget of 27,852 — the app can assemble prompts that cannot fit alongside a full answer. It degrades quietly, which is why nobody noticed it the first time.
-- ⚠️ **Three sessions are pinned to `qwen3.5:4b-32k`**, the model retired on 2026-07-18 for a correctness floor it did not clear (item 4). None has been touched since 07-18. **Not established: what happens when one is reopened** — whether Ollama still has that tag, and whether the resolver falls back or pulls. Check before assuming item 4's closure covers it.
-- **Not established, and it decides the shape of the fix:** whether the 00:19 turn ran on `-32k` because of the session row or because of `research_model`. Both are `-32k`, so this log cannot separate them. The discriminating test is one turn in a `-32k`-pinned session **after** `research_model` is moved to `-64k`.
-**Fix — DRAFTED 2026-08-01, nothing built. Staged, and the first two stages are measurements. Do not skip to stage 3.**
-
-The reason for the staging is that **this item's headline number is arithmetic, not a measurement.** *"Two 9B variants ≈ 13 GB"* multiplies one observed `ollama ps` reading by two. Nothing has watched both be resident. [`CLAUDE.md`](../CLAUDE.md) §3 — measure a claim by mutating it, not by restating it.
-
-**Stage 0 — free, no risk, do it regardless.** `research_model` → `qwen3.5:9b-64k` in the **UI**. It changes no session row and needs no migration.
-
-**Stage 1 — ANSWERED 2026-08-01, and it kills the co-residency claim. ⊘ One row, and it is the wrong model.**
+**`sessions.model` is a per-row column and a THIRD channel pinning the tag.** [qwensetup.md](qwensetup.md) names `default_model` and `research_model` as *"the two settings"*. There is a third, it is per session, and nothing recorded it.
 
 ```
-qwen3.5:9b-64k   b7b9afeaf023   6.7 GB   100% GPU   65536   4 minutes from now
+sessions by model, 2026-08-01:   72 'qwen3.5:9b-32k'   7 'qwen3.5:9b-64k'
+                                  3 'qwen3.5:4b-32k'   2 ''
 ```
 
-- **The two turns, from `app.log`:** `-32k` at **09:51:33–09:53:08** (`context_length=32768`), `-64k` at **09:54:12–09:56:00** (`context_length=65536`). Same uptime, 64 seconds apart.
-- **`-64k` reading `4 minutes from now` puts the `ollama ps` at ≈09:57.** `-32k` was last used at **09:53:08**, so its 5-minute timer does not expire until **09:58:08** — **it should still have been listed, and it was not.** Ollama **unloaded `-32k` to make room for `-64k`.** They do not coexist, so the 16 GB was never going to be exhausted.
-- ✅ **And the reload is cheap, which nobody predicted either.** First token: `-32k` round 1 **54.340 s**, `-64k` round 1 **58.212 s**. **A full model change bought ~4 s.** Whatever dominates round 1 is not a cold load — it is item 40, and this is the cleanest control that item has (see *"Round 1 of every turn re-prefills the whole prompt"*).
-- ⚠️ **One inference, not a measurement: the `ps` time is derived from the `UNTIL` column, not observed.** It is tight — `4 minutes` pins it to ≈09:56–09:57 against a 10:01 expiry — but it is a reconstruction. `/opt/homebrew/var/log/ollama.log` states an eviction outright and is the better source; it is outside the repo so no sandboxed agent can read it.
-- ✅ **EVICTION CONFIRMED on the third `ollama ps`, 2026-08-01 ≈10:11:41 — directly observed, with three minutes of margin.** The protocol below was run as written.
-
-  ```
-  10:09:01–10:09:47   turn on qwen3.5:9b-32k      → keep-alive expiry 10:14:47
-  10:10:10–10:10:59   turn on qwen3.5:9b-64k      (23 s later — inside the window)
-  ≈10:11:41           ollama ps
-                      qwen3.5:9b-64k   6.7 GB   100% GPU   65536   4 minutes from now
-                      (-32k absent, with 3 min 06 s still on its timer)
-  ```
-
-  **`-32k` had been used 1 min 54 s earlier and had over three minutes left. The only thing that happened in between was the `-64k` turn.** ⚠️ **The margin is the whole point** — the previous attempt failed on a 23-second overlap, so the number to quote is *"3 minutes remaining"*, not *"it was absent"*. **The `ps` time is corroborated independently:** `4 minutes from now` against `-64k`'s last stream at 10:10:59 puts it in 10:11:00–10:11:59, and the last `app.log` line is 10:11:09.
-  - **Settled: two 9B variants do NOT co-reside on this machine. Ollama unloads one to load the other.** With `all-minilm` co-resident in the previous reading, this is a memory-headroom decision, not a model-count cap.
-  - ✅ **And a CONFIRMED cold load costs ~2.6 s.** The `-64k` round 1 that forced the eviction ran **49.135 s**; the `-32k` round 1 before it ran **46.494 s** — both single-round, no tools, ~100 characters out. **This is the same ~4 s figure as the first pair, now with the load attested rather than inferred.** See *"Round 1 of every turn re-prefills the whole prompt"*.
-
-- ⊘ **The SECOND `ollama ps` (≈10:04) is superseded — it missed by 23 seconds and could not have failed. Kept because the reasoning is the reusable part.**
-
-  ```
-  qwen3.5:9b-32k      f5b984e67b8d    6.1 GB    100% GPU    32768    4 minutes from now
-  all-minilm:l6-v2    1b226e2802db     25 MB    100% GPU      256    2 minutes from now
-  ```
-
-  Taken right after a `-32k` turn ran **10:01:23–10:03:08**, so ≈10:04. **But `-64k` was last used at 09:56:00, and its 5-minute timer expired at 10:01:00 — 23 seconds BEFORE the `-32k` turn began.** It was already gone on its own, so its absence here is consistent with eviction *and* with plain expiry, and discriminates neither. ⚠️ **A reading taken to test a claim, that cannot fail the claim, is not a test** — the same shape as the `app.log` grep for item 35's `console.warn`.
-  - **The protocol that settled it, with the window written down:** run one turn on each variant, the second **within five minutes of the first finishing**, then `ollama ps` the moment it answers — and **quote the loser's remaining time, not its absence.** This attempt left **5 min 23 s** between the turns; the successful one left **23 s**.
-- ✅ **What this second reading DOES settle, and one of them is a measurement [qwensetup.md](qwensetup.md) explicitly asked for.**
-  - **The KV-cache cost is now a number, not "under a gigabyte": `6.7 GB` at 64k vs `6.1 GB` at 32k — `+0.6 GB` for `+32,768` tokens.** qwensetup's *Footprint* bullet said *"load `qwen3.5:9b-32k` and diff the `SIZE` column: one command, and it converts 'under a gigabyte' into a number."* This is that command. ⚠️ **Extrapolating to weights ≈5.5 GB and 64k KV ≈1.2 GB assumes linearity and is NOT measured** — only the delta is.
-  - **`all-minilm:l6-v2` co-resides with the 9B** (25 MB, `CONTEXT 256`), total ≈6.1 GB of 16 GB. **So Ollama is not enforcing a one-model cap** — whatever keeps two 9Bs apart is about memory, not a count. That removes the simplest competing explanation for the first reading.
-  - ❌ **The `nemotron` lead is DEAD, killed 2026-08-01 by watching it load.** It was filed as *"nemotron is in neither reading and appears 0 times in `app.log`"*, hedged as possibly the logging trap. **It was the logging trap.** `ollama ps` during a Library tidy showed `nemotron-3-nano:4b  2.8 GB  100% GPU  4096`. **The utility model is in effect; `app.log` simply never names it.** *(Kept because the hedge is the reusable part — a zero from a grep is a claim about logging until something outside the log agrees with it.)*
-
-- 🔴 **AND THE SAME SEQUENCE SETTLES SOMETHING BIGGER: Ollama holds ONE real model at a time on this machine, even when both would fit.** Eight consecutive `ollama ps` calls during a Library tidy, all before **10:17:10**:
-
-  ```
-  ×3   all-minilm:l6-v2 25 MB  +  qwen3.5:9b-64k 6.7 GB
-  ×2   (empty)
-  ×3   nemotron-3-nano:4b 2.8 GB  100% GPU  4096
-  ```
-
-  - **This is a forced unload with ~2 minutes of margin.** The last `-64k` round ended **10:14:10**, so its keep-alive ran to **at least 10:19:10** *(later still if the 10:14:36 / 10:14:55 utility calls touched it)*. **Every reading above was taken before 10:17:10.** So `-64k` was dropped while its timer was live, and `nemotron` took its place.
-  - **6.7 + 2.8 = 9.5 GB on a 16 GB machine. It would have fit.** So this is **not** capacity — Ollama is keeping one real model resident and swapping. `all-minilm` at 25 MB rides along; nothing of consequence does.
-  - 🔴 **Consequence for [qwensetup.md](qwensetup.md) item 9, whose stated *"complete fix"* is the Utility-model split: the split does not buy parallelism on this machine, it buys a model SWAP.** Item 9's premise is *"one Ollama model can't serve agent + background jobs"* — true, and moving background work to a second model does not fix it here, because the second model evicts the first. **At the measured ~2.6 s per swap this is tolerable, not fatal** — but the item claims something that is not happening, and that is worth more than the seconds.
-  - ⚠️ **Not established: whether this is a configurable ceiling.** `OLLAMA_MAX_LOADED_MODELS` defaults low and, like `OLLAMA_KEEP_ALIVE`, a shell export cannot reach a brew-managed launchd daemon — see the keep-alive entry in [qwensetup.md](qwensetup.md), which is the same defect twice. **`launchctl getenv OLLAMA_MAX_LOADED_MODELS` is the ten-second check** and nobody has run it.
-- **What this costs instead of memory:** a 6.7 GB reload every time you alternate between a 32k chat and a 64k chat — measured at ~4 s of first-token time, i.e. **noise against the 55 s round-1 penalty.** ⚠️ **Not established: what happens with `nemotron-3-nano:4b` in flight**, which is the case qwensetup's co-residency note was actually about. Eviction between two 9B variants says nothing about a 9B plus a 4B, which may well fit.
-- **Consequence for this item: the memory argument is gone and the severity now rests entirely on the dead-tag branch below**, plus the fact that 72 sessions never see the 64k window. The overflow that motivated 64k was **1.9 % of turns**, so that half is S4 on its own.
-
-**Stage 2 — is the dead-tag branch real?** Predicted from source, not observed, and it is what decides whether stage 3 exists.
-
-- ✅ **The endpoint's cached model list, from `model_endpoints` on 2026-08-01:** `qwen3.5:9b-64k`, `qwen3.5:9b-32k`, `nemotron-3-nano:4b`, `all-minilm:l6-v2`, `qwen3.5:9b-16k`, `qwen3:8b-16k`, `qwen3:8b`, `qwen3.5:9b`. **`qwen3.5:4b-32k` is not among them** — Ollama no longer serves the tag those three sessions are pinned to. All three are **`archived=0`**, i.e. live in the sidebar, with 4–6 messages each.
-- **Predicted chain, read from source:** `_match_cached_model_id` (`routes/chat_helpers.py`) is exact-match plus a `basename` compare that is a no-op for a tag containing no slash → `None`; `normalize_model_id` (`src/llm_core.py:1804`) applies the identical two rules to the live list → `None`; the caller is `if norm: sess.model = norm`, so **`None` leaves the dead tag in place** and the request goes to Ollama naming a model it does not have. `try_fallback_endpoint` cannot rescue it — it **skips the current endpoint** and only fires when the endpoint itself is unreachable, not when one model is missing.
-✅ **STAGE 2 CONFIRMED LIVE 2026-08-01 21:08 — the dead-tag branch is real, and it fails LOUDLY.** One `hi` into `f4da3893` (`message_count` 4 → 6, `last_message_at` now 2026-08-01 19:08:29, so the right row was hit):
-
-```
-qwen3.5:4b-32k   21:08
-local endpoint returned 404 — check the base URL and model name.
-(model 'qwen3.5:4b-32k' not found)
-```
-
-**Exactly the chain read from source:** `normalize_model_id` returns `None` for a tag the endpoint does not have, the caller is `if norm:`, so the dead tag survives and goes out on the wire. `try_fallback_endpoint` cannot rescue it — it skips the current endpoint and only fires when the endpoint itself is unreachable.
-  - ⚠️ **Better than predicted in the one way that matters for severity: the message is accurate and user-visible.** It names the model and the status. **This is not a silent failure**, so a session pinned to a removed tag is *bricked visibly*, not corrupted quietly — S3, and the user knows.
-  - 🔴 **What makes it worth fixing anyway: [qwensetup.md](qwensetup.md) plans to delete `qwen3.5:9b-32k` once 64k has run a week, and that would do this to 72 sessions at once.** The *"do not delete it"* note there is now load-bearing rather than cautious.
-  - ⚠️ **Cosmetic, unchased:** the error turn reports `8462.48 tok/s` and `19%` context — the failure path computes throughput off a response that never happened.
-  - ⚠️ **The first attempt at this test missed** — a `qwen3.5:9b-32k` session answered instead, and that tag exists, so it proved nothing. **All three candidates are named identically**; check the composer chip before sending.
-
-**Stage 3 — the code fix, ONLY if stage 2 confirms.** The defect is not the pinning; it is that **`normalize_model_id` returns `None` for two different conditions and the caller cannot tell them apart**: *"the endpoint answered and does not have this model"* (`avail` non-empty, no match) and *"the endpoint did not answer"* (`avail` empty, `return None` at `:1814`). Only the first is safe to act on. Shape: distinguish them at the call site, and on the first, fall back to `default_model` **and log it**. ⚠️ **Report before acting** — log the remap for a few days before letting it change the model, per [`CLAUDE.md`](../CLAUDE.md) §3; a guard that silently answers as a different model than the chat says is a wrong-output path, and this item is not S1 today. ⚠️ **Negative control is mandatory**: an unreachable endpoint must still leave the tag alone.
-
-**Stage 4 — the 72 rows. ⊘ NO LONGER URGENT — stage 1 refuted the reason for doing it.** It is now a preference: migrate so old chats get the bigger window, or leave them and pay ~4 s on each alternation. **Do not do it before stage 2**, and if you do it, keep the three `4b-32k` rows.
-
-- ✅ **The migration destroys no evidence — checked before proposing it, not after.** `chat_messages.metadata` carries **`model` and `requested_model` per assistant message**: 161 rows on `-32k`, 9 on `-64k`, 8 on `4b-32k`. The per-turn record is independent of `sessions.model`, so rewriting the session rows loses nothing these docs reason from. *(Falsifier, also run: `requested_model != model` on **0 of 179** rows — normalization has never remapped anything, which is the same conclusion the source reading gives.)*
-
-```
-# app DOWN and snapshot taken first — see the snapshot block in qwensetup.md.
-# Confirm nothing holds the file; app.db-journal does NOT answer this (CLAUDE.md §1):
-lsof /Users/cedrik/odysseus/data/app.db
-sqlite3 /Users/cedrik/odysseus/data/app.db \
-  "UPDATE sessions SET model='qwen3.5:9b-64k' WHERE model='qwen3.5:9b-32k';"
-sqlite3 /Users/cedrik/odysseus/data/app.db \
-  "SELECT model, count(*) FROM sessions GROUP BY model;"
-```
-
-⚠️ **Leave the three `qwen3.5:4b-32k` rows out of it.** They are stage 2's only test fixture, and migrating them onto a working model destroys the one reproduction this item has.
-⚠️ **This does not prevent recurrence.** The next tag change re-creates the split; stage 3 is what makes it self-correcting. **Doing stage 4 alone and calling the item fixed is how it comes back.**
+- ⊘ **THE HEADLINE THIS WAS FILED ON IS DEAD, disproved hours later by the one command the fix draft asked for.** Filed as *"two 9B variants ≈ 13 GB of 16"* — **arithmetic, never a measurement.** `ollama ps` showed **one** model: Ollama **evicts** rather than co-residing, confirmed with three minutes of timer margin, and **the forced reload costs ~2.6 s**. **The staging in that draft is the only reason this cost an hour instead of a build.** ⚠️ Two 9B variants say nothing about a 9B plus the 4B utility model; `all-minilm` is confirmed free.
+- ✅ **CONFIRMED LIVE 2026-08-01 21:08 — the dead-tag branch, which is now the whole severity.** One `hi` into a session pinned to the retired `qwen3.5:4b-32k`: `local endpoint returned 404 — check the base URL and model name. (model 'qwen3.5:4b-32k' not found)`. **The chain read from source holds**: `normalize_model_id` returns `None` for a tag the endpoint lacks, the caller is `if norm:`, so the dead tag goes out on the wire. `try_fallback_endpoint` cannot rescue it — it skips the current endpoint and only fires when the endpoint itself is unreachable.
+  - ⚠️ **It fails VISIBLY — the message names the model and the status.** Not a silent failure, so severity stays S3.
+  - 🔴 **The reason to fix it anyway: [qwensetup.md](qwensetup.md) plans to delete `qwen3.5:9b-32k` once 64k has run a week, and that would do this to 72 sessions at once.** The *"do not delete it"* note there is load-bearing, not cautious.
+  - ⚠️ **The first attempt at this test MISSED** — a `qwen3.5:9b-32k` session answered, and that tag exists, so it proved nothing. All three candidates are named *"Pink Oyster Mushroom Growth Stages"*; **the precondition is the composer chip reading the dead tag before you send.**
+- ⚠️ **The 32k budget defect is still live on 72 sessions:** at 32,768 with `max_tokens 8192` the real input room is 24,576 against an auto budget of 27,852, so the app can assemble prompts that cannot fit alongside a full answer. It degrades quietly.
+- **Fix, not built. Two halves, and only one is a code change.**
+  - **Data:** `research_model` is still `qwen3.5:9b-32k`; the 72 rows are a preference now the memory argument is gone. If migrating, snapshot first, app down. ✅ **It destroys no evidence** — `chat_messages.metadata` carries `model` and `requested_model` per assistant row (checked: `requested_model != model` on **0 of 179**).
+  - **Code:** the real defect is that **`normalize_model_id` returns `None` for two different conditions** — *"the endpoint answered and lacks this model"* (safe to act on) and *"the endpoint did not answer"* (not). Distinguish them at the call site; fall back to `default_model` on the first, **and log it before letting it act**. Negative control: an unreachable endpoint must leave the tag alone.
 
 ### 43. `max_tokens=0, temp=1.0` arrives whenever a request carries no preset
 > ✅ **Value corrected and verified live the same day: `Preset custom: temp=0.6, max_tokens=8192` at 2026-08-01 09:54:12.** The row stays open because **setting a slider does not stop it drifting**, and because the mechanism turned out not to be the one [qwensetup.md](qwensetup.md) has described since July.
