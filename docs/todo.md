@@ -364,7 +364,22 @@ Same shape, different session, **five months of guard work later**: turn 5 of th
 - ❌ **Two candidate causes eliminated, so this is not a model or budget artefact.** (a) **Not the 32k model** — every turn in the session ran `qwen3.5:9b-64k` at `context_length 65536`, and the session row agrees; the 32k slip was a different session ~6 hours later. (b) **Not `max_tokens` exhaustion** — the turn produced **821 output tokens against `max_tokens=6656`**, measured from `app.db` with `usage_source: real`. ⚠️ **A wider claim that no round has *ever* been truncated was RETRACTED the same day — see item 41.** The per-turn measurement above stands on its own; the generalisation rested on a log absence that could not have been present.
 - **Peak context on that turn was 17,869 of 65,536 — 27 %.** Not a context-pressure artefact either.
 
-- ✅ **Ruled out 2026-08-01: the cap is innocent.** Two zero-text rounds logged `finish_reason=stop`, not `length` — so a turn that produced no `content` was not truncated mid-answer. **That leaves this item's own mechanism (text delivered on the reasoning channel) as the live explanation rather than one of two.** ⚠️ **n=2**, and the discriminating query is unchanged: `round_texts` cannot separate these, `thinking` vs `content` can.
+- ✅ **Ruled out 2026-08-01: the cap is innocent.** Two zero-text rounds logged `finish_reason=stop`, not `length` — so a turn that produced no `content` was not truncated mid-answer. **That leaves this item's own mechanism (text delivered on the reasoning channel) as the live explanation rather than one of two.** ⚠️ **n=2**, and the discriminating query is unchanged: `round_texts` cannot separate these, `thinking` vs `content` can. **→ n=3 as of 2026-08-08, session `b2fc2593` (below): `finish_reasons` `[{round 1: tool_calls}, {round 2: stop}]`.**
+
+#### Recurrence 2026-08-08, session b2fc2593 — and this is the MILD shape, which the entries above do not separate
+Two-message session, `qwen3.5:9b-64k`, prompt *"extract the content of zombiemyco.com/… and quote the temperature and humidity figures verbatim"*. `web_fetch` succeeded (`exit_code: 0`, page body in `tool_events[0].output`), `round_texts` `['','']`, and the user got the gathering-only notice: *"I ran `web_fetch` and then stopped without producing an answer — **nothing was created or changed.**"* (194 chars of `content`). The **649 characters of `thinking`** hold the answer, correctly quoted from the fetched page:
+
+> - "Best growing conditions are temperatures between 70-85°F"
+> - "moisture amounts of 85-95% when producing fruit."
+> - Also repeated later: "Temperature : 70–85°F (21–29°C)" and "Humidity : 85%–95% for producing fruit"
+>
+> I'll quote these exactly as they appear in the source.
+
+- ⚠️ **This is a DIFFERENT SHAPE from the two recurrences above, and the item currently treats them as one.** 2026-07-29 was *3,892 chars of finished, headed deliverable* ending in a question to the user; 2026-07-31 was *2,320 chars* closing on an offer to summarise. **This one is ordinary reasoning that happens to contain the quoted answer, ending on the intent to write it — `"I'll quote these exactly as they appear in the source."`** The content is recoverable but is **not** a ready-made response, so **the report-only end-of-turn fallback proposed above would surface reasoning prose here, not a deliverable.** Worth deciding whether that is acceptable before building it — it is the cheapest safe lever and this sample is the one that constrains its output quality.
+- ✅ **The answer was CORRECT** — verified 2026-08-08 against the source page, which gives 70–85 °F (21–29 °C) and 85–95 %. Contrast the 2026-07-31 recurrence, whose thinking carried a wrong °F→°C conversion. **So "work lost silently" is the whole of the damage here; there is no second fault underneath it.**
+- **Not context pressure:** `request_context_tokens` **6,653 of 65,536 (10.2 %)**. ⚠️ **Use that field, not `input_tokens`** — the row's `input_tokens: 10,660` is the cross-round sum, per [`CLAUDE.md`](../CLAUDE.md) §1.
+- ⚠️ **`tokens_per_second: 3.75` on this row is not a generation rate.** `tps_source: computed` — it is `output_tokens / response_time` (219 / 58.4), spanning a tool round-trip and a **30.7 s `time_to_first_token`**. Do not compare it to a measured decode rate.
+- ⚠️ **Recording artefact:** the two rounds' thinking is concatenated with **no separator** — *"Let me fetch the page first.The user asked for…"*. Anything that parses `thinking` per round will mis-split it.
 
 ### 27. A LAN address in the prompt deletes every document tool
 *"create a document with temperature and humidity data from http://192.168.0.185"* produces no document, three times over. **The model never had the tool.**

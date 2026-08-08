@@ -8,6 +8,19 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-08-07 — SearXNG supervision (external session; no odysseus code changed)
+
+**Started outside this repo — debugging why Hermes' `web_search` failed — and ended in `searxng/`, which odysseus owns.** No tracked file was touched and nothing needs committing; verified with `git archive HEAD | tar -t`, which shows only `config/searxng/settings.yml` and `tests/test_searxng_image_pinned.py`. The whole `searxng/` tree is gitignored (`.gitignore:40`) and absent from HEAD.
+
+- ✅ **SearXNG is now supervised by launchd** (`local.searxng`, plist in `~/Library/LaunchAgents`, source + installer in `searxng/`). It previously started *only* as a side effect of `start-macos.sh:231-239`, so it died at every reboot and stayed dead until odysseus was next launched — five days, in this case. `start-macos.sh` needs no change: its probe at line 232 finds a healthy instance and skips.
+- ⚠️ **`start-searxng.sh` was modified** — it now detects the agent and exits early. Its `pkill -f 'searx.webapp'` would otherwise kill launchd's child, `KeepAlive` would respawn it, and the script's own `nohup` would race it for :8080. The agent runs `searx.webapp` in the **foreground**; running the script under launchd instead would fork-and-exit-0 and launchd would restart it forever.
+- 🔴 **`services/search/providers.py:129-133` looks stale and is probably costing search quality.** Measured 2026-08-07 on one query: the pinned `bing,mojeek,presearch` returned **10 results (bing only)** — `mojeek` contributed nothing, `presearch` timed out — while SearXNG's **defaults returned 28** (google cse 20, duckduckgo 10). The comment claims the defaults "return nothing"; they returned everything. ⚠️ **n=1**, one query on one day, and rate-limiting varies hourly — repeat on 2–3 queries before acting. The fix needs no code: line 219 falsy-guards the pin, so `SEARXNG_GENERAL_ENGINES=` in `.env` disables it. The comment itself would then be a code edit and the only commit.
+- ⊘ **The zero-result fallback at `providers.py:311` cannot see this.** It retries without the pin only when `parsed` is empty; bing returning 10 keeps it truthy, so a *partial* failure never surfaces in the log. It covers total failure and is blind to degradation.
+- ❌ **Two of my own claims died on re-check.** *"The venv can be relocated somewhere neutral"* — no: `__editable___searxng_2026_7_15_7b2199e_finder.py` hardcodes `/Users/cedrik/odysseus/searxng/searxng-src/searx`, and 12 `venv/bin/` scripts carry hardcoded shebangs, so a `mv` breaks `import searx`. *"`git clean -fdx` would destroy the search backend"* — overstated: `searxng-src/` has a nested `.git` (needs `-ff`), and the venv self-rebuilds from the `.install_ok` marker in ~2 min.
+- ⚠️ **Engine noise is chronic and mostly harmless:** `ahmia`/`torch` fail to register, `wikidata` 403s out of the processor entirely, `startpage`/`brave` CAPTCHA or time out. Present on 08-02 and 08-07 alike. ⚠️ **A startup CAPTCHA line does not mean a dead engine** — `duckduckgo` logged `CAPTCHA (wt-wt) (suspended_time=0)` at init and was still the second-largest contributor at query time. `suspended_time=0` is not a suspension.
+
+---
+
 ## 2026-08-01 — reassessment, then items 41–44
 
 **Started from *"reassess the situation, especially the next step"*. Ended with 4 items filed, 1 closed, and one of my own filed the same day disproved by a one-line command.** 46 rows, **16 open, 30 closed**. Findings are in [todo.md](todo.md) and [resolvedissues.md](resolvedissues.md); this is scope only.
