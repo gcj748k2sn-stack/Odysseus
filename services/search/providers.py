@@ -126,10 +126,27 @@ def _safesearch_for(provider: str) -> Optional[str]:
 
 _NEWS_HINTS = ("news", "nyheter", "headlines", "breaking", "latest", "today", "idag")
 
-# Default general engines (google/duckduckgo/brave/startpage/wikipedia) are
-# routinely rate-limited / CAPTCHA-blocked on this instance and return nothing.
-# Pin engines that actually respond so non-news queries get results without any
-# third-party API fallback. Override via SEARXNG_GENERAL_ENGINES.
+# Optional engine pin for general (non-news) queries, via SEARXNG_GENERAL_ENGINES.
+# An empty value disables it — both use sites below gate on truthiness — and that
+# is how this machine is configured (`.env`), because the pin was measured to HURT.
+#
+# ⚠️ The previous comment here claimed the default general engines "are routinely
+# rate-limited / CAPTCHA-blocked on this instance and return nothing". That was
+# false by 2026-08-07 and is the reason the pin outlived its usefulness:
+#   - pinned  (bing,mojeek,presearch) → 10 results, bing only; mojeek returned
+#     nothing at all and presearch timed out
+#   - default (no engines= param)     → 28 results (google cse 20, duckduckgo 10)
+# Confirmed live on 3 further queries 2026-08-08: with the pin off, attribution
+# moved from `bing, duckduckgo, …` to `google cse` ×5 and every query returned a
+# full result set. ⚠️ The 28-vs-10 figure is n=1 — later runs only expose the
+# top 5 after `_get_result_count()` capping, so they confirm health, not margin.
+#
+# ⚠️ A startup CAPTCHA line does NOT mean a dead engine: duckduckgo logs
+# `CAPTCHA (wt-wt) (suspended_time=0)` at init — suspended_time=0 is not a
+# suspension — and is still one of the two engines actually serving results.
+#
+# Read at import, so a change to the env var needs an app restart.
+# See docs/session-log.md, 2026-08-07.
 _GENERAL_ENGINES = os.environ.get("SEARXNG_GENERAL_ENGINES", "bing,mojeek,presearch")
 
 _QUOTED_PHRASE_RE = re.compile(r'"([^"]+)"')
@@ -214,8 +231,9 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
             params["time_range"] = "week" if time_filter in ("day", "week") else time_filter
     else:
         params["categories"] = categories
-        # Route general queries to engines that aren't blocked (default general
-        # set returns 0 on this instance — see _GENERAL_ENGINES).
+        # Apply the engine pin, if one is configured. Empty/unset = send no
+        # engines= param and let SearXNG use its defaults, which is the
+        # measured-better option here — see _GENERAL_ENGINES for the numbers.
         if categories == "general" and _GENERAL_ENGINES:
             params["engines"] = _GENERAL_ENGINES
     phrases = quoted_phrases(query)
