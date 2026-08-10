@@ -26,8 +26,24 @@ just the evidence.**
   payload. A whole session was once spent inferring a "throughput cliff" from
   database columns; the answer was a `504 Read timeout` sitting in the log,
   found in one grep.
-- **`app.log` is local CEST. `app.db` timestamps are naive UTC.** Two hours. An
-  empty log window is usually the wrong two hours, not an absent event.
+- **`app.log` is local time. `app.db` timestamps are naive UTC.** An empty log
+  window is usually the wrong offset, not an absent event. ⚠️ **READ THE OFFSET;
+  do not assume two hours — corrected 2026-08-08.** This rule used to say "two
+  hours", which is true only under CEST. From the last Sunday in October the
+  machine is on CET and the gap is **one** hour, so every "add two" correlation
+  lands 60 minutes off with no error — the same silent failure the rule exists
+  to prevent, arriving through the rule itself. The mechanism: `app.py:89` uses
+  a plain `logging.Formatter`, and `%(asctime)s` defaults to `time.localtime()`;
+  the database side is deliberate, `utcnow_naive()` at `core/database.py:23`.
+  *(Cheapest fix if this keeps costing time: label rather than convert —
+  `class _TZFormatter(logging.Formatter): default_msec_format = '%s,%03d' +
+  time.strftime('%z')` keeps milliseconds, leaves every existing value
+  untouched, and makes DST self-documenting. Converting either side is worse:
+  `app.log.1` holds the 12–28 July evidence base, so switching the log to UTC
+  would put a silent unit change mid-corpus.)*
+  - ⚠️ **`core/database.py:202` is a third time base** — `last_accessed` uses
+    `func.now()`, not `utcnow_naive`. On SQLite `CURRENT_TIMESTAMP` is UTC so it
+    agrees today, but it is a different mechanism from every column around it.
 - **`app.log` ROTATES — always grep `data/logs/app.log*`, never `app.log`.**
   `RotatingFileHandler(maxBytes=5MB, backupCount=3)` at `app.py:107`. It rotated
   for the first time on 2026-07-28 at 23:21:34, and within the hour a grep of
@@ -35,6 +51,15 @@ just the evidence.**
   lines had moved to `app.log.1` forty minutes earlier. **The whole 12–28 July
   evidence base these docs reason about is now in `app.log.1`**, and three more
   rotations delete it — copy it into the snapshot tarball alongside `app.db`.
+  - 🔴 **Globbing is necessary but NOT sufficient: `grep -h … app.log* | tail`
+    shows you the OLDEST matches — cost a round on 2026-08-08.** The glob
+    expands in lexical order, `app.log` before `app.log.1`, so grep emits
+    today's lines *first* and the rotated file's lines last. `tail -20` then
+    returns July while August scrolls past above it. The reading — "no searches
+    since 2026-07-28" — was confidently wrong; there were 22 in August.
+    **Sort by timestamp, or grep `app.log` alone when you want recent and
+    `app.log.1` alone when you want the archive.** A glob fixes coverage and
+    silently breaks recency.
 - **Copy `app.db` before querying it.** A direct read can fail with `disk I/O
   error`, and importing app modules runs migrations against the real database.
   ⚠️ **And copy it in the SAME bash call that queries it** — each call is a

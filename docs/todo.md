@@ -381,6 +381,18 @@ Two-message session, `qwen3.5:9b-64k`, prompt *"extract the content of zombiemyc
 - ⚠️ **`tokens_per_second: 3.75` on this row is not a generation rate.** `tps_source: computed` — it is `output_tokens / response_time` (219 / 58.4), spanning a tool round-trip and a **30.7 s `time_to_first_token`**. Do not compare it to a measured decode rate.
 - ⚠️ **Recording artefact:** the two rounds' thinking is concatenated with **no separator** — *"Let me fetch the page first.The user asked for…"*. Anything that parses `thinking` per round will mis-split it.
 
+#### Rate measurement 2026-08-08, session "pink oyster mushroom conditions" — 1 turn in 3, back to back
+Three consecutive `search the web for …` prompts, one session, `qwen3.5:9b-64k`, deliberately varied subjects (pink oyster / sourdough hydration / lithium thermal runaway):
+
+| prompt | `round_texts` | outcome |
+|---|---|---|
+| pink oyster | `[0, 782]` | answered |
+| sourdough | **`[0, 0]`** | **guard notice; 883 chars stranded in `thinking`** |
+| lithium | `[0, 1010]` | answered |
+
+- ⚠️ **This is a different denominator from the "1 of 74" figure above and must not be read as contradicting it.** That one counted *deliverable-shaped thinking carrying the guard notice* across all recorded turns; this counts *turns that lost their answer* across three same-shape prompts issued minutes apart. **What it suggests is that the rate is prompt-shaped, not uniformly rare** — three near-identical requests, one failure. ⚠️ **n=3. A rate estimate from three samples is a hint, not a number.**
+- ✅ **All three rounds finished `stop`, not `length` — the cap-innocent ruling is now n=6.**
+
 ### 27. A LAN address in the prompt deletes every document tool
 *"create a document with temperature and humidity data from http://192.168.0.185"* produces no document, three times over. **The model never had the tool.**
 
