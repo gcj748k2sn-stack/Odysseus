@@ -8,6 +8,19 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-02 → 10-04 — item 23 fixed; LM Studio, Bonsai and web search assessed
+
+**Started from *"why did the last chat stop?"* (session 79893682).** Findings live in [todo.md](todo.md) items 23, 46, 47 and [qwensetup.md](qwensetup.md) (*Models*, *Web search*); this is scope only.
+
+- ✅ **Item 23 fixed and verified live:** reasoning was echoed as `reasoning_content`, Ollama `/v1` reads only `reasoning`, so earlier tool rounds rendered as empty `<think></think>` (Qwen's thinking-off marker). `_debug_render_only` on Ollama 0.31.1 confirmed it; a 24-run replay showed the trigger; after restart **9 of 9** live turns answered (baseline 77 % lost). Suite on the M1: **5,857 passed, 0 failed.**
+- ❌ **Three of my own claims died on the way:** an intent-nudge fix (the reverted acting-nudge class); "reply *continue*" as a workaround; and "this is *the* cause" — the replay loses ~25 % vs 77 % live, so it is *a* proven trigger. Also corrected: Bonsai 2 sampling (PrismML's script uses 1.0 / 0.95 / 20, not 0.5 / 0.85).
+- 🔌 **LM Studio added** (`localhost:1234`). `qwen/qwen3.5-9b` works. Bonsai v1 broke tool calls and facts; **Bonsai 2 does not load in LM Studio** (item 46 filed for the missing `supports_tools` UI; details in qwensetup).
+- 🔎 **Web search:** news-routing + region skew measured and filed as **item 47**; free engines rate-limit this IP. SearXNG engine set widened in the **untracked** `searxng/settings.yml` (backup alongside).
+- ⏳ **Owed:** item 23's closing run on a non-price topic; after the macOS 26 upgrade, re-run `N_AB=0 N_C=0 ./venv/bin/python tmp_claude_validation/validate.py` against the new Ollama (expect 3 empty blocks today-form, 0 fixed-form), then delete `tmp_claude_validation/`. ⚠️ **`.env.bak-before-lmstudio` (repo root) is NOT matched by `.gitignore`'s `.env.bak.*`** — it likely holds secrets; never `git add .` while it exists.
+- **Edited:** `src/agent_loop.py`, `src/llm_core.py`, `docs/todo.md`, `docs/qwensetup.md`, this file. **New:** `tests/test_ollama_reasoning_field.py`. **No `git` command was run by the agent.**
+
+---
+
 ## 2026-08-07 — SearXNG supervision (external session; no odysseus code changed)
 
 **Started outside this repo — debugging why Hermes' `web_search` failed — and ended in `searxng/`, which odysseus owns.** No tracked file was touched and nothing needs committing; verified with `git archive HEAD | tar -t`, which shows only `config/searxng/settings.yml` and `tests/test_searxng_image_pinned.py`. The whole `searxng/` tree is gitignored (`.gitignore:40`) and absent from HEAD.
