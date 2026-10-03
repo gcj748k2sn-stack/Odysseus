@@ -1551,6 +1551,42 @@ def _is_untrusted_context_content(content) -> bool:
 _REFERENCE_CONTEXT_BOUNDARY = "Reference context received."
 
 
+def _map_reasoning_for_ollama_compat(messages: List[Dict], url: str, model: str) -> List[Dict]:
+    """Hand prior-round reasoning back to Ollama's /v1 under the field it reads.
+
+    Ollama's OpenAI-compatible ``Message`` has ``reasoning`` (mapped to
+    ``api.Message.Thinking``) and silently ignores ``reasoning_content``, the
+    DeepSeek name the agent loop uses. With thinking on, Ollama's Qwen 3.5
+    renderer wraps every assistant message after the last user query in
+    ``<think>\n{Thinking}\n</think>`` — so a dropped field renders as
+    ``<think>\n\n</think>``, byte-identical to Qwen's *thinking disabled*
+    marker, once per tool round. Measured 2026-10-02 on Ollama 0.31.1 with
+    ``_debug_render_only``: 3 empty blocks before, 0 after. Replaying the same
+    turn, the model drafted its user-facing answer inside the still-open think
+    block in 11 of 12 runs with empty blocks and 0 of 12 with real reasoning;
+    every lost answer (3 of 12) came from a drafted-in-thinking run.
+
+    Uses ``_turn_reasoning`` (kept on every round of the turn by
+    ``_append_tool_results``) and falls back to ``reasoning_content``. Gated to
+    Ollama /v1 + Qwen thinking models because that is the renderer that was
+    measured; every other provider gets the messages back unchanged, and
+    ``_sanitize_llm_messages`` then drops ``_turn_reasoning`` as an unknown key.
+    """
+    if not (_is_ollama_openai_compat_url(url) and _is_qwen_thinking_model(model)):
+        return messages
+    mapped = []
+    for msg in messages or []:
+        if isinstance(msg, dict) and msg.get("role") == "assistant" and (
+            "_turn_reasoning" in msg or "reasoning_content" in msg
+        ):
+            reasoning = msg.get("_turn_reasoning") or msg.get("reasoning_content")
+            msg = {k: v for k, v in msg.items() if k not in ("_turn_reasoning", "reasoning_content")}
+            if reasoning:
+                msg["reasoning"] = reasoning
+        mapped.append(msg)
+    return mapped
+
+
 def _sanitize_llm_messages(messages: List[Dict]) -> List[Dict]:
     """Strip Odysseus-only metadata before sending messages to providers.
 
@@ -1562,7 +1598,7 @@ def _sanitize_llm_messages(messages: List[Dict]) -> List[Dict]:
     (content=None, since Gemini/Ollama reject tool_calls alongside ""). Dropping
     it leaves the tool result dangling and breaks the next round.
     """
-    allowed = {"role", "content", "name", "tool_call_id", "tool_calls", "function_call", "reasoning_content"}
+    allowed = {"role", "content", "name", "tool_call_id", "tool_calls", "function_call", "reasoning_content", "reasoning"}
     cleaned = []
     for msg in messages or []:
         if not isinstance(msg, dict):
@@ -1863,7 +1899,7 @@ def llm_call(url: str, model: str, messages: List[Dict], temperature: float = LL
     if isinstance(headers, dict):
         h.update(headers)
 
-    messages_copy = _sanitize_llm_messages(messages)
+    messages_copy = _sanitize_llm_messages(_map_reasoning_for_ollama_compat(messages, url, model))
 
     # Consolidate multiple system messages into one at the start.
     sys_parts = []
@@ -2024,7 +2060,7 @@ async def llm_call_async(
 ) -> str:
     """Asynchronous LLM call using httpx with connection pooling, timeout, retry logic, and performance logging."""
     provider = _detect_provider(url)
-    messages_copy = _sanitize_llm_messages(messages)
+    messages_copy = _sanitize_llm_messages(_map_reasoning_for_ollama_compat(messages, url, model))
 
     # Consolidate multiple system messages into one at the start.
     sys_parts = []
@@ -2277,7 +2313,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
       - data: [DONE]                       — end of stream
     """
     provider = _detect_provider(url)
-    messages_copy = _sanitize_llm_messages(messages)
+    messages_copy = _sanitize_llm_messages(_map_reasoning_for_ollama_compat(messages, url, model))
 
     # Consolidate multiple system messages into one at the start.
     # Some models (e.g. Qwen3.5) reject system messages that aren't first.

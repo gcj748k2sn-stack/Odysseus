@@ -3468,6 +3468,18 @@ def _append_tool_results(
     reasoning, which reinforces repetition/looping. So keep reasoning_content
     on the MOST RECENT assistant turn only: enough for DeepSeek continuity,
     without the per-round accumulation.
+
+    ``_turn_reasoning`` is a private copy of the same text that is NOT popped,
+    so every tool round of the current turn keeps its own reasoning. It never
+    reaches a provider directly — ``_sanitize_llm_messages`` drops unknown keys —
+    except through ``_map_reasoning_for_ollama_compat`` in ``src/llm_core.py``,
+    which turns it into Ollama's ``reasoning`` field. docs/todo.md, *"The model
+    finishes the job in the reasoning channel"*: Ollama's /v1 reads only
+    ``reasoning`` (never ``reasoning_content``), so without this every earlier
+    round reached Qwen 3.5 as an empty ``<think></think>`` block — the
+    thinking-OFF marker — and the model started drafting its answer inside the
+    open think block (11 of 12 replays, against 0 of 12 with the reasoning
+    present; 2026-10-02).
     """
     # Strip reasoning_content from earlier assistant turns; only the newest keeps it.
     for _m in messages:
@@ -3485,6 +3497,7 @@ def _append_tool_results(
         assistant_msg["content"] = round_response if round_response.strip() else None
         if round_reasoning:
             assistant_msg["reasoning_content"] = round_reasoning
+            assistant_msg["_turn_reasoning"] = round_reasoning
         assistant_msg["tool_calls"] = [
             {
                 "id": tc.get("id", f"call_{round_num}_{j}"),
@@ -3514,6 +3527,7 @@ def _append_tool_results(
         msg = {"role": "assistant", "content": round_response}
         if round_reasoning:
             msg["reasoning_content"] = round_reasoning
+            msg["_turn_reasoning"] = round_reasoning
         messages.append(msg)
         # Tool output (shell/python stdout, file reads, fetched pages, email
         # bodies, MCP results) is sourced from outside the server. Wrap it as
