@@ -8,6 +8,15 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-04 (afternoon) — item 50 filed, discovery half fixed; LM Studio made the main server
+
+- 🔴 **Item 50** — the first LM Studio chat (`933f8674`) invented gold prices after LM Studio's *Truncate Middle* cut up to 27,445 tokens from the prompt; Odysseus believed the window was 131072, LM Studio had 32768 loaded. **Discovery half fixed** in `src/model_context.py` (reads `/api/v1/models`), `tests/test_model_context_lmstudio.py` (27), 4 mutations — sandbox run only, M1 suite owed. **In-turn half open**: nothing trims between rounds; the fix is an acting guard and needs a decision.
+- 🔌 **LM Studio, set by the maintainer:** run-on-login on, server started, Qwen load defaults 32768 / parallel 1 / temp 0.6 / Context Overflow *Stop at Limit*; research model switched to `qwen/qwen3.5-9b`. **Ollama is not running** (connection refused on :11434), so the utility model fails — `Auto-name failed` ×3 for `933f8674`.
+- ⚠️ **A sandbox `pytest --noconftest` run imported `core.database`, whose `init_db()` runs at import, against the live `data/app.db`** (`conftest.py` normally sets `DATABASE_URL=sqlite:///:memory:`). Checked against a copy taken before the run: schema identical (115 objects), `model_endpoints` identical, no table lost rows, `quick_check` ok. Rule added to [`CLAUDE.md`](../CLAUDE.md) §4.
+- **Edited:** `src/model_context.py`, `docs/todo.md`, `docs/qwensetup.md`, `CLAUDE.md`, this file. **New:** `tests/test_model_context_lmstudio.py`. No `git` command run.
+
+---
+
 ## 2026-10-04 (later) — item 49 filed; LM Studio as main service and Bonsai 2 assessed
 
 - 🆕 **Item 49** — every cached Wikipedia page is the site menu ×3 (627 chars), so the article never reaches the model; found from the "Parasol" fact-check turn, which claimed Wikipedia verification it never had. Mechanism from source + cache, **not reproduced against live HTML**. Nothing fixed.

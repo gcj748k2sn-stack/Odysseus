@@ -335,6 +335,76 @@ def _ctx_from_name_suffix(model: str) -> Optional[int]:
     return int(m.group(1)) * 1024 if m else None
 
 
+# LM Studio serves a model at the context length it was LOADED with — neither
+# the architecture max (the known table, LM Studio's own max_context_length) nor
+# anything its OpenAI-compatible /v1/models reports. Its native /api/v1/models
+# does report it, per loaded instance (`loaded_instances[].config.context_length`,
+# the shape model_capability_readers/lmstudio.py also reads). Observed
+# 2026-10-04: qwen/qwen3.5-9b was loaded at 32768 while this module returned
+# the table's 131072 for "qwen3", so nothing was trimmed against the real window
+# and LM Studio's "Truncate Middle" overflow policy cut 22-27k tokens out of the
+# last three rounds of a 14-round turn (docs/todo.md, "LM Studio's loaded
+# context is invisible to Odysseus").
+_LMSTUDIO_NOT_LOADED = 0
+
+
+def _lmstudio_loaded_context(base: str, model: str) -> Optional[int]:
+    """Loaded context window of ``model`` on an LM Studio server at ``base``.
+
+    Returns the ``context_length`` of the loaded instance whose identifier IS
+    ``model`` (LM Studio routes a request to it by that name); otherwise the
+    smallest loaded instance of the matching key (no instance carries the name,
+    so the request may land on any of them); or ``_LMSTUDIO_NOT_LOADED`` when
+    LM Studio lists the model with no instance
+    loaded — a just-in-time load will use the model's saved default, which the
+    API does not expose. Returns None when ``base`` is not LM Studio, is
+    unreachable, or does not list the model, so the caller falls through.
+    """
+    want = (model or "").strip().lower()
+    if not want:
+        return None
+    try:
+        r = httpx.get(f"{base}/api/v1/models", timeout=REQUEST_TIMEOUT)
+        if not r.is_success:
+            return None
+        data = r.json()
+    except Exception:
+        return None
+    models = data.get("models") if isinstance(data, dict) else None
+    if not isinstance(models, list):
+        return None
+    want_tail = want.split("/")[-1]
+    by_instance: List[int] = []          # a loaded instance whose id IS the requested name
+    by_key: Optional[List[int]] = None   # exact key match
+    by_tail: Optional[List[int]] = None  # "qwen3.5-9b" vs key "qwen/qwen3.5-9b"
+    for m in models:
+        if not isinstance(m, dict):
+            continue
+        contexts: List[int] = []
+        for inst in m.get("loaded_instances") or []:
+            if not isinstance(inst, dict):
+                continue
+            cfg = inst.get("config")
+            n = (cfg.get("context_length") if isinstance(cfg, dict) else None) or inst.get("context_length")
+            if isinstance(n, int) and not isinstance(n, bool) and n > 0:
+                contexts.append(n)
+                if str(inst.get("id") or "").strip().lower() == want:
+                    by_instance.append(n)
+        key = str(m.get("key") or "").strip().lower()
+        if not key:
+            continue
+        if key == want and by_key is None:
+            by_key = contexts
+        elif key.split("/")[-1] == want_tail and by_tail is None:
+            by_tail = contexts
+    if by_instance:
+        return min(by_instance)
+    for match in (by_key, by_tail):
+        if match is not None:
+            return min(match) if match else _LMSTUDIO_NOT_LOADED
+    return None
+
+
 def _model_ctx_from_entry(m: dict) -> Optional[int]:
     """Extract a positive context window from one /models catalog entry.
 
@@ -438,8 +508,8 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
 
     # Try llama.cpp /slots endpoint first — reports actual serving context
     if is_local_endpoint(endpoint_url):
+        base = endpoint_url.split("/v1")[0] if "/v1" in endpoint_url else endpoint_url.rsplit("/", 1)[0]
         try:
-            base = endpoint_url.split("/v1")[0] if "/v1" in endpoint_url else endpoint_url.rsplit("/", 1)[0]
             r = httpx.get(f"{base}/slots", timeout=REQUEST_TIMEOUT)
             if r.is_success:
                 slots = r.json()
@@ -450,6 +520,19 @@ def _query_context_length(endpoint_url: str, model: str) -> Tuple[int, bool]:
                         return n_ctx, True
         except Exception:
             pass
+
+        # LM Studio: the loaded instance's window, before the known table or a
+        # name suffix can claim one (see _lmstudio_loaded_context).
+        lms_ctx = _lmstudio_loaded_context(base, model)
+        if lms_ctx:
+            logger.info(f"LM Studio reports loaded context {lms_ctx} for {model}")
+            return lms_ctx, True
+        if lms_ctx == _LMSTUDIO_NOT_LOADED:
+            # Listed but not loaded: the window is whatever the next JIT load
+            # picks. Report it as unknown — the known table holds the
+            # architecture max, which is exactly the number that was wrong.
+            logger.info(f"LM Studio lists {model} with no loaded instance — context unknown until it loads")
+            return DEFAULT_CONTEXT, False
 
     # GitHub Copilot's /models requires auth + X-GitHub-Api-Version headers that
     # aren't available here; an unauthenticated probe just 400s. All Copilot

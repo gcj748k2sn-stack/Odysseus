@@ -319,6 +319,16 @@ helper mechanics in [`tests/README.md`](tests/README.md). Read those. Additions:
   run cannot delete under the mount, so four fixture directories accumulated in
   the repo root, unignored, showing as untracked in every `git status` — the one
   check item 5 depends on. **A cleanup that cannot fail cannot tell you it failed.**
+- **`--noconftest` also drops the test database.** `tests/conftest.py` sets
+  `DATABASE_URL=sqlite:///:memory:`, and `core/database.py` calls `init_db()`
+  **at import** (last line of the file): `_migrate_model_endpoints()` and
+  `create_all` against whatever `DATABASE_URL` says — by default the live
+  `data/app.db`. Anything that reaches `core.database` (`src.copilot` →
+  `src.llm_core` does) runs schema code on the live database. It happened on
+  2026-10-04 and was a no-op, verified against a pre-run copy. **On every
+  sandboxed run set `DATABASE_URL=sqlite:///:memory:`**, plus
+  `PYTHONDONTWRITEBYTECODE=1` and `-p no:cacheprovider` so nothing is left under
+  the mount.
 - **Two pre-existing failures** in `test_document_put_version_conflict.py` —
   they patch a closure. Don't delete them; they cover a real CAS race.
 - **The `area_*` markers key off filenames, not subject matter.** `-m
