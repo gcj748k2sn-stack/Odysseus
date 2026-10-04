@@ -404,6 +404,35 @@ class ResearchHandler:
         entry["task"] = task
         return {"session_id": session_id, "status": "running", "query": query}
 
+    async def wait_until_started(self, session_id: str, timeout: float = 20.0) -> dict:
+        """Wait until a just-started job has passed its model probe, or has
+        stopped, or `timeout` seconds have gone by.
+
+        Returns ``{"state": "started"}``, ``{"state": "failed", "error": str}``
+        or ``{"state": "pending"}`` (still probing at the deadline). Exists so
+        trigger_research can tell the model the truth: the probe runs in the
+        background task, so the job used to be reported as started even when
+        the research model was down and the run died milliseconds later
+        (docs/todo.md, "trigger_research reports success when the research
+        model is down").
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(0.0, float(timeout))
+        while True:
+            entry = self._active_tasks.get(session_id)
+            if entry is None:
+                return {"state": "pending"}
+            if entry.get("probe_ok"):
+                return {"state": "started"}
+            status = entry.get("status")
+            if status == "error":
+                return {"state": "failed", "error": str(entry.get("result") or "").strip()}
+            if status != "running":
+                return {"state": "started"}
+            if loop.time() >= deadline:
+                return {"state": "pending"}
+            await asyncio.sleep(0.05)
+
     def get_status(self, session_id: str) -> Optional[dict]:
         """Get current research status for a session."""
         if session_id in self._active_tasks:
@@ -783,6 +812,9 @@ class ResearchHandler:
         if progress_callback:
             progress_callback({"phase": "probing", "model": llm_model})
         await self._probe_endpoint(llm_endpoint, llm_model, llm_headers)
+        if _task_entry is not None:
+            # Read by wait_until_started(): the job is past its model check.
+            _task_entry["probe_ok"] = True
 
         try:
             from src.deep_research import DeepResearcher

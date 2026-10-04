@@ -488,6 +488,10 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
         extraction_timeout: Optional[int] = Field(default=None, ge=15, le=3600)
         extraction_concurrency: Optional[int] = Field(default=None, ge=1, le=12)
         category: Optional[str] = None
+        # Set by the trigger_research tool: hold the response until the job's
+        # model probe has passed or failed, so a dead research model is
+        # reported to the agent instead of "started". The panel leaves it off.
+        wait_for_probe: bool = False
 
     @router.post("/api/research/start")
     async def research_start(body: ResearchStartRequest, request: Request):
@@ -574,6 +578,18 @@ def setup_research_routes(research_handler, session_manager=None) -> APIRouter:
             extraction_concurrency=body.extraction_concurrency,
             owner=user,
         )
+        waiter = getattr(research_handler, "wait_until_started", None)
+        if body.wait_for_probe and waiter is not None:
+            outcome = await waiter(session_id, timeout=20.0)
+            resp = {
+                "session_id": session_id,
+                "status": "error" if outcome.get("state") == "failed" else "running",
+                "query": body.query,
+                "probe": outcome.get("state", "pending"),
+            }
+            if outcome.get("state") == "failed":
+                resp["error"] = outcome.get("error") or "The research model failed its startup check."
+            return resp
         return {"session_id": session_id, "status": "running", "query": body.query}
 
     @router.get("/api/research/stream/{session_id}")

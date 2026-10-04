@@ -106,7 +106,9 @@ async def do_trigger_research(content: str, owner: Optional[str] = None) -> Dict
     topic = args.get("topic", "") or args.get("query", "")
     if not topic:
         return {"error": "topic (or query) is required", "exit_code": 1}
-    payload: Dict[str, Any] = {"query": topic}
+    # wait_for_probe: the route answers only once the research model has
+    # passed (or failed) its startup probe, so "started" below is true.
+    payload: Dict[str, Any] = {"query": topic, "wait_for_probe": True}
     # Optional knobs the research panel supports.
     if args.get("max_rounds") is not None:
         try: payload["max_rounds"] = int(args["max_rounds"])
@@ -126,10 +128,27 @@ async def do_trigger_research(content: str, owner: Optional[str] = None) -> Dict
             return {"error": f"research/start returned HTTP {resp.status_code}: {resp.text[:200]}", "exit_code": 1}
         data = resp.json()
         sid = data.get("session_id", "?")
+        if data.get("status") == "error":
+            reason = (data.get("error") or "the research model failed its startup check").strip()
+            return {
+                "error": (
+                    f"Deep research did NOT start: {reason}. The research model is "
+                    "configured separately from the chat model, and nothing is running "
+                    "in the Deep Research sidebar. Tell the user; offer to look it up "
+                    "with web_search instead."
+                ),
+                "session_id": sid,
+                "exit_code": 1,
+            }
+        note = ""
+        if data.get("probe") == "pending":
+            note = (" (Its model check had not finished yet; if the research model is "
+                    "unreachable the sidebar will show the error.)")
         return {
             "output": (
                 f"Deep research started: [{topic}](#research-{sid}). "
                 "Click to open the Deep Research sidebar and watch progress / read the report."
+                + note
             ),
             "session_id": sid,
             "anchor": f"[{topic}](#research-{sid})",
