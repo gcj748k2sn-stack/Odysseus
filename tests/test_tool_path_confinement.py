@@ -14,6 +14,7 @@ Covers:
 
 import os
 import sys
+import uuid
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -193,18 +194,27 @@ def test_rejects_empty_path():
         _resolve_tool_path("   ")
 
 
-def test_extra_roots_opt_in(tmp_path):
-    """When tool_path_extra_roots includes a directory, paths under it
-    are allowed (but sensitive subpaths are still blocked)."""
-    from src.tool_execution import _resolve_tool_path
-    extra_dir = tmp_path / "extra_root"
-    extra_dir.mkdir()
-    target = extra_dir / "file.txt"
-    target.write_text("ok")
+def test_extra_roots_opt_in():
+    """When tool_path_extra_roots includes a directory, paths under it are
+    allowed — and the same path is rejected without it.
 
-    with patch("src.settings.get_setting", return_value=[str(extra_dir)]):
-        resolved = _resolve_tool_path(str(target))
-        assert resolved == os.path.realpath(str(target))
+    The fixture used to live under tmp_path, which the default /tmp or
+    $TMPDIR root already covers, so it resolved with or without the setting
+    (docs/todo.md item 25). This path is outside every default root and is
+    never created: _resolve_tool_path works on the realpath and does not need
+    the file to exist, so nothing is written outside tmp_path (item 26).
+    Sensitive subpaths under an extra root: see the next test."""
+    from src.tool_execution import _resolve_tool_path
+    extra_dir = os.path.join(os.path.sep, f"odysseus-extra-root-{uuid.uuid4().hex}")
+    target = os.path.join(extra_dir, "file.txt")
+    assert not os.path.exists(extra_dir)
+
+    with patch("src.settings.get_setting", return_value=[]):
+        with pytest.raises(ValueError, match="outside the allowed roots"):
+            _resolve_tool_path(target)
+
+    with patch("src.settings.get_setting", return_value=[extra_dir]):
+        assert _resolve_tool_path(target) == os.path.realpath(target)
 
 
 def test_extra_root_still_blocks_sensitive(tmp_path):
