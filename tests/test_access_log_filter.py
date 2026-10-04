@@ -1,7 +1,7 @@
 """Terminal access-log noise (docs/todo.md item 13).
 
-Routine 200s are hidden from the uvicorn access log by status code; 4xx/5xx
-and (by default) 304 stay visible. Records are produced through the real
+Routine 200s and GET 304s are hidden from the uvicorn access log by status
+code; 4xx/5xx stay visible. Records are produced through the real
 ``uvicorn.access`` logger with uvicorn's own format and argument order.
 """
 import ast
@@ -54,18 +54,20 @@ def _with_setting(value):
                  side_effect=lambda key, default=None: value if key == alf.SETTING_KEY else default)
 
 
-def test_default_hides_200_only():
-    assert DEFAULT_SETTINGS[alf.SETTING_KEY] == [200]
+def test_default_hides_200_and_get_304():
+    assert DEFAULT_SETTINGS[alf.SETTING_KEY] == [200, "GET 304"]
 
 
-def test_default_setting_hides_200_and_keeps_errors_and_304(access_logger):
+def test_default_setting_hides_200_and_get_304_keeps_errors(access_logger):
+    """The page-load burst (~150 `GET /static/js/... 304`, live 2026-10-04) is
+    hidden; a 304 on any other method is not."""
     lg, cap = access_logger
     with _with_setting(DEFAULT_SETTINGS[alf.SETTING_KEY]):
-        for method, status in [("GET", 200), ("PUT", 200), ("GET", 304),
+        for method, status in [("GET", 200), ("PUT", 200), ("GET", 304), ("PUT", 304),
                                ("PUT", 404), ("POST", 500), ("GET", 307)]:
             _log(lg, method, status)
     assert [l.split('"')[1].split()[0] + " " + l.rsplit(" ", 1)[1] for l in cap.lines] == [
-        "GET 304", "PUT 404", "POST 500", "GET 307",
+        "PUT 304", "PUT 404", "POST 500", "GET 307",
     ]
 
 

@@ -888,6 +888,26 @@ def _save_settings(settings):
     atomic_write_json(str(SETTINGS_FILE), settings, indent=2)
 
 
+# "SMTP/IMAP not configured" is logged once per (protocol, account) per process,
+# not on every config read: the email poller reads the config every minute, so
+# an instance without email filled the terminal and app.log with two warnings a
+# minute (docs/todo.md item 13). A key is forgotten once that protocol is
+# configured, so breaking it again warns again.
+_NOT_CONFIGURED_WARNED: set[tuple[str, str]] = set()
+
+
+def _note_email_configured(protocol: str, account: str, configured: bool, message: str) -> None:
+    key = (protocol, account)
+    if configured:
+        _NOT_CONFIGURED_WARNED.discard(key)
+        return
+    if key in _NOT_CONFIGURED_WARNED:
+        logger.debug(message)
+        return
+    _NOT_CONFIGURED_WARNED.add(key)
+    logger.warning(message)
+
+
 def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
     """Return IMAP/SMTP config as a dict.
 
@@ -966,10 +986,16 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
                     "display_name": row.display_name or "",
                 }
                 is_oauth = bool(cfg.get("oauth_provider"))
-                if not is_oauth and not (cfg["smtp_host"] and cfg["smtp_user"] and cfg["smtp_password"]):
-                    logger.warning(f"SMTP not configured for account {row.name!r}")
-                if not is_oauth and not (cfg["imap_host"] and cfg["imap_user"] and cfg["imap_password"]):
-                    logger.warning(f"IMAP not configured for account {row.name!r}")
+                _note_email_configured(
+                    "SMTP", row.id,
+                    is_oauth or bool(cfg["smtp_host"] and cfg["smtp_user"] and cfg["smtp_password"]),
+                    f"SMTP not configured for account {row.name!r}",
+                )
+                _note_email_configured(
+                    "IMAP", row.id,
+                    is_oauth or bool(cfg["imap_host"] and cfg["imap_user"] and cfg["imap_password"]),
+                    f"IMAP not configured for account {row.name!r}",
+                )
                 return cfg
         finally:
             db.close()
@@ -996,10 +1022,14 @@ def _get_email_config(account_id: str | None = None, owner: str = "") -> dict:
         "imap_starttls": settings.get("imap_starttls", True),
         "from_address": settings.get("email_from", os.environ.get("EMAIL_FROM", "")),
     }
-    if not (cfg["smtp_host"] and cfg["smtp_user"] and cfg["smtp_password"]):
-        logger.warning("SMTP not configured — add an Email Account in Settings or set env vars")
-    if not (cfg["imap_host"] and cfg["imap_user"] and cfg["imap_password"]):
-        logger.warning("IMAP not configured — add an Email Account in Settings or set env vars")
+    _note_email_configured(
+        "SMTP", "legacy", bool(cfg["smtp_host"] and cfg["smtp_user"] and cfg["smtp_password"]),
+        "SMTP not configured — add an Email Account in Settings or set env vars",
+    )
+    _note_email_configured(
+        "IMAP", "legacy", bool(cfg["imap_host"] and cfg["imap_user"] and cfg["imap_password"]),
+        "IMAP not configured — add an Email Account in Settings or set env vars",
+    )
     return cfg
 
 

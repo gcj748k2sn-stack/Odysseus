@@ -8,9 +8,11 @@ lines, which are the point, so this filters by status instead.
 The ``access_log_hide_statuses`` setting lists what to hide. An entry is a
 status (``200`` or ``"200"``, any method) or ``"METHOD STATUS"`` (``"GET 200"``
 — keeps PUT/POST/DELETE 200s visible, e.g. while confirming editor saves).
-The default hides 200 only; 304 is left visible on purpose, since a 304 storm
-is how a stale-cache bug shows itself — add it to the list to hide it too.
-``[]`` shows everything. Read through ``get_setting`` (2 s cache), so a change
+The default is ``[200, "GET 304"]``. 304s were visible at first, as the sign
+of a stale-cache bug; live on 2026-10-04 they were ~150 lines on every page
+load, because every JS module is served ``no-cache`` and revalidates (a 304 is
+the normal answer). A stale-cache bug would show as a *missing* request, which
+no access log can show. ``[]`` shows everything. Read through ``get_setting`` (2 s cache), so a change
 applies without a restart.
 
 Access lines do not reach ``data/logs/app.log`` (uvicorn's ``uvicorn.access``

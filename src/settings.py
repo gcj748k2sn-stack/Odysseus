@@ -151,9 +151,11 @@ DEFAULT_SETTINGS = {
     "tool_path_extra_roots": [],
     # Terminal access-log lines to hide (src/access_log_filter.py). Entries are
     # a status (200) or "METHOD STATUS" ("GET 200"). 4xx/5xx should stay
-    # visible; 304 is left out on purpose — a 304 storm is how a stale-cache
-    # bug shows. [] shows every request. Does not affect data/logs/app.log.
-    "access_log_hide_statuses": [200],
+    # visible. "GET 304" is hidden because every page load revalidates every
+    # no-cache JS module (~150 lines, all 304 when nothing changed); a
+    # stale-cache bug shows as a missing request, which no access log shows.
+    # [] shows every request. Does not affect data/logs/app.log.
+    "access_log_hide_statuses": [200, "GET 304"],
     "task_endpoint_id": "",
     "task_model": "",
     "default_endpoint_id": "",
