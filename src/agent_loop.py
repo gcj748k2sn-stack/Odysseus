@@ -1807,6 +1807,26 @@ def _looks_like_local_computer_request(text: str) -> bool:
     return bool(text.strip() and _LOCAL_COMPUTER_REFERENCE_RE.search(text))
 
 
+def _terminus_toolset(intent_domains) -> set:
+    """Tools for a workspace / local-machine / named-machine turn: the Odysseus
+    Terminus set PLUS every domain the user's own words selected.
+
+    This used to replace the selection outright, so a LAN address in the
+    prompt deleted every document tool: "create a document with temperature
+    and humidity data from http://192.168.0.185" matches the named-machine
+    alternative of _LOCAL_COMPUTER_REFERENCE_RE (`from http`), the classifier
+    had already said domains=['documents', 'web'], and the model was left with
+    write_file — it wrote to /tmp and reported success (docs/todo.md, "A LAN
+    address in the prompt deletes every document tool"). It also dropped the
+    Cookbook tools that _local_computer_rules() tells the model to use for a
+    named machine. Retrieval noise is still dropped; only intent domains stay.
+    """
+    tools = set(_WORKSPACE_TERMINUS_TOOLS)
+    for domain in intent_domains or ():
+        tools |= _DOMAIN_TOOL_MAP.get(str(domain), set())
+    return tools
+
+
 def _explicitly_references_missing_workspace(text: str, workspace: Optional[str]) -> bool:
     if workspace:
         return False
@@ -4288,8 +4308,12 @@ async def stream_agent_loop(
             and not _active_document_relevant
             and not active_email
         ):
-            _relevant_tools = set(_WORKSPACE_TERMINUS_TOOLS)
-            logger.info("[tool-rag] Workspace file/terminal request; using Odysseus Terminus toolset")
+            _terminus_domains = sorted(str(d) for d in (_intent.get("domains") or ()))
+            _relevant_tools = _terminus_toolset(_terminus_domains)
+            logger.info(
+                "[tool-rag] Workspace file/terminal request; using Odysseus Terminus toolset"
+                + (f" + intent domains {_terminus_domains}" if _terminus_domains else "")
+            )
 
     # If this turn targets the open document, keep editing tools available
     # regardless of which selection path (RAG, keyword, caller-provided) ran.
