@@ -8,6 +8,16 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-04 — macOS 27 upgrade checks; item 23 closed; item 48 filed and fixed
+
+- ✅ **Upgraded to macOS 27.** Suite **5,858 passed, 2 skipped, 0 failed** (one test skipped on macOS 14 now runs). `apfel` installed from a bottle. Ollama 0.35.1 needed a manual `brew services restart` to actually run.
+- ✅ **Item 23 closed** — render check holds on Ollama 0.35.1 (3 → 0 empty blocks); a non-price web search + document turn answered; 11 of 11 live. Body moved to [resolvedissues.md](resolvedissues.md). `tmp_claude_validation/` no longer needed.
+- 🆕 **Item 48** — the context popup printed summed `input_tokens` beside a bar drawn from `request_context_tokens` (39,672 "used" at 12.7 %). One-line fix in `static/js/chatRenderer.js`; **unverified, no JS harness** — manual check in the item.
+- ⚠️ **The "Parasol" document the 9B wrote lists *"Deathcap Parasol"* as a common name** — not a name for *M. procera*, and dangerously close to "death cap". Item 2b's territory; recorded, not filed.
+- **Edited:** `static/js/chatRenderer.js`, `docs/todo.md`, `docs/resolvedissues.md`, `docs/qwensetup.md`, this file. **No `git` command was run by the agent.**
+
+---
+
 ## 2026-10-02 → 10-04 — item 23 fixed; LM Studio, Bonsai and web search assessed
 
 **Started from *"why did the last chat stop?"* (session 79893682).** Findings live in [todo.md](todo.md) items 23, 46, 47 and [qwensetup.md](qwensetup.md) (*Models*, *Web search*); this is scope only.

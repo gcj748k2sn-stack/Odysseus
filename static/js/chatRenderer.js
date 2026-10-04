@@ -2004,7 +2004,10 @@ export function displayMetrics(messageElement, metrics) {
       e.stopPropagation();
       document.querySelectorAll('.ctx-detail-popup').forEach(p => { if (typeof p._dismiss === 'function') p._dismiss(); else p.remove(); });
 
-      const usedTokens = inputTokens || 0;
+      // Same basis as ctxPct: the size of the LAST request of the turn.
+      // input_tokens is the SUM across every round of an agent turn, so it
+      // read e.g. "39,672 used" beside a 12.7 % bar (docs/todo.md item 48).
+      const usedTokens = metrics.request_context_tokens || inputTokens || 0;
       const totalCtx = ctxLen || 0;
       const modelShort = model.split('/').pop();
       const fmtNum = n => n ? n.toLocaleString() : '?';

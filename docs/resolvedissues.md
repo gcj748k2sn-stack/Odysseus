@@ -8,6 +8,24 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## Finished answers were delivered in the reasoning channel — closed 2026-10-04 (item 23)
+Agent turns on `qwen3.5:9b-*` gathered information and then ended with an empty reply, the answer sitting in `thinking` and the user shown *"stopped without producing an answer"*. **77 % of final rounds after tool use were lost** (112 of 145 at temp 0.6), rising with the number of prior tool rounds: 13 % → 65 % → 87 % → 92 % after 0 / 1 / 2 / 3 rounds.
+
+**Cause, on the request side — not the parser, not the model alone.** `_append_tool_results` echoed each round's reasoning as `reasoning_content` (DeepSeek's name). **Ollama's `/v1` reads only `reasoning`** and drops the other silently. Ollama's Qwen 3.5 renderer wraps every assistant message after the last user query in `<think>\n{Thinking}\n</think>`, so each earlier tool round reached the model as `<think>\n\n</think>` — **byte-identical to Qwen's thinking-disabled marker** — before a prompt ending on an open `<think>`. The model then drafted its answer inside the think block and stopped.
+
+**Fix (commit `3c8ebe53`):** every round keeps its reasoning (`_turn_reasoning`); `_map_reasoning_for_ollama_compat` in `src/llm_core.py` sends it as `reasoning` for **Ollama `/v1` + Qwen thinking models only**, on all three call paths. DeepSeek/Nemotron unchanged. `tests/test_ollama_reasoning_field.py` (7, with negative controls; mutation-checked).
+
+**Verification scope:**
+- `_debug_render_only`: 3 empty think blocks before, 0 after — on **Ollama 0.31.1 (macOS 14)** and again on **Ollama 0.35.1 (macOS 27)**.
+- Replay of the failing turn, 24 runs: answer drafted inside thinking **11/12 before, 0/12 after**; lost answers 3/12 vs 0/12.
+- **Live: 11 of 11 turns answered** (2026-10-02 price topics at temp 0.2 and 0.6; 2026-10-04 a web search and a document on *Macrolepiota procera* on Ollama 0.35.1). Suite: 5,858 passed on macOS 27.
+
+**What survives re-reading:**
+- ⚠️ **The replay never reproduced the live rate** (~25 % lost vs 77 %); temperature and streaming were ruled out, history and the full system prompt were not. The fix removed a proven trigger and the live rate went to 0 of 11 — **if the shape ever recurs, look for the amplifier the replay missed.**
+- ❌ **Retracted on the way:** an intent-nudge that read `thinking` (the reverted acting-nudge class; its regex matched neither failing turn); *"reply continue"* as a workaround; *"this is the cause"* before the replay said *a* trigger.
+- **The defect sat in a layer nobody had checked.** The parser had been cleared (the `/v1` retraction holds) and the guard reported correctly; the request Odysseus *sent* was the gap. Check what is sent, not just what comes back.
+- **LM Studio is deliberately outside the gate** — its template path was never measured.
+
 ## Switching chats wrote the editor buffer into the other chat's document — closed 2026-07-30 (item 30)
 An AI-written document was destroyed and three others overwritten with content they never contained. **Proven by hash, not inferred:** `document_versions.source` showed the model finishing `d1c934f7` at 12:09:53, the identical bytes appearing 88 seconds later as a `user` version of a *different* session's document, and the model's own document overwritten with the clone content twenty minutes after that. Both writes `source=user` — the editor's PUT path, not the agent. All four documents were recovered by hash, and the bad versions kept as evidence.
 
