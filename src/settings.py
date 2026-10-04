@@ -149,6 +149,11 @@ DEFAULT_SETTINGS = {
     # entry is an absolute path. Sensitive subpaths (.ssh, .gnupg, shell
     # rc files, SSH key files) are always blocked regardless of roots.
     "tool_path_extra_roots": [],
+    # Terminal access-log lines to hide (src/access_log_filter.py). Entries are
+    # a status (200) or "METHOD STATUS" ("GET 200"). 4xx/5xx should stay
+    # visible; 304 is left out on purpose — a 304 storm is how a stale-cache
+    # bug shows. [] shows every request. Does not affect data/logs/app.log.
+    "access_log_hide_statuses": [200],
     "task_endpoint_id": "",
     "task_model": "",
     "default_endpoint_id": "",
