@@ -798,6 +798,11 @@ function _wireChipDrag(chip, dock) {
     // window + snapping it there (top → maximize/fullscreen, right → right
     // dock). Releasing in the zone commits it (see onPointerUp).
     if (e.pointerType !== 'touch' && window.innerWidth > 768) {
+      // The chip's own (minimized) modal: previewZoneAt reads only its id, to
+      // apply the same per-modal zone limits snapModalToZone applies on drop.
+      // This used to pass an undeclared `modal`, which threw a ReferenceError
+      // on every desktop chip pointermove and skipped the drag code below.
+      const modal = document.getElementById(chip.dataset.modalId);
       const z = previewZoneAt(e.clientX, e.clientY, modal);
       // Ignore the bottom zone — the dock lives at the bottom, so horizontal
       // chip reordering must not get hijacked into a bottom-half snap.

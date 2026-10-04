@@ -4609,7 +4609,9 @@ function startOdysseusApp() {
 
   // Section collapse/expand + drag reorder (extracted to js/section-management.js)
   initSectionCollapse(Storage);
-  initSectionDrag(Storage, loadUIVis);
+  // loadUIVis is local to initializeEventListeners(); this read only ever
+  // worked through the window.loadUIVis it publishes. Say so explicitly.
+  initSectionDrag(Storage, window.loadUIVis);
   
   // Handle drag over and out for individual sections
   const sections = document.querySelectorAll('.section[draggable="true"]');

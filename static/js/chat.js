@@ -1362,6 +1362,14 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
     let finalMeta = null;
     let spinner = null;
     let timedOut = false;
+    // Assigned inside the try below but read by the catch/finally and by the
+    // first-token wait timers, so they must live in this scope. A `const`
+    // inside the try is invisible there: the error handler threw
+    // `ReferenceError: streamingTTS is not defined` before showing the error
+    // (docs/todo.md, "A failed send throws inside its own error handler").
+    let abortCtrl = null;
+    let _isAgent = false;
+    let streamingTTS = false;
     let processingProbeTimer = null;
     let processingProbeAbort = null;
     let _renderStream = () => {};
@@ -1716,12 +1724,12 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       }
 
 
-      const abortCtrl = new AbortController();
+      abortCtrl = new AbortController();
       abortCtrl._reason = '';
       currentAbort = abortCtrl;
 
 	      const _tState = Storage.loadToggleState();
-	      const _isAgent = (_tState.mode || 'chat') === 'agent' || !!_tState.plan_mode || workspaceAgentIntent;
+	      _isAgent = (_tState.mode || 'chat') === 'agent' || !!_tState.plan_mode || workspaceAgentIntent;
 
       // Timeout: 6 min for research and agent mode, 3 min otherwise
       const timeoutMs = el('research-toggle').checked || _isAgent ? RESEARCH_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
@@ -1897,7 +1905,7 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
       let isThinking = false;
       let thinkingStartTime = null;
       // Streaming TTS: synthesize sentence-by-sentence during streaming
-      const streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.available);
+      streamingTTS = !!(window.aiTTSManager && window.aiTTSManager.autoPlay && window.aiTTSManager.available);
       if (streamingTTS) window.aiTTSManager.streamingStart();
       // Multi-bubble agent tracking
       let roundHolder = holder;       // Current AI text bubble (changes per round)
@@ -3641,7 +3649,10 @@ import { wireArrowUpRecall, getUserMessagesFromChatHistory } from './composerArr
         if (!footerTarget.querySelector('.msg-footer')) {
           footerTarget.appendChild(createMsgFooter(footerTarget));
         }
-        if (_generatedImagesForTurn.length && !_isBg) {
+        // Already inside `if (!_isBgFinal)`. This read `_isBg`, a const of the
+        // stream loop's inner block, so any turn with a generated image threw
+        // a ReferenceError here and skipped the rest of the footer.
+        if (_generatedImagesForTurn.length) {
           _generatedImagesForTurn.forEach(imgData => _appendGeneratedImageBubble(imgData));
         }
         // Add "View Report" link for completed research
