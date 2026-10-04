@@ -8,6 +8,17 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-04 (22:00–23:00) — six quick items built: 55, 56, 27 (a), 25, 13, 46 — nothing committed
+
+- 🔧 **Built, sandbox-verified, uncommitted** (tests + mutations in each item): **55** `trigger_research` waits for the research model's probe and returns `exit_code=1` when it is down · **56** `streamingTTS` hoisted, plus a static scan of all first-party JS that found **two more real ReferenceErrors** — `_isBg` in `chat.js`'s footer (every generated-image turn) and `modal` in `modalManager.js` (every desktop chip drag) · **27** fix (a), merge not clobber — (b), (c) open · **25** negative control; the item's own mutation now fails · **13** `uvicorn.access` filter, setting `access_log_hide_statuses` (default `[200]`, terminal only) · **46** *Tools: auto / on / off* per endpoint in Admin.
+- 🔍 **Found, not filed (noted under item 27):** on a fresh chat *"list files on mediaserver"* gets **no tools at all** — the classifier's `\bfile\b` misses "files", so it is low-signal.
+- ⏭️ **Looked at, not quick:** 43 (lives in client `selectedPreset` state, and Bonsai 2 relies on the no-preset `temp=1.0`), 42 (falling back to `default_model` is a behaviour change; needs a live dead-tag check), 49 (needs a saved Wikipedia page as a fixture; the regression risk is every other site).
+- 🧪 **Sandbox** (`~/tmp/venv`, tree copied by `~/tmp/sync.sh`): **6,077 passed, 25 failed — all 25 fail identically on a `git archive HEAD` copy** (9 need DNS; 16 are order-dependent in a single-process subset, as are 4 files that fail to collect there and pass alone, 50 tests). **M1 suite and live checks owed** — each item says what to look for.
+- ⚠️ **The agent ran plain `git status` once, against [`CLAUDE.md`](../CLAUDE.md) §6** → zero-byte `.git/index.lock`. Removed the same minute (delete permission for `/Users/cedrik/odysseus` granted this session); `.git/index` untouched. After that only `git --no-optional-locks` (`diff`, `show`, `archive`, `status --porcelain`), lock checked absent each time.
+- **Edited:** `app.py`, `src/agent_loop.py`, `src/settings.py`, `src/research_handler.py`, `src/tools/research.py`, `routes/research/research_routes.py`, `static/app.js`, `static/js/admin.js`, `static/js/chat.js`, `static/js/modalManager.js`, `tests/test_model_routes.py`, `tests/test_tool_path_confinement.py`, `docs/todo.md`, this file. **New (untracked — add them):** `src/access_log_filter.py` (imported by `app.py`), `tests/test_access_log_filter.py`, `tests/test_static_js_block_scope.py`, `tests/test_terminus_keeps_intent_domains.py`, `tests/test_trigger_research_probe.py`. Nothing left behind; the four `bench_qwen_*.json` are still the afternoon's.
+
+---
+
 ## 2026-10-04 (late night) — items 52 built, 53 drafted, 54 fixed: notices, context blocks, and New Chat landing in old chats
 
 - 🔧 **Item 52 built** — Odysseus's end-of-turn notices (*"empty response"*, *"request failed"*, *"I ran … and then stopped"*, …) are no longer replayed to the model; it gets its own text plus *"(This turn ended without a complete answer.)"*. `_gathering_only_notice` no longer promises *"Ask me to continue"* (0 of 6 recorded continues worked). `tests/test_ui_notices_context.py` (29), 6 mutations caught, corpus 56/56 stripped and 0/212 others touched. **Sandbox suite 5,882 passed, 11 failed — the same 11 fail with the change reverted.** M1 suite and live check owed.
