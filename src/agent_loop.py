@@ -26,7 +26,15 @@ from src.known_facts import check_document as check_known_facts
 from src.settings import get_setting
 from src.prompt_security import untrusted_context_message
 from src.tool_security import blocked_tools_for_owner, plan_mode_disabled_tools
-from src.tool_policy import GUIDE_ONLY_DIRECTIVE, WEB_TOOL_NAMES, ToolPolicy
+from src.tool_policy import (
+    BROWSER_SERVER_ID,
+    BROWSER_TOOL_PREFIX,
+    GUIDE_ONLY_DIRECTIVE,
+    WEB_TOOL_NAMES,
+    ToolPolicy,
+    has_browser_intent,
+    is_browser_tool_name,
+)
 from src.tool_utils import _truncate, get_mcp_manager
 from src.agent_tools import (
     parse_tool_blocks,
@@ -69,6 +77,65 @@ def _expand_browser_mcp_tools(tool_names: Set[str], mcp_mgr) -> Set[str]:
     except Exception as exc:
         logger.warning("Failed to expand browser MCP tools: %s", exc)
     return names
+
+
+def _apply_browser_disable(disabled_tools: Set[str], mcp_disabled_map: Dict[str, set], mcp_mgr) -> bool:
+    """Make ``builtin_browser`` in a disabled-tools list switch the whole server off.
+
+    Every downstream check matches exact tool names (schema filter, executor,
+    MCP prompt text, retrieval index), and the browser's tools are named
+    ``mcp__builtin_browser__<tool>`` — so the server-wide token that the admin
+    panel, the per-user ``can_use_browser`` privilege and ``manage_settings``
+    ("disable browser") write used to disable nothing. Expanding it here, once,
+    makes all of those checks see the real names. docs/todo.md item 51.
+    Returns True when the browser is disabled for this turn.
+    """
+    if BROWSER_SERVER_ID not in disabled_tools:
+        return False
+    names: Set[str] = set()
+    if mcp_mgr:
+        try:
+            for tool in mcp_mgr.get_all_tools():
+                if tool.get("server_id") == BROWSER_SERVER_ID and tool.get("name"):
+                    names.add(tool["name"])
+        except Exception as exc:
+            logger.warning("Failed to enumerate browser MCP tools for disabling: %s", exc)
+    disabled_tools.update(f"{BROWSER_TOOL_PREFIX}{name}" for name in names)
+    if names:
+        mcp_disabled_map.setdefault(BROWSER_SERVER_ID, set()).update(names)
+    return True
+
+
+def _browser_tool_names(mcp_mgr, disabled_map: Optional[Dict[str, set]] = None) -> Set[str]:
+    """Qualified names of the connected browser tools that are not disabled."""
+    if not mcp_mgr:
+        return set()
+    try:
+        return {
+            tool["qualified_name"]
+            for tool in mcp_mgr.get_all_tools(disabled_map or {})
+            if tool.get("server_id") == BROWSER_SERVER_ID
+            and not tool.get("is_disabled")
+            and tool.get("qualified_name")
+        }
+    except Exception as exc:
+        logger.warning("Failed to list browser MCP tools: %s", exc)
+        return set()
+
+
+def _withhold_browser(disabled_map: Optional[Dict[str, set]], browser_names: Set[str]) -> Dict[str, set]:
+    """Copy of ``disabled_map`` that also hides ``browser_names`` for one turn.
+
+    The MCP schemas and the MCP prompt text are both built from this map, so
+    one entry removes the browser from the native tool list, from the
+    "local model" schema branch and from the text block that otherwise
+    advertises tools the model was not given.
+    """
+    out = {k: set(v) for k, v in (disabled_map or {}).items()}
+    out.setdefault(BROWSER_SERVER_ID, set()).update(
+        name[len(BROWSER_TOOL_PREFIX):] for name in browser_names if name.startswith(BROWSER_TOOL_PREFIX)
+    )
+    return out
 
 
 def _looks_like_notes_list_request(text: str) -> bool:
@@ -4001,6 +4068,9 @@ async def stream_agent_loop(
             _last_user[:80],
         )
     _mcp_disabled_map = _load_mcp_disabled_map() if mcp_mgr else {}
+    _browser_disabled = _apply_browser_disable(disabled_tools, _mcp_disabled_map, mcp_mgr)
+    if _browser_disabled:
+        logger.info("[agent-intent] browser disabled for this turn (builtin_browser in disabled tools)")
     if _direct_low_signal:
         logger.info("[agent] direct low-signal reply path for latest=%r", _last_user[:80])
         direct_messages = (
@@ -4259,8 +4329,29 @@ async def stream_agent_loop(
             _relevant_tools = set(ALWAYS_AVAILABLE)
         _relevant_tools.update(forced_set)
 
+    # Browser gate (docs/todo.md item 51). Retrieval alone does not count as
+    # browser intent — "oh hi mark" retrieved browser_hover, and expansion then
+    # sent all 31 browser tools. The browser goes out when the route forced it
+    # (its own intent check, incl. short follow-ups after a form/browser turn)
+    # or when the request itself asks for it. A caller-provided relevant_tools
+    # set is NOT intent: the task scheduler fills it from the same retrieval.
+    _browser_names = set() if _browser_disabled else _browser_tool_names(mcp_mgr, _mcp_disabled_map)
+    _browser_allowed = bool(_browser_names) and (
+        any(is_browser_tool_name(t) for t in (forced_tools or ()))
+        or has_browser_intent(_last_user)
+        or has_browser_intent(_retrieval_query)
+    )
     if not guide_only and _relevant_tools is not None:
-        _relevant_tools = _expand_browser_mcp_tools(_relevant_tools, mcp_mgr)
+        if _browser_allowed:
+            _relevant_tools = set(_relevant_tools) | {BROWSER_SERVER_ID}
+            _relevant_tools = _expand_browser_mcp_tools(_relevant_tools, mcp_mgr)
+            _relevant_tools.discard(BROWSER_SERVER_ID)
+        else:
+            _relevant_tools = {t for t in _relevant_tools if not is_browser_tool_name(t)}
+    _prompt_mcp_disabled_map = _mcp_disabled_map
+    if _browser_names and not _browser_allowed:
+        _prompt_mcp_disabled_map = _withhold_browser(_mcp_disabled_map, _browser_names)
+        logger.info("[agent-intent] browser tools withheld: %d (no browser intent)", len(_browser_names))
 
     # The skill index injected by _build_system_prompt tells the model to
     # call `manage_skills action=view`, and Jaccard-matched skills are pasted
@@ -4461,7 +4552,7 @@ async def stream_agent_loop(
     messages, mcp_schemas = _build_system_prompt(
         messages, model, _prompt_active_document, mcp_mgr, disabled_tools,
         needs_admin=_needs_admin, relevant_tools=_relevant_tools,
-        mcp_disabled_map=_mcp_disabled_map,
+        mcp_disabled_map=_prompt_mcp_disabled_map,
         compact=_compact_agent_prompt,
         owner=owner,
         suppress_local_context=guide_only,

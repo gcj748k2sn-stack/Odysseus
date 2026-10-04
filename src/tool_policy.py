@@ -18,6 +18,43 @@ GUIDE_ONLY_DIRECTIVE = (
 
 WEB_TOOL_NAMES = frozenset({"web_search", "web_fetch"})
 
+# ── Built-in browser (Playwright MCP) — docs/todo.md item 51 ─────────────────
+# The browser server exposes ~31 tools (≈6k tokens of schemas plus ≈1.5k of
+# prompt text, measured 2026-10-04 against @playwright/mcp 1.64). Two rules:
+#   * ``BROWSER_SERVER_ID`` in a disabled-tools list switches the whole server
+#     off — schemas, prompt text, retrieval and execution (agent_loop applies it).
+#   * Otherwise the browser is sent only when the request asks for it. Embedding
+#     retrieval alone does not count: on 2026-10-04 it put the browser into 53 of
+#     489 recorded agent turns ("oh hi mark" retrieved browser_hover), and no
+#     browser tool had ever been called.
+BROWSER_SERVER_ID = "builtin_browser"
+BROWSER_TOOL_PREFIX = "mcp__builtin_browser__"
+
+# Deliberately narrow. The pattern this replaces also matched bare "click",
+# "fill" and "submit", so "fill index.html with … martha9_1.ino" read as a
+# browser request. Matches 0 of the 489 agent turns recorded up to 2026-10-04.
+BROWSER_INTENT_RE = re.compile(
+    r"\b(?:"
+    r"(?:web\s*)?browser|headless|playwright|screenshots?"
+    r"|click(?:s|ed|ing)?\s+(?:on\s+)?(?:the\s+|a\s+|that\s+|this\s+)?(?:[\w'-]+\s+){0,2}(?:button|link|tab|checkbox)"
+    r"|fill(?:s|ed|ing)?\s+(?:out|in)\s+(?:the|a|this|that)\s+(?:[\w'-]+\s+){0,2}form"
+    r"|submit(?:s|ted|ting)?\s+(?:the|a|this|that)\s+(?:[\w'-]+\s+){0,2}form"
+    r"|(?:contact|web|signup|sign-up|login|registration)\s+form|form\s+submission"
+    r"|log\s*(?:in|on)\s+(?:to|on|at)\s+(?:the\s+)?(?:site|website|page|portal)"
+    r")\b",
+    re.I,
+)
+
+
+def has_browser_intent(text: object) -> bool:
+    """Whether ``text`` explicitly asks for browser automation."""
+    return isinstance(text, str) and bool(BROWSER_INTENT_RE.search(text))
+
+
+def is_browser_tool_name(name: object) -> bool:
+    """A built-in browser tool name, or the server-wide token itself."""
+    return isinstance(name, str) and (name == BROWSER_SERVER_ID or name.startswith(BROWSER_TOOL_PREFIX))
+
 
 def tool_toggle_enabled(value: object) -> bool:
     """Return true only for explicit true-like tool toggle values."""

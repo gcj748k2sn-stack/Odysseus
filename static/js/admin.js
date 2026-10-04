@@ -1887,6 +1887,7 @@ const TOOL_META = {
   manage_webhooks:   { name: 'Webhooks',         desc: 'Configure webhook events',        cat: 'System',     ctx: '~100' },
   manage_tokens:     { name: 'API Tokens',       desc: 'Manage API access tokens',        cat: 'System',     ctx: '~100' },
   manage_settings:   { name: 'Settings',         desc: 'Change app settings',             cat: 'System',     ctx: '~100' },
+  builtin_browser:   { name: 'Browser automation', desc: 'Headless browser (all built-in browser tools); sent only when a request asks for it', cat: 'Browser', ctx: '~7500' },
 };
 
 async function loadBuiltinTools() {
@@ -1908,7 +1909,7 @@ async function loadBuiltinTools() {
     }
 
     // Category order
-    const catOrder = ['Code', 'Search', 'Documents', 'Media', 'Knowledge', 'Multi-Agent', 'Sessions', 'System', 'Other'];
+    const catOrder = ['Code', 'Search', 'Documents', 'Media', 'Knowledge', 'Multi-Agent', 'Sessions', 'System', 'Browser', 'Other'];
     let html = '';
     for (const cat of catOrder) {
       const items = groups[cat];

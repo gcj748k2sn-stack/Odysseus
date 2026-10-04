@@ -44,8 +44,11 @@ from routes.chat_helpers import (
 from src.action_intents import ToolIntent, classify_tool_intent as _classify_tool_intent
 from src.image_model_ids import looks_like_image_generation_model
 from src.tool_policy import (
+    BROWSER_INTENT_RE,
+    BROWSER_SERVER_ID,
     WEB_TOOL_NAMES,
     build_effective_tool_policy,
+    has_browser_intent,
     is_web_search_explicitly_denied,
     web_search_enabled_for_turn,
 )
@@ -120,12 +123,11 @@ _RECENT_WEB_CONTEXT_RE = re.compile(
     r"price|current|latest|search|look\s+up|online)\b",
     re.I,
 )
-_RECENT_BROWSER_CONTEXT_RE = re.compile(
-    r"\b(?:browser|browse|open\s+(?:the\s+)?(?:site|page|url|link)|click|"
-    r"fill(?:\s+out)?|submit|send\s+(?:the\s+)?form|contact\s+form|web\s*form|"
-    r"form\s+submission|playwright|automation)\b",
-    re.I,
-)
+# Shared with the agent loop's browser gate (docs/todo.md item 51). The pattern
+# this replaced matched bare "click"/"fill"/"submit"/"automation", so a "yes"
+# after any ESP32/home-automation or "fill index.html" exchange read as a
+# browser follow-up and forced the browser tools in.
+_RECENT_BROWSER_CONTEXT_RE = BROWSER_INTENT_RE
 _BROWSER_MCP_TOOLS = {
     "mcp__builtin_browser__browser_navigate",
     "mcp__builtin_browser__browser_snapshot",
@@ -140,6 +142,11 @@ _BROWSER_MCP_TOOLS = {
     "mcp__builtin_browser__browser_navigate_back",
     "mcp__builtin_browser__browser_close",
 }
+# For DISABLING: the server-wide token makes the agent loop withhold every
+# browser tool, not just the 12 named above — the connected server exposes 31,
+# incl. browser_run_code_unsafe, and 19 of them used to slip past these
+# denylists (docs/todo.md item 51). _BROWSER_MCP_TOOLS stays the FORCE set.
+_BROWSER_DISABLE = _BROWSER_MCP_TOOLS | {BROWSER_SERVER_ID}
 
 
 def _recent_session_text(sess, limit: int = 8, max_chars: int = 2000) -> str:
@@ -762,12 +769,7 @@ def setup_chat_routes(
                 r"\b(search|look\s*up|lookup|google|browse|web|online|latest|current|today|news|weather|forecast|rate|exchange\s+rate)\b",
                 _msg_l,
             ))
-            _explicit_browser_intent = bool(re.search(
-                r"\b(browser|browse|open\s+(?:the\s+)?(?:site|page|url|link)|"
-                r"click|fill(?:\s+out)?|submit|send\s+(?:the\s+)?form|"
-                r"contact\s+form|web\s*form|form\s+submission)\b",
-                _msg_l,
-            ))
+            _explicit_browser_intent = has_browser_intent(message)
         _allow_browser_for_web_turn = bool(
             _explicit_browser_intent
             or _explicit_web_intent
@@ -1155,7 +1157,7 @@ def setup_chat_routes(
             if not _privs.get("can_use_bash", True):
                 disabled_tools.update({"bash", "python", "read_file", "write_file"})
             if not _privs.get("can_use_browser", True):
-                disabled_tools.update(_BROWSER_MCP_TOOLS)
+                disabled_tools.update(_BROWSER_DISABLE)
             if not _privs.get("can_use_documents", True):
                 disabled_tools.update({"create_document", "edit_document", "update_document", "suggest_document"})
             if not _privs.get("can_generate_images", True):
@@ -1183,7 +1185,7 @@ def setup_chat_routes(
                 "bash", "python", "read_file", "write_file",
             })
             if not _allow_browser_for_web_turn:
-                disabled_tools.update(_BROWSER_MCP_TOOLS)
+                disabled_tools.update(_BROWSER_DISABLE)
 
         # Disable document tools in compare sessions — they break the pane UI
         if sess.name and sess.name.startswith("[CMP]"):
