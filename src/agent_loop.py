@@ -201,7 +201,8 @@ def _gathering_only_notice(tool_events: list) -> str:
     return (
         f"I ran {listed} and then stopped without producing an answer — "
         "**nothing was created or changed.** The information was gathered but "
-        "never used. Ask me to continue and I'll carry on from there."
+        "never used. The results were not kept, so send the request again to "
+        "rerun it."
     )
 
 

@@ -115,12 +115,24 @@ class Session:
         ``metadata.source == "slash"``; exclude them here so they never reach
         the model. Display/history-load paths use the raw ``history`` and are
         unaffected.
+
+        Same split for Odysseus's own end-of-turn notices inside assistant
+        replies ("The request to the model failed…", "I ran `web_search` and
+        then stopped…"): they are written for the person reading the
+        transcript, so the model gets the reply without them plus one neutral
+        line saying the turn ended early. See ``src/ui_notices.py``.
         """
-        return [
-            msg.to_dict()
-            for msg in self.history
-            if (msg.metadata or {}).get("source") != "slash"
-        ]
+        from src.ui_notices import context_view_of_reply
+
+        out = []
+        for msg in self.history:
+            if (msg.metadata or {}).get("source") == "slash":
+                continue
+            d = msg.to_dict()
+            if d.get("role") == "assistant":
+                d["content"] = context_view_of_reply(d.get("content"))
+            out.append(d)
+        return out
 
     def get(self, key: str, default=None):
         """Dict-like access for compatibility."""
