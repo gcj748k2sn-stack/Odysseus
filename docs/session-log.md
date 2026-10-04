@@ -8,6 +8,16 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-04 (later) — item 49 filed; LM Studio as main service and Bonsai 2 assessed
+
+- 🆕 **Item 49** — every cached Wikipedia page is the site menu ×3 (627 chars), so the article never reaches the model; found from the "Parasol" fact-check turn, which claimed Wikipedia verification it never had. Mechanism from source + cache, **not reproduced against live HTML**. Nothing fixed.
+- 🔌 **LM Studio, read from `~/.lmstudio`, nothing changed:** 0.4.25, MLX runtime 1.11.0, JIT on with 60 min TTL. "Run LLM server on login" is **off** (`enableLocalService: false`). Default context is a custom **8192** and there is **no saved per-model load config for `qwen/qwen3.5-9b`**, so a JIT load from Odysseus comes up at 8192 — the 502 in [qwensetup.md](qwensetup.md). The 10:22 first turn of `2ef18f85` failed 503 because the LM Studio server was not running and new chats default to it.
+- 🌳 **Bonsai 2 still fails in LM Studio** — its own server log, 2026-10-02 16:59: `Model type prism_hadamard_qwen35 not supported`. Route remains PrismML's llama.cpp fork on :8090 (qwensetup, *Models*).
+- ⚠️ **The agent ran `git status` once, against [`CLAUDE.md`](../CLAUDE.md) §6, and it left a zero-byte `.git/index.lock`.** Deleted with the maintainer's permission the same minute; `.git/index` untouched.
+- **Edited:** `docs/todo.md`, this file.
+
+---
+
 ## 2026-10-04 — macOS 27 upgrade checks; item 23 closed; item 48 filed and fixed
 
 - ✅ **Upgraded to macOS 27.** Suite **5,858 passed, 2 skipped, 0 failed** (one test skipped on macOS 14 now runs). `apfel` installed from a bottle. Ollama 0.35.1 needed a manual `brew services restart` to actually run.
