@@ -8,6 +8,22 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## The built-in browser was sent on turns that never asked for it — closed 2026-10-04 (item 51)
+Tool RAG returns its 8 nearest tools with no score floor, so *"oh hi mark"* retrieved `browser_hover`, and `_expand_browser_mcp_tools` then sent all 31 Playwright tools (~6.5k tokens of schemas; plus ~1.5k of browser prompt text on **every** turn). Measured in `app.log*`: **53 of 489** agent turns carried the browser; **0** browser executions ever. Separately, `builtin_browser` in a disabled list (written by `manage_settings`) matched no tool name, and the `can_use_browser` denylist named 12 of 31 tools — **19 slipped past it, `browser_run_code_unsafe` among them.**
+
+**Fix (commit `310ce023`):** `BROWSER_INTENT_RE` in `src/tool_policy.py` (narrow: *browser, headless, playwright, screenshot, click the … button, fill out the form…* — 0 of 489 recorded turns match); the agent loop sends the browser only on that intent or a route-forced follow-up, and otherwise withholds it from **both** schemas and prompt text; `builtin_browser` in `disabled_tools` expands to every connected browser tool; a *Browser automation* row in Settings → Agent Tools.
+
+**Verification scope:**
+- `tests/test_browser_tool_gate.py` (35); 8 mutations, each caught. **M1 suite: 5,920 passed, 2 skipped, 0 failed.**
+- **Live, 2026-10-04:** greetings 17:42–17:43 → `browser tools withheld: 31`; 18:46 with the panel row off → `browser disabled for this turn`, 8 tools, no browser; 18:49 *"open wikipedia.com in the browser and take a screenshot"* → no withheld line, 39 tools, **`browser_navigate` and `browser_take_screenshot` executed, exit 0 — the first browser executions on record.**
+
+**What survives re-reading:**
+- ⚠️ Do not credit this fix with the drop from 38–43 schemas to 5–8 on plain turns: a turn on the old code at 13:38 already sent 6.
+- The gate filters after retrieval, so a browser hit still uses one of the 8 retrieval slots and is then dropped.
+- Open, recorded in [todo.md](todo.md) item 51: with the browser off, the model flailed for 7 rounds (incl. `ui_control: toggle shell on` and an unlogged `manage_skills` call) instead of saying it could not.
+
+---
+
 ## Finished answers were delivered in the reasoning channel — closed 2026-10-04 (item 23)
 Agent turns on `qwen3.5:9b-*` gathered information and then ended with an empty reply, the answer sitting in `thinking` and the user shown *"stopped without producing an answer"*. **77 % of final rounds after tool use were lost** (112 of 145 at temp 0.6), rising with the number of prior tool rounds: 13 % → 65 % → 87 % → 92 % after 0 / 1 / 2 / 3 rounds.
 
