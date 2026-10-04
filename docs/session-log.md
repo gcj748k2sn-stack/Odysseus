@@ -8,6 +8,27 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-04 (late night) — items 52 built, 53 drafted, 54 fixed: notices, context blocks, and New Chat landing in old chats
+
+- 🔧 **Item 52 built** — Odysseus's end-of-turn notices (*"empty response"*, *"request failed"*, *"I ran … and then stopped"*, …) are no longer replayed to the model; it gets its own text plus *"(This turn ended without a complete answer.)"*. `_gathering_only_notice` no longer promises *"Ask me to continue"* (0 of 6 recorded continues worked). `tests/test_ui_notices_context.py` (29), 6 mutations caught, corpus 56/56 stripped and 0/212 others touched. **Sandbox suite 5,882 passed, 11 failed — the same 11 fail with the change reverted.** M1 suite and live check owed.
+- 📝 **Item 53 drafted, not built** — memory / skills index / documents reach the model as extra user turns at the start of the chat (models quote them as turns in their thinking), the skills index goes out twice, and per-message blocks at the start defeat prefix caching. Proposal (one context block before the latest user message) and observables are in the item.
+- 🔍 **Investigated, not filed:** "chats that remember earlier greetings" were the same chat — after a restart Odysseus reopens the last chat on purpose (`static/js/sessions.js` target resolution); all 22 *"hi mark"* messages are one session inside one app run. The sidebar report is unexamined (no screenshot yet; the agent's browser lands on the login page).
+- 🧪 Sandbox: a throwaway venv in the agent VM with the requirements (no fastembed/chromadb), tests run against a copy of the tree. Delete permission for `/Users/cedrik/odysseus` was granted this session (used only for the `app.db-journal` cleanup in the entry below).
+- 🔧 **Item 54 filed, fixed and verified live (agent's browser pane)** — "New Chat" posted the next message into the previously open chat because `sessions.js` (and 10 other modules) ran as two copies: `app.js` imported them with `?v=…`, everything else without. All 52 module `?v=` removed (JS is already served `no-cache`); `tests/test_static_module_single_url.py` (4). Three empty test chats left behind (21:26:02, 21:33:21, 21:33:36). Found, not fixed: `streamingTTS` ReferenceError in `chat.js`'s stream error handler.
+- **Edited:** `core/models.py`, `src/agent_loop.py` (one notice string), `static/app.js`, `static/index.html`, 13 files under `static/js/` (version queries only), `docs/todo.md`, this file. **New:** `src/ui_notices.py`, `tests/test_ui_notices_context.py`, `tests/test_static_module_single_url.py`. One read-only `git diff --stat` was run by mistake (no lock left — checked); otherwise no `git`.
+
+---
+
+## 2026-10-04 (night) — Bonsai 2 running on PrismML's llama.cpp, added as an endpoint
+
+- 🌳 **Bonsai 2 27B runs** via PrismML's own llama.cpp fork (`~/BonsaiDemo`, release `prism-b10743-adfffbe`, `Ternary-Bonsai-2-27B-PQ2_0.gguf`, 7.2 GB), started by hand with `~/BonsaiDemo/start_bonsai2.sh` → **`http://localhost:8090/v1`, model id `bonsai2-27b`**, 16k context, text only, `-np 1`. Not a login service. The Mac froze around a first attempt at 32k + vision projector (cause not confirmed, no log); the 16k text-only start ran fine.
+- 📊 **Measured through the API, nothing else loaded:** decode 11.8–12.1 tok/s, prefill 65–70 tok/s (10,236-token prompt: 148 s cold, 1.5 s with the prefix cached). Native tool calls clean over 3 rounds (parallel `web_search` calls, thinking closed before the calls, final answer in `content`) — the v1 failure did not occur. Four parallel slots sharing one 16k KV overflowed under concurrent requests (`Context size has been exceeded`, three requests lost) → `-np 1` in the start script.
+- 🔌 **New endpoint row `ed1cd41c`** ("Bonsai 2 (llama.cpp :8090)", `supports_tools=1`, `cached_models=["bonsai2-27b"]`), inserted while Odysseus was stopped (log: shutdown 19:07:07). Backup: `data/app.db.bak-before-bonsai2`. ⚠️ A first direct `sqlite3` write on the mount failed with `disk I/O error` and left a hot `app.db-journal` (delete not permitted); journal removed and `app.db` restored byte-identical from the backup (sha256 matched), then the row was written into a copy and copied back. **Rule: write `app.db` on a copy, never in place on the mount.**
+- No preset needed: with no preset selected Odysseus sends `temp=1.0`, PrismML's Bonsai 2 value; top-p/top-k/min-p come from the server flags. Default chat model unchanged (LM Studio Qwen).
+- **Edited:** this file. **DB:** one `model_endpoints` row. No `git` command run.
+
+---
+
 ## 2026-10-04 (evening) — item 51 filed and built: the browser goes out only when asked for
 
 - 🆕🔧 **Item 51** — asked why the greeting *"oh hi mark"* was sent tools. Tool RAG put a browser tool into **53 of 489** recorded agent turns and the loop then sent all 31 (~6.5k tokens of schemas, plus ~1.5k of browser prompt text on every turn); a browser tool has **never** been executed. Separately, `builtin_browser` in a disabled list disabled nothing, and the `can_use_browser` denylist missed 19 of 31 tools incl. `browser_run_code_unsafe`. **Built:** sent only on explicit browser intent (narrow pattern, 0 of 489 recorded turns match); `builtin_browser` switches the whole server off; a *Browser automation* row in Settings → Agent Tools (JS, unverified). `tests/test_browser_tool_gate.py` (35), 8 mutations caught. **Sandbox only — M1 suite and live check owed.**

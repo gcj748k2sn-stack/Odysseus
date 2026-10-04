@@ -6,44 +6,47 @@ import Storage from './js/storage.js';
 import uiModule from './js/ui.js';
 import workspaceModule from './js/workspace.js';
 import fileHandlerModule from './js/fileHandler.js';
-import modelsModule from './js/models.js?v=20260715startupcalm2';
+import modelsModule from './js/models.js';
 import ragModule from './js/rag.js';
 import presetsModule from './js/presets.js';
 import searchModule from './js/search.js';
-import chatModule from './js/chat.js?v=20260722ctxheader4';
-import compareModule from './js/compare/index.js?v=20260723compareicon2';
-import documentModule from './js/document.js?v=20260722emailfastindex1';
+import chatModule from './js/chat.js';
+import compareModule from './js/compare/index.js';
+import documentModule from './js/document.js';
 import searchChatModule from './js/search-chat.js';
 import { makeWindowDraggable } from './js/windowDrag.js';
 import markdownModule from './js/markdown.js';
-import chatRenderer from './js/chatRenderer.js?v=20260722emailfastindex1';
-import sessionModule from './js/sessions.js?v=20260722ctxheader4';
-import memoryModule from './js/memory.js?v=20260722memoryloading1';
+import chatRenderer from './js/chatRenderer.js';
+import sessionModule from './js/sessions.js';
+import memoryModule from './js/memory.js';
 import voiceRecorderModule from './js/voiceRecorder.js';
 import censorModule from './js/censor.js';
 import galleryModule from './js/gallery.js';
-import tasksModule from './js/tasks.js?v=20260723tasksbulkfeedback1';
+import tasksModule from './js/tasks.js';
 import calendarModule from './js/calendar.js';
 import notesModule from './js/notes.js';
-import adminModule from './js/admin.js?v=20260716openrouter3';
-import settingsModule from './js/settings.js?v=20260722emailfastindex1';
+import adminModule from './js/admin.js';
+import settingsModule from './js/settings.js';
 // Eagerly bind unified minimize/restore behavior across all tool modals.
-import './js/modalManager.js?v=20260723compareicon2';
+import './js/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import './js/tileManager.js';
 import themeModule from './js/theme.js';
-// IMPORTANT: import cookbook.js with NO ?v= query — the same plain specifier
-// every other importer (cookbook-hwfit.js / cookbook-diagnosis.js) uses. A query
-// mismatch makes the browser load cookbook.js twice as separate modules (two
-// _envState objects), which broke server selection. Keep all cookbook imports
-// unversioned so this can't recur.
+// IMPORTANT: import EVERY module with NO ?v= query — the same plain specifier
+// every other importer uses. A query mismatch makes the browser load the file
+// twice as separate modules with separate state. It broke cookbook server
+// selection (two _envState objects), and on 2026-10-04 it was found doing the
+// same to sessions.js: New Chat cleared one copy, sending read the other, and
+// messages landed in the previously open chat (docs/todo.md item 54). JS is
+// served `Cache-Control: no-cache` (app.py `_RevalidatingStatic`), so no
+// cache-buster is needed. Guarded by tests/test_static_module_single_url.py.
 import cookbookModule from './js/cookbook.js';
 import groupModule from './js/group.js';
-import * as researchPanelModule from './js/research/panel.js?v=20260630researchthumb';
+import * as researchPanelModule from './js/research/panel.js';
 import ttsModule from './js/tts-ai.js';
 import spinnerModule from './js/spinner.js';
 import { initKeyboardShortcuts } from './js/keyboard-shortcuts.js';
-import { initSidebarLayout, syncRailSide } from './js/sidebar-layout.js?v=20260715startupclean';
+import { initSidebarLayout, syncRailSide } from './js/sidebar-layout.js';
 import { initSectionCollapse, initSectionDrag } from './js/section-management.js';
 
 const API_BASE = window.location.origin;
