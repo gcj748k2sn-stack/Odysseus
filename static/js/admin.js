@@ -534,6 +534,11 @@ async function loadEndpoints() {
               ${hasModels ? `<span style="font-size:10px;opacity:0.4;${category === 'api' ? 'flex-basis:100%;' : ''}">Click to manage models</span>` : ''}
             </div>
             <div style="display:flex;gap:4px;align-items:center;">
+              <select class="admin-btn-sm" data-adm-tools-ep="${ep.id}" aria-label="Native tool calling" title="Native tool calling. Auto guesses from the model name; set On for a local model that handles tools (docs/todo.md item 46).">
+                <option value="auto"${ep.supports_tools == null ? ' selected' : ''}>Tools: auto</option>
+                <option value="true"${ep.supports_tools === true ? ' selected' : ''}>Tools: on</option>
+                <option value="false"${ep.supports_tools === false ? ' selected' : ''}>Tools: off</option>
+              </select>
               <button class="admin-btn-sm" data-adm-toggle-ep="${ep.id}">${ep.is_enabled ? 'Disable' : 'Enable'}</button>
               <button class="admin-btn-delete" data-adm-del-ep="${ep.id}" data-adm-ep-online="${ep.online ? '1' : '0'}">Delete</button>
               ${hasModels ? '<svg class="admin-user-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3;transition:transform 0.2s,opacity 0.2s;"><polyline points="6 9 12 15 18 9"/></svg>' : ''}
@@ -579,6 +584,29 @@ async function loadEndpoints() {
         e.stopPropagation();
         await fetch(`/api/model-endpoints/${btn.dataset.admToggleEp}`, { method: 'PATCH' });
         await _refreshAfterEndpointChange();
+        loadEndpoints();
+      });
+    });
+    // Per-endpoint supports_tools: auto (NULL, guessed from the model name) /
+    // on / off. PATCH with a JSON body updates only that field; it does not
+    // toggle is_enabled (routes/model_routes.py, toggle_model_endpoint).
+    queryAll('[data-adm-tools-ep]').forEach(sel => {
+      sel.addEventListener('click', (e) => e.stopPropagation());
+      sel.addEventListener('change', async (e) => {
+        e.stopPropagation();
+        const value = sel.value === 'auto' ? null : sel.value === 'true';
+        sel.disabled = true;
+        try {
+          const res = await fetch(`/api/model-endpoints/${sel.dataset.admToolsEp}`, {
+            method: 'PATCH',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ supports_tools: value }),
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        } catch (err) {
+          console.warn('[admin] supports_tools update failed', err);
+        }
         loadEndpoints();
       });
     });

@@ -2102,3 +2102,27 @@ def test_manual_refresh_timeout_keeps_cached_models_and_warns(monkeypatch):
     assert db.commits == 0
     assert response.headers["X-Model-Refresh-Status"] == "failed"
     assert "kept cached models" in response.headers["X-Model-Refresh-Warning"]
+
+
+# ── supports_tools: auto / on / off (docs/todo.md item 46) ──
+
+@pytest.mark.parametrize("sent, stored", [
+    (True, True), (False, False), (None, None), ("true", True), ("false", False),
+])
+def test_patch_endpoint_sets_supports_tools_three_states(monkeypatch, sent, stored):
+    """The Tools select in the admin endpoint list (static/js/admin.js) sends
+    true / false / null; null is "auto" (guess from the model name). The
+    marker start value makes the null case prove a write, not a no-op."""
+    ep = _make_endpoint(supports_tools="marker")
+    db = _PinnedFakeDb([ep])
+    monkeypatch.setattr(model_routes, "SessionLocal", lambda: db)
+    monkeypatch.setattr(model_routes, "require_admin", lambda request: None)
+    endpoint = _get_route("/api/model-endpoints/{ep_id}", "PATCH")
+
+    request = _PinnedFakeRequest(body={"supports_tools": sent}, headers={"content-length": "24"})
+    result = asyncio.run(endpoint("ep1", request))
+
+    assert ep.supports_tools is stored
+    assert result["supports_tools"] is stored
+    assert ep.is_enabled is True  # a JSON body never toggles enable/disable
+    assert db.commits == 1
