@@ -52,7 +52,11 @@ def test_model_context_queries_models_for_v1_base(monkeypatch):
     monkeypatch.setattr(model_context.httpx, "get", fake_get)
 
     assert model_context._query_context_length("http://127.0.0.1:8080/v1", "qwen3") == (32768, True)
+    # /api/v1/models is the LM Studio probe (docs/todo.md item 50). This server
+    # answers it with an OpenAI-shaped body, which is not LM Studio's, so the
+    # lookup falls through to /v1/models exactly as before.
     assert seen == [
         "http://127.0.0.1:8080/slots",
+        "http://127.0.0.1:8080/api/v1/models",
         "http://127.0.0.1:8080/v1/models",
     ]
