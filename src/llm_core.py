@@ -10,7 +10,7 @@ import re
 import os
 from contextlib import asynccontextmanager
 from fastapi import HTTPException
-from typing import Optional, Dict, List, Tuple
+from typing import Any, Optional, Dict, List, Tuple
 from src.model_context import get_context_length, DEFAULT_CONTEXT, is_local_endpoint
 from urllib.parse import urlparse
 
@@ -1862,6 +1862,31 @@ def list_model_ids(
             logger.warning("Failed to fetch model list from configured endpoint", exc_info=e)
         return []
 
+def _prompt_cache_fields(chunk: Dict) -> Dict[str, Any]:
+    """Prompt-cache figures from a final stream chunk, where the server
+    reports them: llama.cpp's `timings` (`cache_n` reused from the KV cache,
+    `prompt_n` processed now, `prompt_ms` spent on it) and the OpenAI-style
+    `usage.prompt_tokens_details.cached_tokens`. Absent fields stay absent —
+    "not reported" is not "zero"."""
+    out: Dict[str, Any] = {}
+
+    def _num(v):
+        return isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 0
+
+    tm = chunk.get("timings") if isinstance(chunk, dict) else None
+    if isinstance(tm, dict):
+        for key in ("cache_n", "prompt_n"):
+            if _num(tm.get(key)):
+                out[key] = int(tm[key])
+        if _num(tm.get("prompt_ms")):
+            out["prompt_ms"] = round(float(tm["prompt_ms"]), 1)
+    usage = chunk.get("usage") if isinstance(chunk, dict) else None
+    details = usage.get("prompt_tokens_details") if isinstance(usage, dict) else None
+    if isinstance(details, dict) and _num(details.get("cached_tokens")):
+        out["cached_tokens"] = int(details["cached_tokens"])
+    return out
+
+
 def normalize_model_id(
     endpoint_url: str,
     requested: str,
@@ -2785,6 +2810,10 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                             _usage_data["gen_tps"] = round(_tm["predicted_per_second"], 2)
                                         if _tm.get("prompt_per_second"):
                                             _usage_data["prefill_tps"] = round(_tm["prompt_per_second"], 2)
+                                    # [prompt-cache] report-only — docs/todo.md items 40/57/58.
+                                    # How much of this request's prompt the server reused from
+                                    # its KV cache, and how much it had to process now.
+                                    _usage_data.update(_prompt_cache_fields(j))
                                     if _actual_model:
                                         _usage_data["model"] = _actual_model
                                         if not _same_model_identity(_actual_model, model):
