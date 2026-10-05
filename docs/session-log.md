@@ -18,6 +18,16 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-05 (08:35–09:15) — live checks for 27 (b) and the cache line; item 60 filed and fixed
+
+- ✅ Live checks recorded in the entry below (27 (b), cache line, email warn-once) and under items 27/58. Maintainer committed them as `35f9d7b5`.
+- 🔧 **Item 60 fixed, uncommitted:** file tools refuse Odysseus's own state under `data/` — `.app_key` (decrypts stored passwords/tokens), `auth.json`, `sessions.json`, `settings.json` (API keys), `cookbook_state.json`, `user_prefs.json`, every SQLite file. Also closed: `grep`'s ripgrep branch printed lines from files the deny-list refuses.
+- 🧪 Sandbox: **6,162 passed, 27 failed — identical on a `git archive HEAD` copy** (DNS, test order). New file's tests: 29 fail on HEAD, 13 negative controls pass on both; 6 mutations caught.
+- ➡️ Live check after restart: *"read data/settings.json"* → refusal naming `manage_documents`. Next on the plan: item 53, then 58/57 (the cache figures under item 58 now give their baseline).
+- **Edited:** `src/tool_execution.py`, `src/agent_tools/filesystem_tools.py`, `docs/todo.md`, this file. **New:** `tests/test_tool_path_odysseus_state.py`. Not mine, left alone: untracked `scripts/bench_agent.py`, `scripts/bench_agent_tasks.py` (appeared between 23:53 and 08:52).
+
+---
+
 ## 2026-10-04 (23:45–00:00) — item 27 fix (b); per-round prompt-cache log line — committed 2026-10-05 07:49 (`9d5f5aac`, `f5ee9874`, `f81322f1`)
 
 - ✅ **Live 2026-10-05 07:49–08:34 (maintainer):** 27 (b) — the LAN prompt got document + web tools, no `bash`, and asked via `ask_user` when the device stayed down. The cache line works on every round; first figures are under item 58 (re-read rounds cost 149–285 s, kept-prefix rounds 4.6–56 s; a follow-up message reused nothing). Item 13's email warn-once holds: 1 SMTP + 1 IMAP warning in `app.log` since the 07:49 start (90 SMTP warnings between 22:00 and 23:59 the night before). 🆕 **Item 60 filed:** the follow-up turn read `data/app.db` with `read_file` (default root, not on the deny-list) and overflowed the context (36,656 > 32,768).
