@@ -553,6 +553,27 @@ def _detect_js_frameworks(soup: BeautifulSoup) -> bool:
     return False
 
 
+# Page chrome that is dropped from extracted text, even inside the main content
+# element: Wikipedia puts its language menu in a <header> and its
+# Article/Talk/Read/Edit tabs in a <nav> inside <main>.
+_BOILERPLATE_TAGS = ["script", "style", "noscript", "template", "nav", "header", "footer", "aside"]
+
+
+def _primary_content_element(soup: BeautifulSoup):
+    """The element the page itself marks as its main content, or None.
+
+    ``<main>`` or ``role="main"`` first; otherwise an ``<article>`` if it is the
+    only one (a listing page with several has no single main article).
+    """
+    primary = soup.find("main")
+    if primary is None:
+        primary = soup.find(attrs={"role": "main"})
+    if primary is not None:
+        return primary
+    articles = soup.find_all("article")
+    return articles[0] if len(articles) == 1 else None
+
+
 def _empty_result(url: str, error: str = "") -> dict:
     """Build a standard failure result dict."""
     return {
@@ -883,14 +904,25 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     js_rendered = _detect_js_frameworks(soup)
     js_message = "Page appears to be rendered by a JavaScript framework; content may be incomplete." if js_rendered else ""
 
-    # Main textual content (heuristic): prefer semantic / "content"-classed
-    # containers to skip nav/footer/boilerplate; tuned for article pages.
+    # Main textual content. Prefer the element the page marks as its main
+    # content (<main>, role="main", a lone <article>) and only guess from class
+    # names without one. The guess takes the first three class matches in
+    # document order; on English Wikipedia (Vector 2022) those are all
+    # containers of the header's "Main menu", so every article came back as
+    # the menu three times (627 chars, just above the thin-content fallback
+    # below). See tests/test_search_content_main_landmark.py.
     main_content = ""
-    content_areas = soup.find_all(
-        ["main", "article", "section", "div"],
-        class_=re.compile("content|main|body|article|post|entry|text", re.I),
-    )
-    if content_areas:
+    primary = _primary_content_element(soup)
+    if primary is not None:
+        primary_copy = copy.copy(primary)
+        for noise in primary_copy.find_all(_BOILERPLATE_TAGS):
+            noise.extract()
+        main_content = primary_copy.get_text(separator=" ", strip=True)
+    else:
+        content_areas = soup.find_all(
+            ["main", "article", "section", "div"],
+            class_=re.compile("content|main|body|article|post|entry|text", re.I),
+        )
         for area in content_areas[:3]:
             main_content += area.get_text(separator=" ", strip=True) + " "
     main_content = re.sub(r"\s+", " ", main_content).strip()
@@ -903,9 +935,7 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
         body = soup.find("body")
         if body:
             body_copy = copy.copy(body)
-            for noise in body_copy.find_all(
-                ["script", "style", "noscript", "template", "nav", "header", "footer", "aside"]
-            ):
+            for noise in body_copy.find_all(_BOILERPLATE_TAGS):
                 noise.extract()
             body_text = re.sub(r"\s+", " ", body_copy.get_text(separator=" ", strip=True)).strip()
             if len(body_text) > len(main_content):

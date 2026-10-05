@@ -8,6 +8,16 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-05 (19:55–20:15) — item 49 built (Wikipedia pages extracted as the site menu) — uncommitted
+
+- 🔧 **Item 49 built, uncommitted:** `services/search/content.py` prefers `<main>` / `role=main` / a lone `<article>` and strips chrome inside it; otherwise the class heuristic and thin fallback are unchanged. Fixture provenance, the deviation from what the item asked for, and a 130-page sweep of other sites are under item 49.
+- 🔍 **Re-derived item 49 before finding it.** Started from a user report (local models see only Wikipedia's nav menu) and read the cache before `todo.md`; the first read of this log was cut off at 7,000 chars and missed the 2026-10-04 entry that names it. Everything found agrees with the filed item; nothing in it was wrong.
+- 🧪 Sandbox: new tests 7 (3 fail on HEAD), 5 mutations caught; the 9 existing fetch/extraction test files are identical before and after (105 passed, 8 DNS failures). **Full suite not run.**
+- ➡️ **Live check after restart:** `web_fetch` of a Wikipedia article not fetched in the last 2 h → content opens with the lead sentence.
+- **Edited:** `services/search/content.py`, `docs/todo.md`, this file. **New:** `tests/test_search_content_main_landmark.py`. Only git command: `git archive HEAD <file>` (no lock). Tests ran in a copy under the sandbox's `~/tmp`, so nothing was left under the mount.
+
+---
+
 ## 2026-10-05 (08:35–09:00) — agent benchmark through Odysseus (`scripts/bench_agent.py`) — uncommitted
 
 - 🆕 **`scripts/bench_agent.py` + `scripts/bench_agent_tasks.py`**: 17 tasks (8 in `--quick`) sent through the real `/api/chat_stream` in agent mode, one model per run, to compare Bonsai 2 (`ed1cd41c`) and Qwen 3.5 9B in LM Studio (`a5179555`) *inside* Odysseus. Checks look at the outcome (answer text, files in a per-task workspace under `data/bench/agent/`, notes/events/documents via the API); `report` joins `data/logs/app.log*` by time window for empty-after-tool rounds, `cache_n`, prefill speed and the tools Odysseus actually offered.
