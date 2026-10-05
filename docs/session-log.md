@@ -8,6 +8,16 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-04 (23:45–00:00) — item 27 fix (b); per-round prompt-cache log line — uncommitted
+
+- 🔧 **Item 27 fix (b):** only configured machines count as named machines — Cookbook servers and `~/.ssh/config` aliases (`src/named_machines.py`, new). The LAN prompt, *"from wikipedia"* and *"on climate change"* no longer route to the Terminus branch (no `bash`, no machine rules). ⚠️ An unconfigured name like *"on mediaserver"* no longer counts either; on this Mac the Cookbook lists only *Local*. (c) still open.
+- 🔧 **Prompt-cache log line (step 0 of the late-night plan below, for items 58/57/40):** `round_stream_done` now ends `prompt_tokens=… cache_n=… prompt_n=… prompt_ms=…` from llama.cpp's `timings`.
+- 🧪 Sandbox (`~/tmp/venv`, `~/tmp/sync.sh`): **6,121 passed, 26 failed — the 26 fail identically on a `git archive HEAD` copy** (DNS, and test order in single-process subsets). New tests: `test_named_machines.py` (19), `test_prompt_cache_logging.py` (12), `test_terminus_keeps_intent_domains.py` rewritten (23); 9 mutations caught across both changes.
+- ➡️ **Live checks after a restart:** the LAN prompt in a New Chat → no `Terminus toolset` line, no `bash`; any multi-round Bonsai turn → `cache_n` values on `round_stream_done`. Then the late-night plan continues with item 53, then 58/57 (if the Bonsai session is not already on them).
+- **Edited:** `src/agent_loop.py`, `src/llm_core.py`, `tests/test_terminus_keeps_intent_domains.py`, `docs/todo.md`, this file. **New:** `src/named_machines.py` (imported by `agent_loop.py` — add it), `tests/test_named_machines.py`, `tests/test_prompt_cache_logging.py`. Only `git --no-optional-locks` read commands; no lock left.
+
+---
+
 ## 2026-10-04 (22:00–23:00) — six quick items built: 55, 56, 27 (a), 25, 13, 46 — committed by the maintainer 23:08 (`0c71f29e` … `1d06f9da`)
 
 - 🔧 **Built, sandbox-verified, uncommitted** (tests + mutations in each item): **55** `trigger_research` waits for the research model's probe and returns `exit_code=1` when it is down · **56** `streamingTTS` hoisted, plus a static scan of all first-party JS that found **two more real ReferenceErrors** — `_isBg` in `chat.js`'s footer (every generated-image turn) and `modal` in `modalManager.js` (every desktop chip drag) · **27** fix (a), merge not clobber — (b), (c) open · **25** negative control; the item's own mutation now fails · **13** `uvicorn.access` filter, setting `access_log_hide_statuses` (default `[200]`, terminal only) · **46** *Tools: auto / on / off* per endpoint in Admin.
