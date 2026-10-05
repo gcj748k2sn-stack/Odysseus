@@ -8,6 +8,15 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-05 (21:20–21:50) — item 49 verified live and closed
+
+- ✅ **Maintainer:** committed the fix as `867c2d1e` (21:22); M1 — the 10 fetch/extraction files 120 passed, **full suite 6,245 passed, 2 skipped, 0 failed**; restart 21:23:31; `/wiki/Morchella` fetched at 21:24 → 51,880 chars of article in the cache, correct lead sentence quoted by Bonsai.
+- 📝 **Item 49 closed:** body to [resolvedissues.md](resolvedissues.md); the todo stub keeps three owed points (unmeasured pre-fix damage, a space at every tag boundary, `js_rendered` false positive).
+- 🔍 **Noticed, not filed yet:** a "Nobody" (incognito) chat is not saved and gets no memory, but a URL in its message is still fetched and written to `data/cache/content/`, and `app.log` records the URL and the first line of the message. Next: an explanation of the web cache for the maintainer.
+- **Edited:** `docs/todo.md`, `docs/resolvedissues.md`, this file. No code changes. Only git commands: `git log`, `git archive HEAD` (no lock).
+
+---
+
 ## 2026-10-05 (19:55–20:15) — item 49 built (Wikipedia pages extracted as the site menu) — uncommitted
 
 - 🔧 **Item 49 built, uncommitted:** `services/search/content.py` prefers `<main>` / `role=main` / a lone `<article>` and strips chrome inside it; otherwise the class heuristic and thin fallback are unchanged. Fixture provenance, the deviation from what the item asked for, and a 130-page sweep of other sites are under item 49.

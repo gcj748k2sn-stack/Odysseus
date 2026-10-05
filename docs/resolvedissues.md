@@ -8,6 +8,23 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## Wikipedia pages were extracted as three copies of the site menu — closed 2026-10-05 (item 49)
+`fetch_webpage_content` took the first three elements whose class matched `content|main|body|article|post|entry|text`, in document order. On English Wikipedia (Vector 2022) all three are containers of the header's "Main menu", so every desktop article came back as the menu ×3 — **627 chars, just above `THIN_CONTENT_CHARS = 600`**, so the body fallback that strips `nav`/`header` never ran. Every cached `en.wikipedia.org/wiki/…` entry from 2026-07-31 to 2026-10-05 was exactly that, while 204–806 KB had been downloaded; the model then reported Wikipedia "verification" it never had (session `2ef18f85`).
+
+**Fix (commit `867c2d1e`):** `_primary_content_element()` in `services/search/content.py` — `<main>`, else `role="main"`, else a lone `<article>`; `_BOILERPLATE_TAGS` are stripped **inside** it, because Wikipedia puts its language menu in a `<header>` and its Read/Edit tabs in a `<nav>` inside `<main>`. Without one, the class heuristic and the thin fallback run unchanged.
+
+**Verification scope:**
+- `tests/test_search_content_main_landmark.py` (7 — 3 fail on the old code, 4 controls); 5 mutations, each caught by its own test. **The fixture is reduced markup, not a saved live page** (the sandbox cannot reach Wikipedia): ids/classes from mozilla/readability `test/test-pages/wikipedia-4`, main-menu dropdown populated as the live site serves it. **On the old code it reproduces the recorded 627-char extract byte for byte.** M1: the 10 fetch/extraction test files 120 passed; **full suite 6,245 passed, 2 skipped, 0 failed.**
+- **Other sites:** old vs new logic on all 130 mozilla/readability test pages, word recall/precision against each `expected.html` — 74 identical, 51 better or equal (guardian-1 recall 0.02→1.00, heise 0.14→1.00, seattletimes-1 0.01→1.00: the same first-three-matches failure), 5 trade-offs, none losing the article (a header photo caption dropped on breitbart/wapo-2; a comment form, a chapter list or chart numbers added on 002, google-sre-book-1, nytimes-4).
+- **Live, 2026-10-05:** restart 21:23:31; `web_fetch` of `/wiki/Morchella` at 21:24 → cached content 51,880 chars opening *"From Wikipedia, the free encyclopedia Genus of fungi "Morel" redirects here…"*. Bonsai quoted the correct lead sentence in agent mode (21:27) and again in chat mode (21:28, served from the content cache — no second request to Wikipedia).
+
+**What survives re-reading:**
+- ⚠️ In the Linux sandbox the 8 tests in `test_web_fetch_size_caps.py` fail on DNS (`example.com` unresolvable → *"Blocked non-public URL"*) on old and new code alike; they pass on the M1. Not a regression signal.
+- ⚠️ The content cache key is URL + byte cap, not the extractor version: a page read before an extractor change is served from cache for up to 2 h. Clear `data/cache/content/` when an extractor fix must show immediately.
+- Open, recorded in [todo.md](todo.md) item 49: unmeasured pre-fix damage, a space at every tag boundary, the `js_rendered` false positive.
+
+---
+
 ## The built-in browser was sent on turns that never asked for it — closed 2026-10-04 (item 51)
 Tool RAG returns its 8 nearest tools with no score floor, so *"oh hi mark"* retrieved `browser_hover`, and `_expand_browser_mcp_tools` then sent all 31 Playwright tools (~6.5k tokens of schemas; plus ~1.5k of browser prompt text on **every** turn). Measured in `app.log*`: **53 of 489** agent turns carried the browser; **0** browser executions ever. Separately, `builtin_browser` in a disabled list (written by `manage_settings`) matched no tool name, and the `can_use_browser` denylist named 12 of 31 tools — **19 slipped past it, `browser_run_code_unsafe` among them.**
 
