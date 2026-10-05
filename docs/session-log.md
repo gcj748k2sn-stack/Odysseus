@@ -11,7 +11,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 ## 2026-10-06 (00:30) — item 52 live check passed; item 45 seen live
 
 - ✅ **Item 52 verified live** in `cdb89980` (last full reply = a stream-failure notice): *"Briefly: what were we talking about"* → thinking recapped the turns with no mention of a failure, error or empty response. A 23:31 attempt was sent incognito (no history read, nothing saved) and did not count.
-- 🔴 **Item 45 caught live** at 23:31 in the same chat: the frontend sent another chat's active document (`68647d12`, *Pink Oyster Mushroom Growth Phases*) and the server logged *"cross-session active_doc_id … accepting and rebinding"*. Evidence added to the item; nothing fixed.
+- 🔴 **Item 45 caught live** at 23:31 in the same chat: the frontend sent another chat's active document (`68647d12`, *Pink Oyster Mushroom Growth Phases*) and the server logged *"cross-session active_doc_id … accepting and rebinding"*. Evidence added to the item, pointing at **item 62**, which another session filed for the same event and is fixing.
 - ℹ️ The 00:29 recap repeated Bonsai's own earlier misreadings (*"Cedeago"*, *"parasolo"*) because they are in its saved reply (the `trigger_research` topic line) — history working as designed, not memory leaking.
 - **Edited:** `docs/todo.md`, this file. No `git` command run.
 
@@ -60,7 +60,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 🔍 **Item 60 not yet verified:** both *"read data/settings.json"* runs (23:35, 23:38) were classified `ui`, so `read_file` was never offered and nothing was read. Safe retest prompt and the `bash` caveat are in the item.
 - 🆕 **Item 62 filed** (reported as "item 45 again"): New Chat hides the document panel but leaves the document current; the first message sends its id and the server rebinds the document to the new chat. `68647d12` moved twice in 8 minutes and now sits in the *"read data/settings.json"* chat. Answers item 45's open question. Not a prompt leak in these turns.
 - Read-only: `app.log`, a copy of `app.db`; sandbox classifier probe. **Edited:** `docs/todo.md`, this file.
-- 🔧 **Item 62 (b) built, uncommitted (00:40):** New Chat and switching to a chat without documents now release the editor's document (`releaseCurrentDoc()`: save, then empty), so the first message no longer carries the previous chat's document. Server half (a) — stop rebinding — explained to the maintainer, not built. **Edited:** `static/js/document.js`, `static/js/sessions.js`; **new:** `tests/test_document_follows_chat.py` (6, 5 mutations).
+- 🔧 **Item 62 (b) built, uncommitted (00:40):** New Chat and switching to a chat without documents now release the editor's document (`releaseCurrentDoc()`: save, then empty), so the first message no longer carries the previous chat's document. Server half (a) — stop rebinding — explained to the maintainer, not built. ✅ **Verified live ~01:30** in the console (`7a9e32ce` → New Chat → `null`, no version written); `_startFreshChat()` (mobile / no-models New Chat) added afterwards. **Edited:** `static/js/document.js`, `static/js/sessions.js`, `static/app.js`; **new:** `tests/test_document_follows_chat.py` (7, 6 mutations).
 
 ---
 
