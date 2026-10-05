@@ -8,8 +8,19 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
-## 2026-10-04 (23:45–00:00) — item 27 fix (b); per-round prompt-cache log line — uncommitted
+## 2026-10-05 (08:35–09:00) — agent benchmark through Odysseus (`scripts/bench_agent.py`) — uncommitted
 
+- 🆕 **`scripts/bench_agent.py` + `scripts/bench_agent_tasks.py`**: 17 tasks (8 in `--quick`) sent through the real `/api/chat_stream` in agent mode, one model per run, to compare Bonsai 2 (`ed1cd41c`) and Qwen 3.5 9B in LM Studio (`a5179555`) *inside* Odysseus. Checks look at the outcome (answer text, files in a per-task workspace under `data/bench/agent/`, notes/events/documents via the API); `report` joins `data/logs/app.log*` by time window for empty-after-tool rounds, `cache_n`, prefill speed and the tools Odysseus actually offered.
+- ⚠️ **Design constraints found in the code, not guessed:** turns go out **incognito** (otherwise memory/skill extraction pollutes memory and competes for the model); login is by **password**, because a bearer token runs as the `api` user and `_resolve_request_workspace` drops the workspace for it; non-web prompts must not match `chat_stream`'s web-intent regex or the turn loses its file tools — the script refuses to run such a prompt (regex copied into `bench_agent_tasks.WEB_INTENT_RE`, keep in sync).
+- 🧪 **Verified only against a mock server** in the agent's sandbox (login/session/SSE/cleanup/report, correct and wrong oracle answers, timeout, resume, Europe/Berlin calendar times). **Never run against the live app** — the sandbox cannot reach `localhost:7000`. First live `--quick` run owed.
+- 🔍 The 08:34 Bonsai 2 context overflow seen while reading the log is already filed as item 60 (entry below) — not re-filed.
+- **New:** `scripts/bench_agent.py`, `scripts/bench_agent_tasks.py`, this entry. Nothing else edited; no git commands run.
+
+---
+
+## 2026-10-04 (23:45–00:00) — item 27 fix (b); per-round prompt-cache log line — committed 2026-10-05 07:49 (`9d5f5aac`, `f5ee9874`, `f81322f1`)
+
+- ✅ **Live 2026-10-05 07:49–08:34 (maintainer):** 27 (b) — the LAN prompt got document + web tools, no `bash`, and asked via `ask_user` when the device stayed down. The cache line works on every round; first figures are under item 58 (re-read rounds cost 149–285 s, kept-prefix rounds 4.6–56 s; a follow-up message reused nothing). Item 13's email warn-once holds: 1 SMTP + 1 IMAP warning in `app.log` since the 07:49 start (90 SMTP warnings between 22:00 and 23:59 the night before). 🆕 **Item 60 filed:** the follow-up turn read `data/app.db` with `read_file` (default root, not on the deny-list) and overflowed the context (36,656 > 32,768).
 - 🔧 **Item 27 fix (b):** only configured machines count as named machines — Cookbook servers and `~/.ssh/config` aliases (`src/named_machines.py`, new). The LAN prompt, *"from wikipedia"* and *"on climate change"* no longer route to the Terminus branch (no `bash`, no machine rules). ⚠️ An unconfigured name like *"on mediaserver"* no longer counts either; on this Mac the Cookbook lists only *Local*. (c) still open.
 - 🔧 **Prompt-cache log line (step 0 of the late-night plan below, for items 58/57/40):** `round_stream_done` now ends `prompt_tokens=… cache_n=… prompt_n=… prompt_ms=…` from llama.cpp's `timings`.
 - 🧪 Sandbox (`~/tmp/venv`, `~/tmp/sync.sh`): **6,121 passed, 26 failed — the 26 fail identically on a `git archive HEAD` copy** (DNS, and test order in single-process subsets). New tests: `test_named_machines.py` (19), `test_prompt_cache_logging.py` (12), `test_terminus_keeps_intent_domains.py` rewritten (23); 9 mutations caught across both changes.
