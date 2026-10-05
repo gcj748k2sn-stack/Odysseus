@@ -11,6 +11,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 ## 2026-10-05 (21:50–23:20) — web cache walkthrough; item 61 filed (scope only)
 
 - 📝 Explained the web cache to the maintainer (page cache, failed-URL memory, search-results cache, cleanup). **Item 61 filed at the maintainer's request as scope only** — open questions, no findings recorded.
+- ✂️ Item 49: dropped the owed point *"damage before the fix is unmeasured"* — the maintainer says only test turns had used Wikipedia so far.
 - 🔍 Read `data/app.db` once, on a hash-verified copy in the sandbox's `~/tmp` (deleted afterwards). No code changes.
 - **Edited:** `docs/todo.md`, this file. Only git commands: `git log`, `git archive HEAD` (no lock).
 

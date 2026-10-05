@@ -21,7 +21,7 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 **What survives re-reading:**
 - ⚠️ In the Linux sandbox the 8 tests in `test_web_fetch_size_caps.py` fail on DNS (`example.com` unresolvable → *"Blocked non-public URL"*) on old and new code alike; they pass on the M1. Not a regression signal.
 - ⚠️ The content cache key is URL + byte cap, not the extractor version: a page read before an extractor change is served from cache for up to 2 h. Clear `data/cache/content/` when an extractor fix must show immediately.
-- Open, recorded in [todo.md](todo.md) item 49: unmeasured pre-fix damage, a space at every tag boundary, the `js_rendered` false positive.
+- Open, recorded in [todo.md](todo.md) item 49: a space at every tag boundary, the `js_rendered` false positive. Pre-fix damage deliberately not measured — only test turns had used Wikipedia (maintainer, 2026-10-05).
 
 ---
 

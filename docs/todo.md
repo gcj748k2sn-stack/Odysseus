@@ -676,7 +676,6 @@ sessions by model, 2026-08-01:   72 'qwen3.5:9b-32k'   7 'qwen3.5:9b-64k'
 **Built and verified live 2026-10-05. Body in [resolvedissues.md](resolvedissues.md), *"Wikipedia pages were extracted as three copies of the site menu"*.** Commit `867c2d1e`.
 
 - ⚠️ **Still owed, not part of the fix:**
-  - **Damage before the fix is unmeasured.** 29 assistant turns since 2026-07-18 cite Wikipedia (`app.db` copy of 2026-10-04); how many got the menu, and which answers or documents rest on a "verified on Wikipedia" that never happened, is not checked.
   - **A space at every tag boundary.** The reader joins text with `separator=" "`, so *"Morchella, the true morels"* reaches the model as *"Morchella , the true morels"*. Asked to quote exactly (2026-10-05 21:28), Bonsai repaired it; a model that does not will misquote. Affects every page, not only Wikipedia.
   - **`js_rendered: True` on every cached Wikipedia page** — a false positive, untouched.
 
