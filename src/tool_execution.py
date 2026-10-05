@@ -56,6 +56,12 @@ _AGENT_WORKDIR = DATA_DIR
 #      (project data/, system tmp). $HOME is NOT on the default list.
 #   3. Opt-in extra roots — admin can add broader roots via the
 #      "tool_path_extra_roots" setting (list of path strings).
+#   4. Odysseus's own state under DATA_DIR — encryption keys, login and
+#      session files, settings with API keys, and every SQLite database —
+#      is part of the deny list (_is_odysseus_state_path), whichever root
+#      or workspace a path arrives through. DATA_DIR is the DEFAULT root,
+#      so before this the model could read data/.app_key + data/app.db
+#      (docs/todo.md item 60). `bash` is not confined (THREAT_MODEL.md).
 # ---------------------------------------------------------------------------
 
 _SENSITIVE_BASENAMES: set[str] = {
@@ -80,6 +86,63 @@ _SENSITIVE_FILE_PATTERNS: tuple[str, ...] = (
 _SENSITIVE_BASENAMES_CF: frozenset[str] = frozenset(b.casefold() for b in _SENSITIVE_BASENAMES)
 _SENSITIVE_FILE_PATTERNS_CF: frozenset[str] = frozenset(p.casefold() for p in _SENSITIVE_FILE_PATTERNS)
 
+# Odysseus's own state directly in DATA_DIR (docs/todo.md item 60). Seen live
+# 2026-10-05: a model looking for "the last saved data" read data/app.db with
+# read_file and overflowed its context; the same call could have read
+# data/.app_key, which decrypts every stored email password and token.
+#   .app_key / .key         encryption keys (src/secret_storage.py, api_key_manager)
+#   auth.json, sessions.json password hashes, 7-day login tokens
+#   settings.json           provider and search API keys
+#   cookbook_state.json     HF token, SSH hosts
+#   user_prefs.json         per-user settings (same shape as settings.json)
+# Matched top-level only (an upload called settings.json stays readable), with
+# backup / temp variants: settings.json.bak, auth.json.tmp-123, .app_key~.
+_DATA_DIR_STATE_FILES_CF: frozenset[str] = frozenset({
+    ".app_key", ".key", "auth.json", "sessions.json", "settings.json",
+    "cookbook_state.json", "user_prefs.json",
+})
+# Any SQLite database anywhere under DATA_DIR — app.db, scheduled_emails.db,
+# chroma/chroma.sqlite3 — plus sidecars and backups (app.db-journal,
+# app.db.bak-before-bonsai2). Binary pages in a prompt are useless and huge;
+# a write can corrupt the live database.
+_DATA_DIR_DB_RE = re.compile(r"\.(?:db|sqlite3?)(?:$|[.~-])", re.IGNORECASE)
+
+
+def _is_odysseus_state_path(resolved: str) -> bool:
+    """True if *resolved* is one of Odysseus's own state files under DATA_DIR.
+
+    Containment is compared case-folded: on default macOS ``DATA/Auth.JSON``
+    opens the same file as ``data/auth.json`` and realpath keeps the caller's
+    spelling."""
+    try:
+        from src.constants import DATA_DIR
+        data_dir = os.path.realpath(DATA_DIR)
+    except Exception:
+        return False
+    folded, base = resolved.casefold(), data_dir.casefold().rstrip(os.sep)
+    if not folded.startswith(base + os.sep):
+        return False
+    rel_parts = [p for p in folded[len(base) + 1:].split(os.sep) if p]
+    if not rel_parts:
+        return False
+    name = rel_parts[-1]
+    if _DATA_DIR_DB_RE.search(name):
+        return True
+    if len(rel_parts) == 1:
+        for state in _DATA_DIR_STATE_FILES_CF:
+            if name == state or (name.startswith(state) and name[len(state)] in ".-~"):
+                return True
+    return False
+
+
+def _reject_odysseus_state(raw_path, resolved: str) -> None:
+    if _is_odysseus_state_path(resolved):
+        raise ValueError(
+            f"path '{raw_path}' is Odysseus's own state (database, keys, logins or "
+            f"settings) and is not available to file tools. Read documents with "
+            f"manage_documents and memories with manage_memory."
+        )
+
 
 def _is_sensitive_path(resolved: str) -> bool:
     """Return True if *resolved* falls under a sensitive directory or
@@ -99,7 +162,11 @@ def _is_sensitive_path(resolved: str) -> bool:
             return True
 
     # Check filename against known sensitive files.
-    return filename in _SENSITIVE_FILE_PATTERNS_CF
+    if filename in _SENSITIVE_FILE_PATTERNS_CF:
+        return True
+
+    # Odysseus's own keys, logins, settings and databases (item 60).
+    return _is_odysseus_state_path(resolved)
 
 
 def _tool_path_roots() -> list[str]:
@@ -174,6 +241,7 @@ def _resolve_tool_path(raw_path: str) -> str:
     expanded = os.path.expanduser(str(raw_path).strip())
     resolved = os.path.realpath(expanded)
 
+    _reject_odysseus_state(raw_path, resolved)
     if _is_sensitive_path(resolved):
         raise ValueError(
             f"path '{raw_path}' is inside a sensitive directory "
@@ -209,6 +277,7 @@ def _resolve_tool_path_in_workspace(workspace: str, raw_path: str) -> str:
     expanded = os.path.expanduser(str(raw_path).strip())
     candidate = expanded if os.path.isabs(expanded) else os.path.join(base, expanded)
     resolved = os.path.realpath(candidate)
+    _reject_odysseus_state(raw_path, resolved)
     if _is_sensitive_path(resolved):
         raise ValueError(
             f"path '{raw_path}' is inside a sensitive directory "

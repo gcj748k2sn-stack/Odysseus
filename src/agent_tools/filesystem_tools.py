@@ -611,7 +611,21 @@ class GrepTool:
                 try:
                     import subprocess
                     p = subprocess.run(cmd, capture_output=True, text=True, timeout=20)
-                    lines = [ln for ln in (p.stdout or "").splitlines() if ln][:max_hits]
+                    # Same deny-list as the Python fallback below: the globs
+                    # above only know key filenames, so without this rg would
+                    # print matching lines from data/settings.json, .env or
+                    # anything else _is_sensitive_path refuses (docs/todo.md
+                    # item 60).
+                    lines = []
+                    for ln in (p.stdout or "").splitlines():
+                        if not ln:
+                            continue
+                        _m = _re.match(r"^(.*?):\d+:", ln)
+                        if _m and _is_sensitive_path(os.path.realpath(_m.group(1))):
+                            continue
+                        lines.append(ln)
+                        if len(lines) >= max_hits:
+                            break
                     return lines, None
                 except subprocess.TimeoutExpired:
                     return None, "grep: timed out"
