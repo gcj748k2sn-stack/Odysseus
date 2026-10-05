@@ -843,6 +843,10 @@ function initializeEventListeners() {
     }
     // Close document panel if open
     if (documentModule && documentModule.closePanel) documentModule.closePanel();
+    // …and leave its document, or the first message here moves it into this
+    // chat (docs/todo.md item 62). Mobile New Chat and the no-models path land
+    // here instead of sessions.createDirectChat().
+    if (documentModule && documentModule.releaseCurrentDoc) documentModule.releaseCurrentDoc('fresh-chat');
     if (researchPanelModule && researchPanelModule.isOpen()) researchPanelModule.closePanel();
     // Reset research overflow dot (but don't touch research state — caller manages that)
     const _overflowRes = el('overflow-research-btn');

@@ -11583,6 +11583,26 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     _syncDocIndicator();
   }
 
+  // Leaving a chat must also leave its document (docs/todo.md item 62).
+  // closePanel() only hides the panel, so activeDocId stayed set: the first
+  // message in a New Chat — or in an existing chat with no documents — sent
+  // the previous chat's document as active_doc_id, and the server moved the
+  // document into that chat (seen 2026-10-05 23:31 and 23:38).
+  // Order matters: copy the buffer into its own map entry, start a silent
+  // save (saveDocument captures the id AND the content before its first
+  // await), then empty the editor — an editor still holding the old text
+  // with no active document turns the next keystroke into a copy of it.
+  export function releaseCurrentDoc(reason = '') {
+    if (!activeDocId) return;
+    _trace('releaseCurrentDoc', { reason, active: activeDocId, open: isOpen });
+    saveCurrentToMap();
+    saveDocument({ silent: true, reason: 'Autosave (left the chat)' }).catch(() => {});
+    showEmptyState();
+    const textarea = document.getElementById('doc-editor-textarea');
+    if (textarea) delete textarea.dataset.docId;
+    _syncDocIndicator();
+  }
+
   export function isPanelOpen() {
     return isOpen;
   }
@@ -11654,6 +11674,7 @@ const documentModule = {
   getSelectionContext,
   clearSelection,
   clearAll,
+  releaseCurrentDoc,
   openLibrary,
   closeLibrary,
   isLibraryOpen,
