@@ -24,6 +24,7 @@ from src.model_context import estimate_tokens
 from src.document_fidelity import check_document
 from src.known_facts import check_document as check_known_facts
 from src.settings import get_setting
+from src.named_machines import configured_machine_names, mentions_named_machine
 from src.prompt_security import untrusted_context_message
 from src.tool_security import blocked_tools_for_owner, plan_mode_disabled_tools
 from src.tool_policy import (
@@ -1779,10 +1780,14 @@ _EXPLICIT_WORKSPACE_REFERENCE_RE = re.compile(
     r"|\b(?:this|current|active)\s+(?:workspace|repo|project)\b",
     re.IGNORECASE,
 )
+# "This computer" phrasings. Named machines are matched separately, against
+# the configured Cookbook servers and SSH aliases (src/named_machines.py): a
+# third alternative here used to accept `on|from` + ANY word, which sent
+# "data from http://…", "a report on climate change" and "from wikipedia" down
+# the Terminus branch (docs/todo.md item 27, fix b).
 _LOCAL_COMPUTER_REFERENCE_RE = re.compile(
     r"\b(?:on|from|in|using|with)\s+(?:this|my|the)\s+(?:computer|machine|pc|laptop|device|system)\b"
-    r"|\b(?:local|host)\s+(?:computer|machine|files?|system)\b"
-    r"|\b(?:on|from)\s+(?!this\b|my\b|the\b|a\b|an\b)(?:[a-z][a-z0-9_.-]{1,31})\b",
+    r"|\b(?:local|host)\s+(?:computer|machine|files?|system)\b",
     re.IGNORECASE,
 )
 
@@ -1802,9 +1807,36 @@ def _looks_like_workspace_coding_request(text: str) -> bool:
     return bool(_WORKSPACE_CODE_ACTION_RE.search(text) and _WORKSPACE_CODE_TARGET_RE.search(text))
 
 
-def _looks_like_local_computer_request(text: str) -> bool:
+def _looks_like_local_computer_request(text: str, machine_names=None) -> bool:
+    """This computer, or a configured machine by name ("on gpu-box").
+
+    `machine_names` defaults to configured_machine_names() — Cookbook servers
+    and ~/.ssh/config aliases, re-read when either file changes."""
     text = str(text or "")
-    return bool(text.strip() and _LOCAL_COMPUTER_REFERENCE_RE.search(text))
+    if not text.strip():
+        return False
+    if _LOCAL_COMPUTER_REFERENCE_RE.search(text):
+        return True
+    if machine_names is None:
+        try:
+            machine_names = configured_machine_names()
+        except Exception:
+            machine_names = ()
+    return mentions_named_machine(text, machine_names)
+
+
+def _format_prompt_cache(pc: Optional[Dict[str, Any]]) -> str:
+    """` prompt_tokens=… cache_n=… prompt_n=… prompt_ms=…` for the
+    round_stream_done line (docs/todo.md items 40/57/58). `?` where the
+    backend reported nothing; `cached_tokens=` only when an OpenAI-style
+    server sent it."""
+    pc = pc or {}
+    out = " prompt_tokens=%s cache_n=%s prompt_n=%s prompt_ms=%s" % tuple(
+        pc.get(k, "?") for k in ("prompt_tokens", "cache_n", "prompt_n", "prompt_ms")
+    )
+    if "cached_tokens" in pc:
+        out += " cached_tokens=%s" % pc["cached_tokens"]
+    return out
 
 
 def _terminus_toolset(intent_domains) -> set:
@@ -1813,8 +1845,9 @@ def _terminus_toolset(intent_domains) -> set:
 
     This used to replace the selection outright, so a LAN address in the
     prompt deleted every document tool: "create a document with temperature
-    and humidity data from http://192.168.0.185" matches the named-machine
-    alternative of _LOCAL_COMPUTER_REFERENCE_RE (`from http`), the classifier
+    and humidity data from http://192.168.0.185" matched the old any-word
+    named-machine alternative (`from http`; since fix b only configured
+    machines count, see src/named_machines.py), the classifier
     had already said domains=['documents', 'web'], and the model was left with
     write_file — it wrote to /tmp and reported success (docs/todo.md, "A LAN
     address in the prompt deletes every document tool"). It also dropped the
@@ -4718,6 +4751,7 @@ async def stream_agent_loop(
     # Same convention as _stream_errors: an empty list means nothing was
     # reported, NOT that every round finished cleanly.
     _round_finish_reasons = []
+    _round_prompt_cache: Dict[int, Dict[str, Any]] = {}  # [prompt-cache] per round, report-only
     tool_events = []   # Persist tool executions for history reload
     round_texts = []   # Cleaned text per round for history reload
     # Completion-verifier state (mechanism 3a). _effectful_used flips on when
@@ -5016,6 +5050,12 @@ async def stream_agent_loop(
                             backend_gen_tps = u["gen_tps"]
                         if u.get("prefill_tps"):
                             backend_prefill_tps = u["prefill_tps"]
+                        # [prompt-cache] report-only — items 40/57/58: logged on
+                        # the round_stream_done line below.
+                        _round_prompt_cache[round_num] = {
+                            "prompt_tokens": round_input,
+                            **{k: u[k] for k in ("cache_n", "prompt_n", "prompt_ms", "cached_tokens") if k in u},
+                        }
                         # [finish-reason] report-only — docs/todo.md item 41.
                         # Recorded per round, because `max_tokens` is per round:
                         # a turn total cannot say which round was clipped.
@@ -5144,8 +5184,11 @@ async def stream_agent_loop(
             (e["reason"] for e in reversed(_round_finish_reasons) if e["round"] == round_num),
             None,
         )
+        # [prompt-cache] appended to the same line: prompt_tokens is the
+        # whole prompt, cache_n the part the server reused, prompt_n the part
+        # it processed now. `?` = not reported by this backend.
         logger.info(
-            "[agent-timing] round_stream_done round=%s elapsed=%.3fs text_chars=%s tool_calls=%s first_event=%s first_token=%s finish_reason=%s",
+            "[agent-timing] round_stream_done round=%s elapsed=%.3fs text_chars=%s tool_calls=%s first_event=%s first_token=%s finish_reason=%s%s",
             round_num,
             time.time() - _round_start,
             len(round_response),
@@ -5153,6 +5196,7 @@ async def stream_agent_loop(
             _round_first_event_logged,
             _round_first_token_logged,
             _this_round_fr or "?",
+            _format_prompt_cache(_round_prompt_cache.get(round_num)),
         )
         if _this_round_fr == "length":
             logger.warning(
