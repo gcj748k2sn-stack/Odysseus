@@ -8,6 +8,14 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-05 (21:50–23:20) — web cache walkthrough; item 61 filed (scope only)
+
+- 📝 Explained the web cache to the maintainer (page cache, failed-URL memory, search-results cache, cleanup). **Item 61 filed at the maintainer's request as scope only** — open questions, no findings recorded.
+- 🔍 Read `data/app.db` once, on a hash-verified copy in the sandbox's `~/tmp` (deleted afterwards). No code changes.
+- **Edited:** `docs/todo.md`, this file. Only git commands: `git log`, `git archive HEAD` (no lock).
+
+---
+
 ## 2026-10-05 (21:20–21:50) — item 49 verified live and closed
 
 - ✅ **Maintainer:** committed the fix as `867c2d1e` (21:22); M1 — the 10 fetch/extraction files 120 passed, **full suite 6,245 passed, 2 skipped, 0 failed**; restart 21:23:31; `/wiki/Morchella` fetched at 21:24 → 51,880 chars of article in the cache, correct lead sentence quoted by Bonsai.
