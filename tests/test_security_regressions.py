@@ -1167,7 +1167,10 @@ def test_chat_active_document_lookup_is_owner_scoped():
     src = Path(__file__).resolve().parents[1] / "routes" / "chat_routes.py"
     text = src.read_text()
     # The frontend-supplied id is resolved through the shared owner filter.
-    assert "_owner_session_filter(_doc_q, ctx.user)" in text
+    # (moved into _explicit_active_document(db, active_doc_id, session, user)
+    # for docs/todo.md item 62; behaviour tested in test_active_document_stays_in_its_chat.py)
+    assert "_owner_session_filter(_doc_q, user)" in text
+    assert "_explicit_active_document(_doc_db, active_doc_id, session, ctx.user)" in text
     assert "_owner_session_filter(_session_doc_q, ctx.user)" in text
     assert "_owner_session_filter(_mem_q, ctx.user)" in text
     # And never by id alone (the previous IDOR shape, whitespace-insensitive).

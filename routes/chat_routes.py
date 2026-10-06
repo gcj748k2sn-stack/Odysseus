@@ -59,6 +59,49 @@ logger = logging.getLogger(__name__)
 _active_streams: Dict[str, dict] = {}
 
 
+def _explicit_active_document(db, active_doc_id: str, session: str, user):
+    """The document the frontend named as active, scoped to the caller — or None.
+
+    A document from ANOTHER chat is used for this turn and left where it is
+    (docs/todo.md item 62). This used to rebind it — `session_id = session`
+    plus a commit — "so future turns find it via the session-fallback path",
+    trusting that the frontend only sends documents visible in the UI. New
+    Chat and switching to a chat without documents kept the previous chat's
+    document current (fixed in the frontend, 82892264), so each such send moved
+    a document out of its own chat and bumped its updated_at: 11 moves in
+    app.log since 2026-07-14, one document twice in 8 minutes on 2026-10-05.
+
+    The case the rebind was written for — open an email draft from chat A, ask
+    chat B to write into it — still works: the frontend sends the id on every
+    turn while the draft is open, and the document tools resolve documents by
+    id + owner, not by session.
+    """
+    logger.info(f"[doc-inject] active_doc_id from frontend: {active_doc_id}")
+    # Scope to the caller's documents. The session and in-memory fallbacks are
+    # owner/session-bound too; resolving by id alone let a user inject another
+    # user's document by passing its id.
+    _doc_q = db.query(DBDocument).filter(DBDocument.id == active_doc_id)
+    doc = _owner_session_filter(_doc_q, user).first()
+    if not doc:
+        logger.warning(f"[doc-inject] NOT FOUND by ID {active_doc_id}")
+        return None
+    doc_owner = getattr(doc, "owner", None)
+    if doc_owner and user and doc_owner != user:
+        logger.warning("[doc-inject] ignoring active_doc_id %s owned by another user", active_doc_id)
+        return None
+    doc_session = doc.session_id
+    if doc_session and doc_session != session:
+        logger.info(
+            "[doc-inject] cross-session active_doc_id %s (belongs to session %s, used in %s for this turn only — not moved)",
+            active_doc_id, doc_session, session,
+        )
+    logger.info(
+        f"[doc-inject] found by ID: title={doc.title!r}, lang={doc.language!r}, "
+        f"is_active={doc.is_active}, content_len={len(doc.current_content or '')}"
+    )
+    return doc
+
+
 def _stream_set(session_id: str, **fields) -> None:
     """Update fields on the active-stream entry for `session_id`, or
     no-op if the entry has already been popped. Using .get() avoids a
@@ -1003,46 +1046,7 @@ def setup_chat_routes(
         _doc_db = SessionLocal()
         try:
             if active_doc_id:
-                logger.info(f"[doc-inject] active_doc_id from frontend: {active_doc_id}")
-                # Scope to the caller's documents. The session and in-memory
-                # fallbacks below are already owner/session-bound; this
-                # explicit-id path looked up by id alone, so a user could
-                # inject another user's document by passing its id.
-                _doc_q = _doc_db.query(DBDocument).filter(DBDocument.id == active_doc_id)
-                active_doc = _owner_session_filter(_doc_q, ctx.user).first()
-                if active_doc:
-                    doc_session = active_doc.session_id
-                    doc_owner = getattr(active_doc, "owner", None)
-                    if doc_owner and ctx.user and doc_owner != ctx.user:
-                        logger.warning(
-                            "[doc-inject] ignoring active_doc_id %s owned by another user",
-                            active_doc_id,
-                        )
-                        active_doc = None
-                    else:
-                        # NOTE: previously dropped the doc when doc.session_id
-                        # != current chat session — but that broke the common
-                        # case of "open an email draft from one chat, ask a
-                        # different chat to write into it". The frontend only
-                        # sends active_doc_id for docs currently visible in
-                        # the UI, and we already owner-checked above, so trust
-                        # the explicit signal. We just log the mismatch and
-                        # re-bind the doc to the current session so future
-                        # turns find it via the session-fallback path too.
-                        if doc_session and doc_session != session:
-                            logger.info(
-                                "[doc-inject] cross-session active_doc_id %s (was session %s, now %s) — accepting and rebinding",
-                                active_doc_id, doc_session, session,
-                            )
-                            try:
-                                active_doc.session_id = session
-                                _doc_db.commit()
-                            except Exception as _e:
-                                _doc_db.rollback()
-                                logger.warning(f"[doc-inject] session rebind failed: {_e}")
-                        logger.info(f"[doc-inject] found by ID: title={active_doc.title!r}, lang={active_doc.language!r}, is_active={active_doc.is_active}, content_len={len(active_doc.current_content or '')}")
-                else:
-                    logger.warning(f"[doc-inject] NOT FOUND by ID {active_doc_id}")
+                active_doc = _explicit_active_document(_doc_db, active_doc_id, session, ctx.user)
             if not active_doc:
                 _email_doc_q = _doc_db.query(DBDocument).filter(
                     DBDocument.session_id == session,
