@@ -8,14 +8,14 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
-## 2026-10-06 (12:25–12:45) — the 12 machine-dependent test failures fixed in the tests — uncommitted
+## 2026-10-06 (12:25–12:45) — the 12 machine-dependent test failures fixed in the tests — committed 19:30 (`34c7abb9`)
 
 - 🧪 **The suite no longer touches the live `data/`.** `tests/conftest.py` sets a fresh temp `ODYSSEUS_DATA_DIR`. Plus 4 test-only fixes:
   - realpath in `test_write_file_empty_body.py`;
   - `::1` in `test_integration_api_call_ssrf.py`;
   - `DEEP_RESEARCH_DIR` in `test_research_report_read.py`, which had been writing into the live research folder;
   - the opt-in pinned in one `test_security_regressions.py` test.
-- **Linux, M1-like:** 7,450 passed, 0 failed. Each fix was checked by reverting it ([merge-upstream-2026-10-06.md](merge-upstream-2026-10-06.md)). **The M1 run is owed.** `CLAUDE.md` §4 notes the new data directory.
+- **Linux, M1-like:** 7,450 passed, 0 failed. Each fix was checked by reverting it ([merge-upstream-2026-10-06.md](merge-upstream-2026-10-06.md)). **M1, 19:2x: 7,451 passed, 3 skipped, 0 failed**; the `/etc/shadow` count in the live `app.log` stayed at 2, so the suite no longer writes there. Skills moved to `~/odysseus-snapshots/skills-2026-10-06/` at 19:24. `CLAUDE.md` §4 notes the new data directory.
 - 🧹 The two learned Arduino skills (July test leftovers) are to be moved out of `data/skills/` by the maintainer. While any skill exists, its index arms the approval gate on every turn.
 - **Edited:** 5 test files, `CLAUDE.md`, `notes/merge-upstream-2026-10-06.md`, this file. No `git` command run on the Mac; `data/` only read.
 

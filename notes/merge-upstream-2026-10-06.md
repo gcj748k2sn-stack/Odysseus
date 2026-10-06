@@ -117,6 +117,8 @@ Test files only; no app code changed.
 - The `::1` test fails when the fallback is mutated to try only the first address.
 - ⚠️ **Not reproducible on Linux:** the macOS `127.0.0.2` timeout itself. The M1 run is the check for that one.
 
+**M1, 2026-10-06 19:2x: 7,451 passed, 3 skipped, 0 failed** (committed as `34c7abb9`). The `/etc/shadow` count in the live `app.log` was 2 before and after the run.
+
 ## Second M1 run (2026-10-06 ~10:00)
 
 `12 failed, 7,439 passed` — exactly the 12 non-merge failures in the table above, nothing new.
