@@ -8,6 +8,18 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-06 (22:45–23:05) — first post-merge `--quick` (Bonsai 2) invalid: workspace refused; fixed — uncommitted
+
+- 🔴 **Run `20261006-212201-bonsai2` is invalid — delete it.** Every task came back `workspace_rejected`: since the merge `vet_workspace` refuses anything under `data/` except `agent_workspace/` & co. (`_is_app_state_path`), and the fixtures were in `data/bench/agent/<run>/ws/`. Consequences seen: `read_fact` went down the **direct low-signal reply path with no tools** (`_direct_low_signal` only applies when no workspace is bound) and Bonsai wrote a `<tool_call><function=Read>` as text; on `write_file` the file tools refused the path and **Bonsai wrote `summary.md` with `bash` instead** (item 60's hole, from the model side), which the check counted as a pass.
+- 🔧 **Fixtures now go to `~/odysseus-bench/<run-id>/`** (`BENCH_WS_ROOT` overrides); results stay in `data/bench/agent/`. A `workspace_rejected` now **stops the run** unsaved with the `--resume` line.
+- 🔧 **`web_read` / `web_fetch` no longer require a `web_fetch` call**: `src/chat_processor.py` fetches every URL in the user message before round 1 (first 10,000 chars, untrusted context). Bonsai answered `web_read` correctly (Fries, 1822, fir forest, Sweden) from that prefetch, with zero tool calls, after a 109 s prefill of 6,804 tokens — and also confirms item 49's fix (`Morchella` cached at 51,880 chars).
+- 🔧 **Odysseus's 502 *"Model returned an empty response"* is a result, not a server fault** — it stopped the run at `german`; now saved and shown in the report's failures with the error text. Unreachable / *Compute error* / other 5xx still stop the run.
+- 🔧 Report: the direct low-signal path is detected from `app.log` and counted under *"Task tool not offered by Odysseus (incl. no-tools reply path)"*.
+- 🧪 Mock only (workspace-rejected abort, empty-response saved, quick suite with cards). **Live `--quick` still owed.**
+- **Edited:** `scripts/bench_agent.py`, `scripts/bench_agent_tasks.py`, this file.
+
+---
+
 ## 2026-10-06 (21:15–21:45) — benchmark answers approval cards (the handoff's "build first") — uncommitted
 
 - 🔧 **`scripts/bench_agent.py` answers the untrusted-context gate.** On an `ask_user` event with `kind: "tool_approval"` it re-posts the same session with `tool_approval_id` + `tool_approval_decision=approve_task` (cookie login, so `_reject_delegated_tool_approval` does not apply; incognito keeps the turn's context in `_INCOGNITO_CONTEXTS` for 6 h). Rounds are summed across the continuation; the card's question delta and its *"Waiting for an exact user approval."* placeholder are kept out of the answer and the tool results. `--approval deny` and `--max-approvals` (default 4) exist for checking the gate itself. Report: *"Approval cards answered (task runs with ≥1)"*, and a reading note that cards cost a round trip, not points.

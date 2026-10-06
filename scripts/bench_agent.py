@@ -74,6 +74,12 @@ DEFAULT_URL = os.environ.get("ODYSSEUS_URL") or "http://localhost:%s" % (
     os.environ.get("ODYSSEUS_PORT") or os.environ.get("APP_PORT") or "7860")
 DEFAULT_USER = os.environ.get("ODYSSEUS_USER", "cedrik")
 RESULTS_ROOT = REPO / "data" / "bench" / "agent"
+# Task fixtures live OUTSIDE data/: since the 2026-10-06 merge Odysseus refuses
+# any workspace under its data directory except data/agent_workspace/ & co.
+# (`_is_app_state_path` in vet_workspace), so a data/bench workspace came back
+# `workspace_rejected` and the file tools refused every path (first full run,
+# 2026-10-06 21:22). A plain folder in $HOME is what a user would bind.
+WS_ROOT = Path(os.environ.get("BENCH_WS_ROOT") or Path.home() / "odysseus-bench")
 
 # Endpoint ids from this machine's model_endpoints table (2026-10-05).
 # `bench_agent.py targets` prints the current ones.
@@ -86,6 +92,13 @@ PRESETS = {
 # LM Studio's broken-copy "Compute error" (2026-10-06 11:25), any HTTP 5xx.
 # An HTTP 400 such as "exceeds the available context size" stays a result.
 SERVER_FAULT_RE = re.compile(r"Cannot reach|Compute error|['\"]status['\"]: ?5\d\d|HTTP 5\d\d")
+# ...except Odysseus's own 502 for a model that produced nothing: that one is
+# the model's result (2026-10-06 21:5x, Bonsai 2 on `german`).
+MODEL_EMPTY_RE = re.compile(r"empty response", re.I)
+
+
+def is_server_fault(err):
+    return bool(SERVER_FAULT_RE.search(err)) and not MODEL_EMPTY_RE.search(err)
 APPROVAL_WAIT = "Waiting for an exact user approval"   # src/agent_loop.py placeholder output
 TASK_TIMEOUT_S = 20 * 60      # whole turn; Bonsai 2 rounds reach 300 s at p90
 READ_IDLE_S = 960             # Odysseus's own per-round timeout is 900 s
@@ -167,7 +180,7 @@ def now_local():
 def run_one(api, task, target, rep, run_dir, args):
     name, (endpoint_id, model) = target
     marker = "[bench-%s]" % uuid.uuid4().hex[:4]
-    ws = run_dir / "ws" / f"{task['id']}-{name}-r{rep}"
+    ws = WS_ROOT / run_dir.name / f"{task['id']}-{name}-r{rep}"
     ws.mkdir(parents=True, exist_ok=True)
     ctx = {"ws": str(ws.resolve()), "marker": marker, "api": api}
     ctx["expect"] = task["setup"](ctx["ws"], ctx) or {}
@@ -560,7 +573,11 @@ def cmd_run(args):
             rec = {"task": t["id"], "cat": t["cat"], "target": target[0], "model": target[1][1], "rep": rep,
                    "status": "harness_error", "error": f"{type(e).__name__}: {e}", "passed": False,
                    "trace": traceback.format_exc()[-1500:], "checks": [], "tools": [], "flags": []}
-        infra = [e for e in rec.get("stream_errors", []) if SERVER_FAULT_RE.search(e)]
+        if "workspace_rejected" in rec.get("flags", []):
+            sys.exit(f"\nerror: Odysseus rejected the task workspace ({WS_ROOT}); result not saved. Every file "
+                     "task would fail for harness reasons. Set BENCH_WS_ROOT to a plain folder outside "
+                     f"Odysseus's data/ directory, then continue with --resume {run_dir}")
+        infra = [e for e in rec.get("stream_errors", []) if is_server_fault(e)]
         if infra:
             sys.exit(f"\nerror: the model server failed, not the model ({infra[0][:160]}); result not saved.\n"
                      f"Fix the server (LM Studio 'Compute error': `lms unload --all && lms load <model>`), "
@@ -628,7 +645,8 @@ def load_log(log_glob):
     for path in glob.glob(log_glob):
         with open(path, encoding="utf-8", errors="replace") as f:
             for l in f:
-                if "[agent-timing]" in l or "[agent-debug]" in l or "produced no answer" in l:
+                if ("[agent-timing]" in l or "[agent-debug]" in l or "produced no answer" in l
+                        or "direct low-signal reply path" in l):
                     m = LOG_TS.match(l)
                     if m:
                         ts = dt.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").replace(
@@ -652,7 +670,7 @@ def log_rounds(log, start, end):
     """Per-round facts from app.log inside [start, end] (local time)."""
     s = dt.datetime.fromisoformat(start)
     e = dt.datetime.fromisoformat(end)
-    rounds, offered, no_answer = [], set(), False
+    rounds, offered, no_answer, direct = [], set(), False, False
     for ts, l in log:
         if ts < s or ts > e:
             continue
@@ -665,7 +683,9 @@ def log_rounds(log, start, end):
                 ("prompt_n", int), ("prompt_ms", float))})
         elif "produced no answer" in l:
             no_answer = True
-    return rounds, offered, no_answer
+        elif "direct low-signal reply path" in l:
+            direct = True        # Odysseus answered without offering any tool
+    return rounds, offered, no_answer, direct
 
 
 def wilson(k, n, z=1.96):
@@ -714,12 +734,12 @@ def cmd_report(args):
         a["_win_end"] = min(a["end"], b["start"]) if b else a["end"]
     for r in recs:
         if r.get("start") and r.get("end"):
-            rounds, offered, no_ans = log_rounds(log, r["start"], r["_win_end"])
+            rounds, offered, no_ans, direct = log_rounds(log, r["start"], r["_win_end"])
         else:
-            rounds, offered, no_ans = [], set(), False
-        r["_rounds"], r["_offered"], r["_no_answer_log"] = rounds, offered, no_ans
+            rounds, offered, no_ans, direct = [], set(), False, False
+        r["_rounds"], r["_offered"], r["_no_answer_log"], r["_direct"] = rounds, offered, no_ans, direct
         need = task_tools.get(r["task"]) or []
-        r["_harness_miss"] = bool(need) and bool(offered) and not (set(need) & offered)
+        r["_harness_miss"] = bool(need) and ((bool(offered) and not (set(need) & offered)) or direct)
 
     targets = sorted({r["target"] for r in recs})
     by = {t: [r for r in recs if r["target"] == t] for t in targets}
@@ -799,7 +819,7 @@ def cmd_report(args):
         any(f in r.get("flags", []) for f in ("rounds_exhausted", "budget_exceeded", "loop_breaker_triggered"))
         for r in rs)))
     row("⚠️ Answered by a fallback model", lambda rs: str(sum("fallback" in r.get("flags", []) for r in rs)))
-    row("Task tool not offered by Odysseus", lambda rs: str(sum(r["_harness_miss"] for r in rs)))
+    row("Task tool not offered by Odysseus (incl. no-tools reply path)", lambda rs: str(sum(r["_harness_miss"] for r in rs)))
 
     # per-round numbers from app.log
     def rounds(rs):
@@ -857,7 +877,9 @@ def cmd_report(args):
             extra.append(f"status {r['status']}: {r.get('error') or ''}".strip())
         if r.get("flags"):
             extra.append("flags: " + ", ".join(sorted(set(r["flags"]))))
-        if r["_harness_miss"]:
+        if r["_direct"]:
+            extra.append("Odysseus took its direct low-signal reply path — no tools were offered at all")
+        elif r["_harness_miss"]:
             extra.append(f"Odysseus never offered {task_tools[r['task']]} (offered: {sorted(r['_offered'])})")
         if r["_no_answer_log"]:
             extra.append("log: 'gathered information but produced no answer'")

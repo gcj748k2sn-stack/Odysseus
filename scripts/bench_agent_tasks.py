@@ -330,7 +330,6 @@ task(
     checks=lambda rec, ctx: [
         answered(rec),
         chk("says 'Example Domain'", contains(rec["final_text"], "example domain"), rec["final_text"][:80]),
-        chk("used web_fetch", used_tool(rec, "web_fetch"), "no web_fetch call"),
     ],
 )
 
@@ -342,6 +341,11 @@ task(
 # inside web_fetch's 10,000-char output cap): "The seminal taxon Morchella
 # elata ... was described by Elias Fries in 1822, from a fir forest in Sweden."
 # If Wikipedia rewrites that sentence, update the checks.
+# No "used web_fetch" check here or in web_fetch: Odysseus fetches every URL in
+# the user's message itself before round 1 (src/chat_processor.py, first
+# 10,000 chars, as untrusted context), so a model can answer correctly without
+# calling the tool — Bonsai 2 did, 2026-10-06 21:38. Correctness still needs
+# the page, which is what these tasks are for.
 task(
     id="web_read", cat="web", quick=True, web=True, tools=["web_fetch"],
     setup=lambda ws, ctx: {"who": "Fries", "year": 1822, "forest": "fir", "country": "Sweden"},
@@ -350,7 +354,6 @@ task(
                         "which country was it found?"),
     checks=lambda rec, ctx: [
         answered(rec),
-        chk("used web_fetch", used_tool(rec, "web_fetch"), "no web_fetch call"),
         chk("fir forest", re.search(r"\bfir\b", rec["final_text"], re.I), rec["final_text"][:160]),
         chk("Sweden", contains(rec["final_text"], "swed"), rec["final_text"][:160]),
         chk("Fries, 1822", contains(rec["final_text"], "fries") and has_number(rec["final_text"], 1822),
