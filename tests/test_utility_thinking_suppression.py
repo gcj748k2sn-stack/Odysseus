@@ -1,4 +1,4 @@
-"""Thinking suppression must reach the UTILITY model — docs/todo.md item 44.
+"""Thinking suppression must reach the UTILITY model — notes/todo.md item 44.
 
 `/api/documents/ai-tidy` returned `500` on every logged call for three days.
 Two independent faults; this file covers the second half of the first one.

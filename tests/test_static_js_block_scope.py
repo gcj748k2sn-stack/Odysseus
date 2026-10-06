@@ -5,7 +5,7 @@ and ``finally``. ``handleChatSubmit`` in ``static/js/chat.js`` read three such
 names in its stream error handler (``streamingTTS``, ``abortCtrl``,
 ``_isAgent``), so every failed ``/api/chat_stream`` send threw
 ``ReferenceError: streamingTTS is not defined`` before the error was shown or
-the streaming state was cleared (docs/todo.md, *"A failed send throws inside
+the streaming state was cleared (notes/todo.md, *"A failed send throws inside
 its own error handler"*, seen 2026-10-04 on every intercepted send). The same
 read of ``abortCtrl`` sat in the first-token wait timers, so *"Still waiting
 for first token"* could never be shown. The same scan found two more of the

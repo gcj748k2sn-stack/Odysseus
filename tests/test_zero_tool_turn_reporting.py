@@ -1,4 +1,4 @@
-"""A turn that called no tools at all — docs/todo.md items 8, 6 and 9.
+"""A turn that called no tools at all — notes/todo.md items 8, 6 and 9.
 
 Run fd0f9ba0, 2026-07-28, was the third identical request in ten minutes and
 produced no document. Its last turn read, in full:

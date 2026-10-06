@@ -1,6 +1,6 @@
 """Prior-round reasoning must reach Ollama's /v1 under the field it reads.
 
-docs/todo.md, *"The model finishes the job in the reasoning channel, and the
+notes/todo.md, *"The model finishes the job in the reasoning channel, and the
 guard calls it silence"*. Ollama's OpenAI-compatible ``Message`` reads
 ``reasoning`` and silently drops ``reasoning_content`` (the DeepSeek name the
 agent loop uses). With thinking on, Ollama's Qwen 3.5 renderer then wrapped

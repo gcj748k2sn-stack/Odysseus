@@ -10,7 +10,7 @@ the UI renders ("the tool results above are real"), and invite a follow-up
 ("Ask me to continue…").
 
 Replayed to the model as part of the history they do three kinds of damage
-(measured 2026-10-04 over 268 recorded replies, see docs/todo.md *"Odysseus's
+(measured 2026-10-04 over 268 recorded replies, see notes/todo.md *"Odysseus's
 own notices are replayed to the model as its words"*):
 
 - the model is told about tool results it cannot see — only reply text is

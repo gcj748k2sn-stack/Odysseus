@@ -851,7 +851,7 @@ _AUTHORED_HEADING_RE = re.compile(r'^\s{0,3}#{1,6}\s+', re.MULTILINE)
 def _reasoning_split_is_safe(think: str, reply: str) -> bool:
     """Is it safe to move ``think`` out of the message and keep only ``reply``?
 
-    docs/todo.md item 6. `_normalize_thinking`'s fallbacks below pick the split
+    notes/todo.md item 6. `_normalize_thinking`'s fallbacks below pick the split
     point by **position** — "the last line that doesn't look like reasoning" —
     and everything above it is moved into the thinking panel, out of the saved
     message. Position is not evidence. Two recorded runs lost most of an answer

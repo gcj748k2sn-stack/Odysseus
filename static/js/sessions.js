@@ -2129,7 +2129,7 @@ export async function selectSession(id, { keepSidebar = false, showLoading = tru
         // A chat without documents never reaches loadSessionDocs(), which is
         // what clears the previous chat's document on the path above — so it
         // stayed current and the next message here moved it into this chat
-        // (docs/todo.md item 62, 2026-10-05 23:31).
+        // (notes/todo.md item 62, 2026-10-05 23:31).
         if (window.documentModule.releaseCurrentDoc) {
           window.documentModule.releaseCurrentDoc('switch-to-chat-without-documents');
         }
@@ -2245,7 +2245,7 @@ export function createDirectChat(url, modelId, endpointId, opts = {}) {
   }
   // …and leave the previous chat's document. closePanel() only hides the
   // panel; the document stayed current, so the first message here sent its id
-  // and the server moved it into this chat (docs/todo.md item 62).
+  // and the server moved it into this chat (notes/todo.md item 62).
   if (window.documentModule && window.documentModule.releaseCurrentDoc) {
     window.documentModule.releaseCurrentDoc('new-chat');
   }

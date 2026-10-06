@@ -45,7 +45,7 @@ def retire_document(doc, reason: str, retired: list) -> None:
     """Soft-remove a document: archive it and drop it from the tab bar.
 
     **This function exists so that no tidy path calls `db.delete` on a
-    Document.** docs/todo.md item 32. On 2026-07-30 the duplicate pass
+    Document.** notes/todo.md item 32. On 2026-07-30 the duplicate pass
     hard-deleted 8 documents in one run (`task_runs.ad505282`, *"Removed 8 of
     70 … (+8 duplicate copies) · 62 kept"*) — a single group of nine
     byte-identical clones, which were the *input* to item 20's experiment.
@@ -97,7 +97,7 @@ async def run_document_tidy(owner: str) -> str:
         # retired — otherwise every run re-counts the same rows and the
         # duplicate pass re-picks a keeper among documents the user has
         # already been told were removed. `None` is a legacy row that predates
-        # the column, i.e. not archived. docs/todo.md item 32.
+        # the column, i.e. not archived. notes/todo.md item 32.
         from sqlalchemy import or_ as _or
         _live = _or(Document.archived == False, Document.archived.is_(None))  # noqa: E712
         if owner:
@@ -191,7 +191,7 @@ async def run_document_tidy(owner: str) -> str:
         # bytes, different owner-session. That is not redundancy; it is five
         # separate working copies, and collapsing them is what destroyed item
         # 20's nine clones on 2026-07-30. Two copies in the SAME chat are still
-        # duplicates and are still collapsed. docs/todo.md item 32.
+        # duplicates and are still collapsed. notes/todo.md item 32.
         groups: dict = {}
         for doc in survivors:
             key = (_norm_title(doc.title), _content_fingerprint(doc.current_content), doc.session_id)
@@ -232,7 +232,7 @@ async def run_document_tidy(owner: str) -> str:
             db.commit()
             # The ids, in the log, at the moment it happens. `task_runs.result`
             # keeps a truncated title preview; that is not enough to answer
-            # "which document did this take" after the fact. docs/todo.md 32.
+            # "which document did this take" after the fact. notes/todo.md 32.
             logger.info(
                 "[doc-tidy] archived %d document(s) for owner=%r: %s",
                 len(retired), owner, "; ".join(f"{i} ({r})" for i, r in retired),

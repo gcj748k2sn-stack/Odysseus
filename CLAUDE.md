@@ -4,11 +4,11 @@ Short and imperative on purpose. Everything here was learned by getting it wrong
 at least once, and most of it twice.
 
 **The structural problem this file exists for:** every session that edits
-`docs/todo.md` is a different session, and none of them can see the others. The
+`notes/todo.md` is a different session, and none of them can see the others. The
 docs record findings; this file records *how to work*, so each session doesn't
 re-derive it.
 
-**Read [`docs/session-log.md`](docs/session-log.md) first, before anything
+**Read [`notes/session-log.md`](notes/session-log.md) first, before anything
 else.** It's a short, dated, reverse-chronological log of what the *previous
 session actually did* — scope and state changes, not findings (those are
 `todo.md`/`resolvedissues.md`). It's the one thing no session can otherwise see.
@@ -172,7 +172,7 @@ just the evidence.**
   *"stopped without producing an answer"*, which was true about tools and false
   about the answer. **`round_texts` does not separate this from a genuine
   stall** (it is `''` either way, because nothing arrived as content);
-  `thinking` vs `content` does. docs/todo.md items 8 and 23.
+  `thinking` vs `content` does. notes/todo.md items 8 and 23.
 - **An absence in the log is only evidence if the thing could have been
   logged.** Check the emitting call site and the level before concluding
   anything from a zero count. Three items were built on one grep this way:
@@ -193,7 +193,7 @@ just the evidence.**
 
 ## 2. Claims in the docs are unverified until you re-check them
 
-`docs/todo.md` and `docs/resolvedissues.md` are the working record, and they
+`notes/todo.md` and `notes/resolvedissues.md` are the working record, and they
 have been wrong in specific, repeating ways:
 
 - "Fixed" has twice been recorded from a single happy-path run.
@@ -393,7 +393,7 @@ helper mechanics in [`tests/README.md`](tests/README.md). Read those. Additions:
   - ⚠️ **It recurred on 2026-07-29, hours after being closed from a clean
     clone.** The whole of the payload-as-text work — the two detector functions
     in `src/agent_loop.py`, the retry-text change in `document_tools.py`, and
-    `tests/test_tool_payload_as_text.py` — sat uncommitted while `docs/todo.md`
+    `tests/test_tool_payload_as_text.py` — sat uncommitted while `notes/todo.md`
     recorded it as *"✅ built — tests (14)"*. **Milder than the `known_facts.py`
     instance** (nothing untracked is imported, so `HEAD` still runs) and the
     same failure: **the drift starts the moment an item is marked done.** The

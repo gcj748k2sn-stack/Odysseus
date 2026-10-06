@@ -9,7 +9,7 @@ therefore overflows on macOS while fitting comfortably on Linux:
 
 That difference is why ``OSError: AF_UNIX path too long`` was invisible in CI and
 on Linux dev machines for as long as these tests existed. Bind under a short
-root instead of ``tmp_path``; see docs/todo.md item 19.
+root instead of ``tmp_path``; see notes/todo.md item 19.
 """
 import os
 import socket

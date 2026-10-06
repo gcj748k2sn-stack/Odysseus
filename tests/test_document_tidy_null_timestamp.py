@@ -51,7 +51,7 @@ def test_tidy_survives_duplicate_with_null_timestamps(db_factory):
     try:
         # ⚠️ This assertion used to read `count() == 1` — "one duplicate kept,
         # the other removed" — which pinned the HARD DELETE this test never set
-        # out to test. Changed 2026-07-30 with docs/todo.md item 32: the tidy
+        # out to test. Changed 2026-07-30 with notes/todo.md item 32: the tidy
         # archives instead of deleting, so both rows survive and exactly one is
         # retired. The property this test exists for is unchanged: the run
         # completes instead of raising TypeError on the NULL-timestamp sort.

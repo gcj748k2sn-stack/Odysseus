@@ -1,5 +1,5 @@
 """The closing summary must report the whole turn, and must not mistake a
-preamble for a report — docs/todo.md item 7.
+preamble for a report — notes/todo.md item 7.
 
 Two defects, both observed in production:
 

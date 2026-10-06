@@ -1,6 +1,6 @@
 """The ⚠️ blocks must reach the user even when the model wrote its own summary.
 
-docs/todo.md item 21. Three S1 checks ride in `_doc_tool_summary` — item 3's
+notes/todo.md item 21. Three S1 checks ride in `_doc_tool_summary` — item 3's
 `stale_values`, 2a's `fidelity`, 2b's `known_facts` — and **both** callers used
 to discard the entire string whenever the model had written prose after the tool
 ran. The reasoning was sound and the conclusion was wrong: the user had been

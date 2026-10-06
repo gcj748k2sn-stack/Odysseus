@@ -1,4 +1,4 @@
-"""File tools must not read or write Odysseus's own state (docs/todo.md item 60).
+"""File tools must not read or write Odysseus's own state (notes/todo.md item 60).
 
 Seen 2026-10-05 08:32/08:34 (session 726f7e32, Bonsai 2): looking for "the
 last saved data", the model called read_file on data/app.db twice; the second

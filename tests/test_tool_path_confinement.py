@@ -202,7 +202,7 @@ def test_extra_roots_opt_in():
 
     The fixture used to live under tmp_path, which the default /tmp or
     $TMPDIR root already covers, so it resolved with or without the setting
-    (docs/todo.md item 25). This path is outside every default root and is
+    (notes/todo.md item 25). This path is outside every default root and is
     never created: _resolve_tool_path works on the realpath and does not need
     the file to exist, so nothing is written outside tmp_path (item 26).
     Sensitive subpaths under an extra root: see the next test."""

@@ -39,7 +39,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 🔧 **Fixes after the run** (in `3bd9a006` unless marked): default URL is **7860**, not 7000 (macOS AirPlay Receiver answers 403 there; the script now says so on an `AirTunes` server header); warm-up and per-task stream errors containing *Cannot reach* abort the run instead of recording fake failures; the report splits failed tool calls into model and environment (timeouts, HTTP 4xx/5xx). **Uncommitted:** per-task cleanup now matches any `[bench-` tag (`BENCH_TAG` in `bench_agent_tasks.py`) so a model-mistyped marker is still removed — checked with a stub API, not live.
 - 🧹 **Left behind, maintainer to remove:** note *"[bench-44b] Workshop shopping"* (`fcb98691`), the only bench leftover in `app.db` (copy checked: no bench sessions, events, documents or memories). `python3 scripts/bench_agent.py cleanup` removes it. Also an unreadable `/tmp/x` tree in the agent VM from an earlier session — not in the repo.
 - ⏭️ **Next:** full suite `--runs 2` per model (Qwen ~30 min, Bonsai ~2–3 h); the `web_fact` task can be passed from memory — once item 49's fix is confirmed, add a task answerable only from the fetched page.
-- **Edited:** `scripts/bench_agent_tasks.py`, this file. `docs/qwensetup.md` is modified in the tree by another session (Bonsai start-script defaults) — not mine, not included. Only `git --no-optional-locks log/show/archive`; no lock taken.
+- **Edited:** `scripts/bench_agent_tasks.py`, this file. `notes/qwensetup.md` is modified in the tree by another session (Bonsai start-script defaults) — not mine, not included. Only `git --no-optional-locks log/show/archive`; no lock taken.
 
 ---
 
@@ -48,7 +48,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - ✅ **Item 52 verified live** in `cdb89980` (last full reply = a stream-failure notice): *"Briefly: what were we talking about"* → thinking recapped the turns with no mention of a failure, error or empty response. A 23:31 attempt was sent incognito (no history read, nothing saved) and did not count.
 - 🔴 **Item 45 caught live** at 23:31 in the same chat: the frontend sent another chat's active document (`68647d12`, *Pink Oyster Mushroom Growth Phases*) and the server logged *"cross-session active_doc_id … accepting and rebinding"*. Evidence added to the item, pointing at **item 62**, which another session filed for the same event and is fixing.
 - ℹ️ The 00:29 recap repeated Bonsai's own earlier misreadings (*"Cedeago"*, *"parasolo"*) because they are in its saved reply (the `trigger_research` topic line) — history working as designed, not memory leaking.
-- **Edited:** `docs/todo.md`, this file. No `git` command run.
+- **Edited:** `notes/todo.md`, this file. No `git` command run.
 
 ---
 
@@ -57,7 +57,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 📝 Explained the web cache to the maintainer (page cache, failed-URL memory, search-results cache, cleanup). **Item 61 filed at the maintainer's request as scope only** — open questions, no findings recorded.
 - ✂️ Item 49: dropped the owed point *"damage before the fix is unmeasured"* — the maintainer says only test turns had used Wikipedia so far.
 - 🔍 Read `data/app.db` once, on a hash-verified copy in the sandbox's `~/tmp` (deleted afterwards). No code changes.
-- **Edited:** `docs/todo.md`, this file. Only git commands: `git log`, `git archive HEAD` (no lock).
+- **Edited:** `notes/todo.md`, this file. Only git commands: `git log`, `git archive HEAD` (no lock).
 
 ---
 
@@ -66,7 +66,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - ✅ **Maintainer:** committed the fix as `867c2d1e` (21:22); M1 — the 10 fetch/extraction files 120 passed, **full suite 6,245 passed, 2 skipped, 0 failed**; restart 21:23:31; `/wiki/Morchella` fetched at 21:24 → 51,880 chars of article in the cache, correct lead sentence quoted by Bonsai.
 - 📝 **Item 49 closed:** body to [resolvedissues.md](resolvedissues.md); the todo stub keeps three owed points (unmeasured pre-fix damage, a space at every tag boundary, `js_rendered` false positive).
 - 🔍 **Noticed, not filed yet:** a "Nobody" (incognito) chat is not saved and gets no memory, but a URL in its message is still fetched and written to `data/cache/content/`, and `app.log` records the URL and the first line of the message. Next: an explanation of the web cache for the maintainer.
-- **Edited:** `docs/todo.md`, `docs/resolvedissues.md`, this file. No code changes. Only git commands: `git log`, `git archive HEAD` (no lock).
+- **Edited:** `notes/todo.md`, `notes/resolvedissues.md`, this file. No code changes. Only git commands: `git log`, `git archive HEAD` (no lock).
 
 ---
 
@@ -76,7 +76,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 🔍 **Re-derived item 49 before finding it.** Started from a user report (local models see only Wikipedia's nav menu) and read the cache before `todo.md`; the first read of this log was cut off at 7,000 chars and missed the 2026-10-04 entry that names it. Everything found agrees with the filed item; nothing in it was wrong.
 - 🧪 Sandbox: new tests 7 (3 fail on HEAD), 5 mutations caught; the 9 existing fetch/extraction test files are identical before and after (105 passed, 8 DNS failures). **Full suite not run.**
 - ➡️ **Live check after restart:** `web_fetch` of a Wikipedia article not fetched in the last 2 h → content opens with the lead sentence.
-- **Edited:** `services/search/content.py`, `docs/todo.md`, this file. **New:** `tests/test_search_content_main_landmark.py`. Only git command: `git archive HEAD <file>` (no lock). Tests ran in a copy under the sandbox's `~/tmp`, so nothing was left under the mount.
+- **Edited:** `services/search/content.py`, `notes/todo.md`, this file. **New:** `tests/test_search_content_main_landmark.py`. Only git command: `git archive HEAD <file>` (no lock). Tests ran in a copy under the sandbox's `~/tmp`, so nothing was left under the mount.
 
 ---
 
@@ -94,7 +94,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 - 🔍 **Item 60 not yet verified:** both *"read data/settings.json"* runs (23:35, 23:38) were classified `ui`, so `read_file` was never offered and nothing was read. Safe retest prompt and the `bash` caveat are in the item.
 - 🆕 **Item 62 filed** (reported as "item 45 again"): New Chat hides the document panel but leaves the document current; the first message sends its id and the server rebinds the document to the new chat. `68647d12` moved twice in 8 minutes and now sits in the *"read data/settings.json"* chat. Answers item 45's open question. Not a prompt leak in these turns.
-- Read-only: `app.log`, a copy of `app.db`; sandbox classifier probe. **Edited:** `docs/todo.md`, this file.
+- Read-only: `app.log`, a copy of `app.db`; sandbox classifier probe. **Edited:** `notes/todo.md`, this file.
 - 🔧 **Item 62 (b) built, uncommitted (00:40):** New Chat and switching to a chat without documents now release the editor's document (`releaseCurrentDoc()`: save, then empty), so the first message no longer carries the previous chat's document. Server half (a) — stop rebinding — explained to the maintainer, not built. ✅ **Verified live ~01:30** in the console (`7a9e32ce` → New Chat → `null`, no version written); `_startFreshChat()` (mobile / no-models New Chat) added afterwards. 🔧 **Server half (a) built 01:50, commit `6a313dd8`:** a document named from another chat is used for the turn, not moved (`_explicit_active_document` in `routes/chat_routes.py`; `tests/test_active_document_stays_in_its_chat.py`, 4; owner-scope source test updated). ✅ **Pink Oyster restored 01:43** with the app stopped: `68647d12` back in `8d72d72f` with its 2026-08-01 `updated_at`; one row changed, integrity ok; backup `data/app.db.bak-before-item62-restore`. **Edited:** `static/js/document.js`, `static/js/sessions.js`, `static/app.js`; **new:** `tests/test_document_follows_chat.py` (7, 6 mutations).
 
 ---
@@ -105,7 +105,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 🔧 **Item 60 fixed, uncommitted:** file tools refuse Odysseus's own state under `data/` — `.app_key` (decrypts stored passwords/tokens), `auth.json`, `sessions.json`, `settings.json` (API keys), `cookbook_state.json`, `user_prefs.json`, every SQLite file. Also closed: `grep`'s ripgrep branch printed lines from files the deny-list refuses.
 - 🧪 Sandbox: **6,162 passed, 27 failed — identical on a `git archive HEAD` copy** (DNS, test order). New file's tests: 29 fail on HEAD, 13 negative controls pass on both; 6 mutations caught.
 - ➡️ Live check after restart: *"read data/settings.json"* → refusal naming `manage_documents`. Next on the plan: item 53, then 58/57 (the cache figures under item 58 now give their baseline).
-- **Edited:** `src/tool_execution.py`, `src/agent_tools/filesystem_tools.py`, `docs/todo.md`, this file. **New:** `tests/test_tool_path_odysseus_state.py`. Not mine, left alone: untracked `scripts/bench_agent.py`, `scripts/bench_agent_tasks.py` (appeared between 23:53 and 08:52).
+- **Edited:** `src/tool_execution.py`, `src/agent_tools/filesystem_tools.py`, `notes/todo.md`, this file. **New:** `tests/test_tool_path_odysseus_state.py`. Not mine, left alone: untracked `scripts/bench_agent.py`, `scripts/bench_agent_tasks.py` (appeared between 23:53 and 08:52).
 
 ---
 
@@ -116,7 +116,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 🔧 **Prompt-cache log line (step 0 of the late-night plan below, for items 58/57/40):** `round_stream_done` now ends `prompt_tokens=… cache_n=… prompt_n=… prompt_ms=…` from llama.cpp's `timings`.
 - 🧪 Sandbox (`~/tmp/venv`, `~/tmp/sync.sh`): **6,121 passed, 26 failed — the 26 fail identically on a `git archive HEAD` copy** (DNS, and test order in single-process subsets). New tests: `test_named_machines.py` (19), `test_prompt_cache_logging.py` (12), `test_terminus_keeps_intent_domains.py` rewritten (23); 9 mutations caught across both changes.
 - ➡️ **Live checks after a restart:** the LAN prompt in a New Chat → no `Terminus toolset` line, no `bash`; any multi-round Bonsai turn → `cache_n` values on `round_stream_done`. Then the late-night plan continues with item 53, then 58/57 (if the Bonsai session is not already on them).
-- **Edited:** `src/agent_loop.py`, `src/llm_core.py`, `tests/test_terminus_keeps_intent_domains.py`, `docs/todo.md`, this file. **New:** `src/named_machines.py` (imported by `agent_loop.py` — add it), `tests/test_named_machines.py`, `tests/test_prompt_cache_logging.py`. Only `git --no-optional-locks` read commands; no lock left.
+- **Edited:** `src/agent_loop.py`, `src/llm_core.py`, `tests/test_terminus_keeps_intent_domains.py`, `notes/todo.md`, this file. **New:** `src/named_machines.py` (imported by `agent_loop.py` — add it), `tests/test_named_machines.py`, `tests/test_prompt_cache_logging.py`. Only `git --no-optional-locks` read commands; no lock left.
 
 ---
 
@@ -129,7 +129,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 🔬 **Live checks by the maintainer, 22:57–23:25 (Bonsai 2, LM Studio down):** **55 ✅** — `exit_code=1`, the reply says research did not start and offers web search. **27: the fix ✅, the turn ❌** — `create_document` was sent, but the device at `.185` timed out and the model spent 11 rounds in `bash` (ping, port scan, listing `~/Documents` and other home folders), then the turn ended with nothing saved; fix (b) is now the live half. **13: 200s gone ✅** — a ~150-line 304 burst per page load remains (default keeps 304; proposed `[200, "GET 304"]`), plus the email poller's per-minute SMTP/IMAP warnings. Details in each item.
 - 🔧 **After the live checks (23:40, uncommitted):** access-log default is now `[200, "GET 304"]`; the email poller's *SMTP/IMAP not configured* warnings log once per process instead of every minute. **Edited:** `src/settings.py`, `src/access_log_filter.py`, `routes/email_helpers.py`, `tests/test_access_log_filter.py`; **new:** `tests/test_email_not_configured_warn_once.py`.
 - ⚠️ **The agent ran plain `git status` once, against [`CLAUDE.md`](../CLAUDE.md) §6** → zero-byte `.git/index.lock`. Removed the same minute (delete permission for `/Users/cedrik/odysseus` granted this session); `.git/index` untouched. After that only `git --no-optional-locks` (`diff`, `show`, `archive`, `status --porcelain`), lock checked absent each time.
-- **Edited:** `app.py`, `src/agent_loop.py`, `src/settings.py`, `src/research_handler.py`, `src/tools/research.py`, `routes/research/research_routes.py`, `static/app.js`, `static/js/admin.js`, `static/js/chat.js`, `static/js/modalManager.js`, `tests/test_model_routes.py`, `tests/test_tool_path_confinement.py`, `docs/todo.md`, this file. **New:** `src/access_log_filter.py` (imported by `app.py`), `tests/test_access_log_filter.py`, `tests/test_static_js_block_scope.py`, `tests/test_terminus_keeps_intent_domains.py`, `tests/test_trigger_research_probe.py`. Nothing left behind; the four `bench_qwen_*.json` are still the afternoon's.
+- **Edited:** `app.py`, `src/agent_loop.py`, `src/settings.py`, `src/research_handler.py`, `src/tools/research.py`, `routes/research/research_routes.py`, `static/app.js`, `static/js/admin.js`, `static/js/chat.js`, `static/js/modalManager.js`, `tests/test_model_routes.py`, `tests/test_tool_path_confinement.py`, `notes/todo.md`, this file. **New:** `src/access_log_filter.py` (imported by `app.py`), `tests/test_access_log_filter.py`, `tests/test_static_js_block_scope.py`, `tests/test_terminus_keeps_intent_domains.py`, `tests/test_trigger_research_probe.py`. Nothing left behind; the four `bench_qwen_*.json` are still the afternoon's.
 
 ---
 
@@ -146,7 +146,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 🔍 **Bonsai 2 deep dive (PrismML docs, community benchmarks, white paper, the GGUF's chat template):** filed **item 58** (earlier rounds' thinking deleted each round → prefix breaks → re-reads; hypothesis) and **item 59** (`reasoning_effort` never sent to llama.cpp); item 57's template shape confirmed. Server flags to try, all present in the installed binary: `--reasoning-budget 16384 --ctx-checkpoints 32 --cache-ram 2048 -ub 1024`; also `--chat-template-kwargs '{"reasoning_effort":"medium"}'` and `./scripts/make_kv_bias.sh` (KV4 without the bias is what PrismML advises against). Reference speeds: M4 Pro 127 / 20.5 tok/s, M3 Max 162 / 24.3 (pp512 / tg128); this M1 Pro 57–72 / 12 (16k f16) and ~6.5 (32k q4) in Odysseus.
 - 📊 **After the flag change (23:00–23:14, two Bonsai 2 chats, `reasoning_effort` medium):** thinking per round fell to ~15–45 s of decode (the 19:58 run spent ~70 s); **item 58 got clean evidence** — round 2 reused the cache (+57 tokens, 1.7 s), rounds 3–5 did not (+63…+224 tokens, 16–21 s). Neither chat finished: the research turn was cut by an Odysseus restart at 23:09 (round 5), the LAN-document turn (29 tools, ran `curl`/`ping` via bash) was still in round 5 at 23:21. Item 52's live check is still open.
 - ➡️ **Next session, in order:** (0) add the per-round `cache_n`/`prompt_n` log line (items 58/57/40 all need it); (1) item 53 — build the single context block (design and observables are in the item); (2) items 58 and 57 — stable tool set for local endpoints (pairs with 53: together they decide whether follow-ups re-read the whole chat); (3) items 55 and 56 — small, independent; (4) item 52's remaining live check: a completed (not stopped) turn after a failure notice, read its `thinking`. For Bonsai 2 tests: always **New Chat**, quit LM Studio/Ollama first, and leave *"create a document"* out of the first message (it adds ~13 tool schemas).
-- **Edited:** `core/models.py`, `src/agent_loop.py` (one notice string), `static/app.js`, `static/index.html`, 13 files under `static/js/` (version queries only), `docs/todo.md`, `docs/qwensetup.md`, this file. **New:** `src/ui_notices.py`, `tests/test_ui_notices_context.py`, `tests/test_static_module_single_url.py`. One read-only `git diff --stat` was run by mistake (no lock left — checked); otherwise no `git`.
+- **Edited:** `core/models.py`, `src/agent_loop.py` (one notice string), `static/app.js`, `static/index.html`, 13 files under `static/js/` (version queries only), `notes/todo.md`, `notes/qwensetup.md`, this file. **New:** `src/ui_notices.py`, `tests/test_ui_notices_context.py`, `tests/test_static_module_single_url.py`. One read-only `git diff --stat` was run by mistake (no lock left — checked); otherwise no `git`.
 
 ---
 
@@ -170,7 +170,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - ✅ **Item 51 CLOSED** — M1 suite 5,920 passed; panel toggle off → `browser disabled`; explicit request → `browser_navigate` + `browser_take_screenshot` executed (first ever). Body moved to resolvedissues.md. ⚠️ The disabled-browser turn flailed for 7 rounds (`ui_control: toggle shell on`, an unlogged `manage_skills`) — noted under item 51, not filed.
 - 📝 **[qwensetup.md](qwensetup.md) now opens with a *current setup* table** (LM Studio GGUF at 65,536 for chat/research, Ollama for utility + embeddings + fallback, browser gate, server not auto-starting) — the body below it is history and still describes Ollama as main in places.
 - 🧪 Sandbox needed `pytest-asyncio` and `pytest-xdist` (installed into the sandbox's own package dir, not the repo). Background processes do not survive between sandbox calls, so the full suite ran in chunks against copies of the tree. ⚠️ A first full-suite attempt was started on the live tree by mistake and died within ~2 s with its sandbox call; nothing in `data/` was written in that window except the running server's own once-a-minute `app.log` line.
-- **Edited:** `src/tool_policy.py`, `src/agent_loop.py`, `routes/chat_routes.py`, `routes/model_routes.py`, `static/js/admin.js`, `docs/todo.md`, `docs/qwensetup.md`, this file. **New:** `tests/test_browser_tool_gate.py`, `scripts/bench_qwen_backends.py`. Only read-only `git --no-optional-locks` commands were run.
+- **Edited:** `src/tool_policy.py`, `src/agent_loop.py`, `routes/chat_routes.py`, `routes/model_routes.py`, `static/js/admin.js`, `notes/todo.md`, `notes/qwensetup.md`, this file. **New:** `tests/test_browser_tool_gate.py`, `scripts/bench_qwen_backends.py`. Only read-only `git --no-optional-locks` commands were run.
 
 ---
 
@@ -180,7 +180,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 🔌 **LM Studio, set by the maintainer:** run-on-login on, server started, Qwen load defaults 32768 / parallel 1 / temp 0.6 / Context Overflow *Stop at Limit*; research model switched to `qwen/qwen3.5-9b`. **Ollama is not running** (connection refused on :11434), so the utility model fails — `Auto-name failed` ×3 for `933f8674`.
 - ⚠️ **A sandbox `pytest --noconftest` run imported `core.database`, whose `init_db()` runs at import, against the live `data/app.db`** (`conftest.py` normally sets `DATABASE_URL=sqlite:///:memory:`). Checked against a copy taken before the run: schema identical (115 objects), `model_endpoints` identical, no table lost rows, `quick_check` ok. Rule added to [`CLAUDE.md`](../CLAUDE.md) §4.
 - 🧪 **M1 suite after the fix (run by the maintainer): `2 failed, 5883 passed, 2 skipped`.** One test pinned the exact request sequence that the LM Studio probe changed. One was a pre-existing dependency on port 1234 being closed: it failed because LM Studio was now running, and was reproduced in the sandbox with a listener. Both were fixed in tests (`tests/test_llama_server_models_url.py`, `tests/test_model_routes.py`). **Re-run: `5885 passed, 2 skipped`, 0 failed.** ✅ **Live check passed** after the 12:40 restart: `LM Studio reports loaded context 32768`, `prep_done … context_length=32768`. Auto-naming still fails (utility model on Ollama, which is down).
-- **Edited:** `src/model_context.py`, `docs/todo.md`, `docs/qwensetup.md`, `CLAUDE.md`, this file, then `tests/test_llama_server_models_url.py` and `tests/test_model_routes.py`. **New:** `tests/test_model_context_lmstudio.py`. No `git` command run.
+- **Edited:** `src/model_context.py`, `notes/todo.md`, `notes/qwensetup.md`, `CLAUDE.md`, this file, then `tests/test_llama_server_models_url.py` and `tests/test_model_routes.py`. **New:** `tests/test_model_context_lmstudio.py`. No `git` command run.
 
 ---
 
@@ -190,7 +190,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 🔌 **LM Studio, read from `~/.lmstudio`, nothing changed:** 0.4.25, MLX runtime 1.11.0, JIT on with 60 min TTL. "Run LLM server on login" is **off** (`enableLocalService: false`). Default context is a custom **8192** and there is **no saved per-model load config for `qwen/qwen3.5-9b`**, so a JIT load from Odysseus comes up at 8192 — the 502 in [qwensetup.md](qwensetup.md). The 10:22 first turn of `2ef18f85` failed 503 because the LM Studio server was not running and new chats default to it.
 - 🌳 **Bonsai 2 still fails in LM Studio** — its own server log, 2026-10-02 16:59: `Model type prism_hadamard_qwen35 not supported`. Route remains PrismML's llama.cpp fork on :8090 (qwensetup, *Models*).
 - ⚠️ **The agent ran `git status` once, against [`CLAUDE.md`](../CLAUDE.md) §6, and it left a zero-byte `.git/index.lock`.** Deleted with the maintainer's permission the same minute; `.git/index` untouched.
-- **Edited:** `docs/todo.md`, this file.
+- **Edited:** `notes/todo.md`, this file.
 
 ---
 
@@ -200,7 +200,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - ✅ **Item 23 closed** — render check holds on Ollama 0.35.1 (3 → 0 empty blocks); a non-price web search + document turn answered; 11 of 11 live. Body moved to [resolvedissues.md](resolvedissues.md). `tmp_claude_validation/` no longer needed.
 - 🆕 **Item 48** — the context popup printed summed `input_tokens` beside a bar drawn from `request_context_tokens` (39,672 "used" at 12.7 %). One-line fix in `static/js/chatRenderer.js`; **unverified, no JS harness** — manual check in the item.
 - ⚠️ **The "Parasol" document the 9B wrote lists *"Deathcap Parasol"* as a common name** — not a name for *M. procera*, and dangerously close to "death cap". Item 2b's territory; recorded, not filed.
-- **Edited:** `static/js/chatRenderer.js`, `docs/todo.md`, `docs/resolvedissues.md`, `docs/qwensetup.md`, this file. **No `git` command was run by the agent.**
+- **Edited:** `static/js/chatRenderer.js`, `notes/todo.md`, `notes/resolvedissues.md`, `notes/qwensetup.md`, this file. **No `git` command was run by the agent.**
 
 ---
 
@@ -213,7 +213,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 🔌 **LM Studio added** (`localhost:1234`). `qwen/qwen3.5-9b` works. Bonsai v1 broke tool calls and facts; **Bonsai 2 does not load in LM Studio** (item 46 filed for the missing `supports_tools` UI; details in qwensetup).
 - 🔎 **Web search:** news-routing + region skew measured and filed as **item 47**; free engines rate-limit this IP. SearXNG engine set widened in the **untracked** `searxng/settings.yml` (backup alongside).
 - ⏳ **Owed:** item 23's closing run on a non-price topic; after the macOS 26 upgrade, re-run `N_AB=0 N_C=0 ./venv/bin/python tmp_claude_validation/validate.py` against the new Ollama (expect 3 empty blocks today-form, 0 fixed-form), then delete `tmp_claude_validation/`. ⚠️ **`.env.bak-before-lmstudio` (repo root) is NOT matched by `.gitignore`'s `.env.bak.*`** — it likely holds secrets; never `git add .` while it exists.
-- **Edited:** `src/agent_loop.py`, `src/llm_core.py`, `docs/todo.md`, `docs/qwensetup.md`, this file. **New:** `tests/test_ollama_reasoning_field.py`. **No `git` command was run by the agent.**
+- **Edited:** `src/agent_loop.py`, `src/llm_core.py`, `notes/todo.md`, `notes/qwensetup.md`, this file. **New:** `tests/test_ollama_reasoning_field.py`. **No `git` command was run by the agent.**
 
 ---
 
@@ -259,7 +259,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - ✅ **Rigorous tidy at the end, measured before cutting.** `todo.md` **951 → 674 lines** with no item lost: bodies for **30, 32, 37** moved or reduced to pointers (32 was pure duplication — it already had a `resolvedissues.md` entry), **42 cut 117 → 28**, the next-list's finished steps collapsed to one line, and this entry rewritten 74 → ~15. **Closed bodies now 126 lines against 426 for the 15 open ones** — the same lesson as 07-30: *the closed items were never the length problem.* **All 11 cross-file title citations verified to resolve**, and the row count re-derived with the file's own script.
 - 🧹 **Maintenance at the end: the 12 orphaned documents (`session_id IS NULL`) were deleted by hand.** They rendered as tabs in *every* chat (item 34) and three were **~10,700 tokens each** — ~53 s of round-1 prefill apiece if injected. 107 → 95 documents; the four item-30 evidence rows were out of reach of the predicate by construction.
   - ❌ **It also corrected `CLAUDE.md` §1.** That rule says a hard-deleted document takes its versions with it, *"so the orphan count is zero either way"*. **Both halves of the cascade are ORM/PRAGMA-dependent and neither fires from the `sqlite3` CLI** — `PRAGMA foreign_keys` defaults to **OFF**. The delete left **23 dangling version rows**, and a predicted count of ~215 came back 240. **Orphaned children are uninformative about an APP delete and are the signature of a RAW one.**
-- **Edited:** `CLAUDE.md` §1, `docs/todo.md`, `docs/qwensetup.md` (Models, §3, §9, context window, snapshot), `docs/resolvedissues.md`, this file. **Source:** `src/llm_core.py`, `src/agent_loop.py`, `routes/document_routes.py`. **New tests:** 4 files. ⚠️ **No `git` write command was run by the agent.**
+- **Edited:** `CLAUDE.md` §1, `notes/todo.md`, `notes/qwensetup.md` (Models, §3, §9, context window, snapshot), `notes/resolvedissues.md`, this file. **Source:** `src/llm_core.py`, `src/agent_loop.py`, `routes/document_routes.py`. **New tests:** 4 files. ⚠️ **No `git` write command was run by the agent.**
 
 ## 2026-07-31 — 64k verified live, item 39 filed and fixed
 
@@ -289,7 +289,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - ⚠️ **Co-residency is still untested and just got less likely to test itself:** the 6.7 GB reading is the chat model near-alone; `nemotron-3-nano:4b` + `all-minilm` alongside it is the steady state and the case that could exhaust 16 GB. **Fixing keep-alive is what will make three resident models normal**, so do the two together and check `ollama ps` mid-session with a background task in flight.
 - ⚠️ **New arrival path for item 9b's symptom:** if the 64k KV stops fitting, layers spill to CPU, throughput collapses and the inactivity timeout fires — **a memory fault presenting as a 504.** `grep offloaded …/ollama.log | tail -3` is the discriminator, noted in both files.
 - **Owed:** update `default_model` / `research_model` **in the UI, not `settings.json`** (the save path rewrites the file from memory); then `ollama ps` during a real chat.
-- **Edited:** `docs/qwensetup.md` (Models, Context window), `docs/todo.md` (item 9b amendments, 9b summary row, two *Notes & constraints* entries), this file. Two settled facts written down that were previously only derivable from source: the name suffix is the *only* channel for the served window, and `agent_input_token_budget`'s default value is the auto sentinel.
+- **Edited:** `notes/qwensetup.md` (Models, Context window), `notes/todo.md` (item 9b amendments, 9b summary row, two *Notes & constraints* entries), this file. Two settled facts written down that were previously only derivable from source: the name suffix is the *only* channel for the served window, and `agent_input_token_budget`'s default value is the auto sentinel.
 
 ## 2026-07-31 — later session (the 30/31/32/33 cluster closed)
 
@@ -350,7 +350,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ## 2026-07-30 — afternoon session
 
-- Committed the previous session's docs (`add7e328`) — `docs/session-log.md` was untracked and `CLAUDE.md` pointed at it, so a clean clone had a broken mandatory-reading link. **Item 5's fourth recurrence, closed.** Snapshot taken first: `~/odysseus-snapshots/odysseus-evidence-2026-07-30.tar.gz`, 1,448,264 bytes, three `OK` against pre-copy hashes.
+- Committed the previous session's docs (`add7e328`) — `notes/session-log.md` was untracked and `CLAUDE.md` pointed at it, so a clean clone had a broken mandatory-reading link. **Item 5's fourth recurrence, closed.** Snapshot taken first: `~/odysseus-snapshots/odysseus-evidence-2026-07-30.tar.gz`, 1,448,264 bytes, three `OK` against pre-copy hashes.
 - Added **`CLAUDE.md` §7** — hand steps back to the maintainer as full paste-ready commands with this machine's absolute paths, the verification command alongside the action, and macOS tooling (`shasum -a 256`, BSD `sed`).
 - **Ran item 20's five-run protocol — effectively finished, and it points the opposite way from the filed baseline.** Nine sessions, all with the identical prompt and `[doc-inject] found by ID`: **6 of 6 uncontaminated runs created the document** (duplicate rule), **6/6 clean titles**, **0/6 wasted `manage_documents`**. The one refusal is the run whose document had been overwritten a second earlier. The *"1 of 4"* first reading is un-derivable as filed — see item 20.
 - **Filed item 30, root-caused it, and shipped a verified guard.** Switching chats writes the editor buffer into the other chat's document — an AI document destroyed, three others overwritten. Proven by hash, then reproduced on demand once `[doc-put]` logging went into `routes/document_routes.py`. **Root cause: `restoreFn` calls `openPanel()` (fresh empty unstamped textarea) then `switchToDoc()`, whose first act is `saveCurrentToMap()` — so the document is emptied in memory and then rendered from the entry that was just emptied.** `saveCurrentToMap` now writes only on a matching buffer stamp. Verified against the reproduction with the prior run as its own negative control.

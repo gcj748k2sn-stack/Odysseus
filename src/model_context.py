@@ -343,7 +343,7 @@ def _ctx_from_name_suffix(model: str) -> Optional[int]:
 # 2026-10-04: qwen/qwen3.5-9b was loaded at 32768 while this module returned
 # the table's 131072 for "qwen3", so nothing was trimmed against the real window
 # and LM Studio's "Truncate Middle" overflow policy cut 22-27k tokens out of the
-# last three rounds of a 14-round turn (docs/todo.md, "LM Studio's loaded
+# last three rounds of a 14-round turn (notes/todo.md, "LM Studio's loaded
 # context is invisible to Odysseus").
 _LMSTUDIO_NOT_LOADED = 0
 

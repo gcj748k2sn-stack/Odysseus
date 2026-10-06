@@ -817,7 +817,7 @@ class TestDockerLoopbackRewrite:
         # The premise is "the model server runs on the Docker HOST", so nothing
         # answers on the container's own loopback. Without this the test opens a
         # real socket to 127.0.0.1:1234 and fails whenever LM Studio is running
-        # on the machine that runs the suite (2026-10-04, docs/todo.md item 50).
+        # on the machine that runs the suite (2026-10-04, notes/todo.md item 50).
         monkeypatch.setattr(model_routes, "_container_loopback_reachable", lambda base_url: False)
         assert (model_routes._rewrite_loopback_for_docker("http://localhost:1234/v1")
                 == "http://host.docker.internal:1234/v1")
@@ -2184,7 +2184,7 @@ def test_manual_refresh_timeout_keeps_cached_models_and_warns(monkeypatch):
     assert "kept cached models" in response.headers["X-Model-Refresh-Warning"]
 
 
-# ── supports_tools: auto / on / off (docs/todo.md item 46) ──
+# ── supports_tools: auto / on / off (notes/todo.md item 46) ──
 
 @pytest.mark.parametrize("sent, stored", [
     (True, True), (False, False), (None, None), ("true", True), ("false", False),

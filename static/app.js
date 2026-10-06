@@ -44,7 +44,7 @@ import themeModule from './js/theme.js';
 // twice as separate modules with separate state. It broke cookbook server
 // selection (two _envState objects), and on 2026-10-04 it was found doing the
 // same to sessions.js: New Chat cleared one copy, sending read the other, and
-// messages landed in the previously open chat (docs/todo.md item 54). JS is
+// messages landed in the previously open chat (notes/todo.md item 54). JS is
 // served `Cache-Control: no-cache` (app.py `_RevalidatingStatic`), so no
 // cache-buster is needed. Guarded by tests/test_static_module_single_url.py.
 import cookbookModule from './js/cookbook.js';
@@ -852,7 +852,7 @@ function initializeEventListeners() {
     // Close document panel if open
     if (documentModule && documentModule.closePanel) documentModule.closePanel();
     // …and leave its document, or the first message here moves it into this
-    // chat (docs/todo.md item 62). Mobile New Chat and the no-models path land
+    // chat (notes/todo.md item 62). Mobile New Chat and the no-models path land
     // here instead of sessions.createDirectChat().
     if (documentModule && documentModule.releaseCurrentDoc) documentModule.releaseCurrentDoc('fresh-chat');
     if (researchPanelModule && researchPanelModule.isOpen()) researchPanelModule.closePanel();

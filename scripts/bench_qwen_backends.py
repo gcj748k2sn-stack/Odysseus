@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Benchmark Qwen3.5-9B on LM Studio MLX vs LM Studio GGUF (llama.cpp) vs Ollama.
 
-Why: docs/qwensetup.md (LM Studio endpoint, "Speed vs Ollama") measured MLX
+Why: notes/qwensetup.md (LM Studio endpoint, "Speed vs Ollama") measured MLX
 prefill at 142-156 tok/s against Ollama's 217-233 on this M1 Pro, and
 Odysseus's own tok/s figure cannot compare the two. This script sends the
 SAME prompts to each backend and times them the same way.
@@ -74,7 +74,7 @@ def run(cmd, timeout=600):
 def build_prompt(target_tokens):
     """~target_tokens of real repo prose (docs), plus a question. Fresh run id first."""
     text = ""
-    for f in sorted((REPO / "docs").glob("*.md")):
+    for f in sorted((REPO / "notes").glob("*.md")):
         text += f.read_text(encoding="utf-8", errors="ignore") + "\n\n"
     if not text:
         text = "The quick brown fox jumps over the lazy dog. " * 5000

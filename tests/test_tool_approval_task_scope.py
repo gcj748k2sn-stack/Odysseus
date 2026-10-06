@@ -348,7 +348,7 @@ def test_route_context_agent_frontend_and_cache_bust_wire_the_contract():
     assert "CHAT_SESSION_APPROVAL_CONTEXT_MARKER" in models
 
     # Merged fork (2026-10-06): first-party module URLs carry no ?v= at all —
-    # one URL per module, so no module can load twice (fork docs/todo.md
+    # one URL per module, so no module can load twice (fork notes/todo.md
     # item 54, "New Chat sent the next message into the previously open
     # chat"), and /static serves .js with Cache-Control: no-cache
     # (app.py _RevalidatingStatic), so a fresh chat.js cannot pair with a

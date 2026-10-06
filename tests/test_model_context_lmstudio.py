@@ -16,7 +16,7 @@ Fix under test: for local endpoints, after `/slots`, read LM Studio's native
 ⚠️ The payloads below follow LM Studio's documented response shape, with model
 keys taken from this machine's `~/.lmstudio/.internal/model-data.json`. They are
 NOT a recorded response — the live check is the `LM Studio reports loaded
-context` line in app.log (docs/todo.md, "LM Studio's loaded context is invisible
+context` line in app.log (notes/todo.md, "LM Studio's loaded context is invisible
 to Odysseus").
 """
 

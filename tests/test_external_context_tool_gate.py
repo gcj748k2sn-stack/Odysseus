@@ -1374,7 +1374,7 @@ def test_frontend_tool_approval_uses_opaque_id_and_fixed_decisions():
     assert "approval_id: approval.approval_id" in skills
     assert "['approve', 'Allow once'" in skills
     # Merged fork (2026-10-06): first-party module URLs carry no ?v= at all —
-    # one URL per module, so no module can load twice (fork docs/todo.md
+    # one URL per module, so no module can load twice (fork notes/todo.md
     # item 54, "New Chat sent the next message into the previously open
     # chat"), and /static serves .js with Cache-Control: no-cache
     # (app.py _RevalidatingStatic), so a fresh chat.js cannot pair with a

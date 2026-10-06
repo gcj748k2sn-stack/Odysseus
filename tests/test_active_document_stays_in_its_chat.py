@@ -1,5 +1,5 @@
 """A document named from another chat is used for the turn, not moved there
-(docs/todo.md item 62, server half).
+(notes/todo.md item 62, server half).
 
 Seen 2026-10-05 23:31 and 23:38: `routes/chat_routes.py` logged "cross-session
 active_doc_id … accepting and rebinding" and set the document's session_id to

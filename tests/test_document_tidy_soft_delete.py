@@ -1,4 +1,4 @@
-"""The document tidy must never destroy a row — docs/todo.md item 32.
+"""The document tidy must never destroy a row — notes/todo.md item 32.
 
 On 2026-07-30 the duplicate pass hard-deleted 8 documents in a single run
 (`task_runs.ad505282`: *"Removed 8 of 70 … (+8 duplicate copies) · 62 kept"*).

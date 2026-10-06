@@ -1,12 +1,12 @@
 """Check a generated document against facts that were established once and written down.
 
-docs/todo.md item 2b, and the second half of the split described in item 2a.
+notes/todo.md item 2b, and the second half of the split described in item 2a.
 ``document_fidelity`` asks whether a document matches *the data it was handed*;
 this module asks whether it matches *reality* — for the narrow set of facts
 someone has already paid to establish.
 
 **The motivating measurement, because it shapes the design.** Six same-task
-runs were scored against cultivation sources (``docs/resolvedissues.md``, "4B
+runs were scored against cultivation sources (``notes/resolvedissues.md``, "4B
 retired"). The plain "create a document" run came out closest to correct. The
 run that was asked for "fact checked infos", and fetched four sources to get
 them, came out worst — fruiting at 14–21 °C on a tropical species, which is the

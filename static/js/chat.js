@@ -1514,7 +1514,7 @@ import { loadPanel } from './panels.js';
     // first-token wait timers, so they must live in this scope. A `const`
     // inside the try is invisible there: the error handler threw
     // `ReferenceError: streamingTTS is not defined` before showing the error
-    // (docs/todo.md, "A failed send throws inside its own error handler").
+    // (notes/todo.md, "A failed send throws inside its own error handler").
     let abortCtrl = null;
     let _isAgent = false;
     let streamingTTS = false;

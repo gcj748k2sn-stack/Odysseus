@@ -1,4 +1,4 @@
-"""The save path must not reclassify answer text as reasoning — docs/todo.md item 6.
+"""The save path must not reclassify answer text as reasoning — notes/todo.md item 6.
 
 `_normalize_thinking` exists to move *inline* reasoning into the thinking panel
 for models that emit it untagged. Its fallbacks chose the split point by

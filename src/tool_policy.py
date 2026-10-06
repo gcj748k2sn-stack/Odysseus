@@ -18,7 +18,7 @@ GUIDE_ONLY_DIRECTIVE = (
 
 WEB_TOOL_NAMES = frozenset({"web_search", "web_fetch"})
 
-# ── Built-in browser (Playwright MCP) — docs/todo.md item 51 ─────────────────
+# ── Built-in browser (Playwright MCP) — notes/todo.md item 51 ─────────────────
 # The browser server exposes ~31 tools (≈6k tokens of schemas plus ≈1.5k of
 # prompt text, measured 2026-10-04 against @playwright/mcp 1.64). Two rules:
 #   * ``BROWSER_SERVER_ID`` in a disabled-tools list switches the whole server

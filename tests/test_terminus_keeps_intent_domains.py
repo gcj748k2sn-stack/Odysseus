@@ -1,7 +1,7 @@
 """A LAN address in the prompt must not delete the document tools, and must
 not turn the request into machine work.
 
-docs/todo.md, *"A LAN address in the prompt deletes every document tool"*.
+notes/todo.md, *"A LAN address in the prompt deletes every document tool"*.
 *"create a document with temperature and humidity data from
 http://192.168.0.185"* produced no document, three times (2026-07-29): the
 named-machine alternative of ``_LOCAL_COMPUTER_REFERENCE_RE`` accepted

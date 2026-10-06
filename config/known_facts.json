@@ -1,7 +1,7 @@
 {
   "_README": [
     "Written-down ground truth that a generated document must not contradict.",
-    "docs/todo.md item 2b. This is a FIXTURE, not configuration: every entry",
+    "notes/todo.md item 2b. This is a FIXTURE, not configuration: every entry",
     "should come from an observed failure and should cite where the truth was",
     "established, so a later reader can re-argue the fact rather than trusting",
     "this file.",
@@ -16,7 +16,7 @@
     "verdict; this file is the part that can actually be checked.",
     "",
     "REPORT-ONLY, like config/field_semantics.json. Findings reach the closing",
-    "summary and nothing else. See docs/todo.md item 8 before changing that.",
+    "summary and nothing else. See notes/todo.md item 8 before changing that.",
     "",
     "  identify      the document is only checked if one of these appears in it",
     "  ranges        numeric ground truth, per phase, in celsius / percent / ppm",
@@ -27,7 +27,7 @@
     {
       "id": "pleurotus_djamor",
       "name": "Pink oyster (Pleurotus djamor)",
-      "source": "docs/resolvedissues.md, \"4B retired -- 2026-07-18\". Established by scoring six same-task runs against cultivation sources, not by a single lookup.",
+      "source": "notes/resolvedissues.md, \"4B retired -- 2026-07-18\". Established by scoring six same-task runs against cultivation sources, not by a single lookup.",
       "identify": [
         "pink oyster",
         "pleurotus djamor",

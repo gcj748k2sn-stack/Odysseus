@@ -1123,7 +1123,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
    * clean conversation at all: switching sessions clears the editor selection,
    * so there is no carry-across either. Sessions accumulated eleven prompts on
    * 2026-07-28 partly this way, and same-prompt comparisons are impossible
-   * when every run inherits the previous run's history (docs/todo.md item 20,
+   * when every run inherits the previous run's history (notes/todo.md item 20,
    * the step-0 protocol).
    *
    * The two existing calls in the right order are the whole implementation:
@@ -1212,7 +1212,7 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
           // `baseTitle` is computed above (including the (2)/(3) dedup) and was
           // then never sent — `DocumentCreate.title` defaults to "Untitled", so
           // every cloned document was called Untitled regardless of its source.
-          // Fixed 2026-07-29; see docs/todo.md item 23.
+          // Fixed 2026-07-29; see notes/todo.md item 23.
           title: baseTitle,
           // Preserve the source's type; default to markdown when unknown
           // (the backend also sniffs, but this keeps the tab label correct).

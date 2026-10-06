@@ -1,4 +1,4 @@
-"""Leaving a chat leaves its document (docs/todo.md item 62).
+"""Leaving a chat leaves its document (notes/todo.md item 62).
 
 Seen 2026-10-05 23:31 and 23:38: the "Pink Oyster" document open in the editor
 moved from chat to chat. "New Chat" (`createDirectChat`) and switching to a

@@ -90,7 +90,7 @@ def _explicit_active_document(db, active_doc_id: str, session: str, user):
     """The document the frontend named as active, scoped to the caller — or None.
 
     A document from ANOTHER chat is used for this turn and left where it is
-    (docs/todo.md item 62). This used to rebind it — `session_id = session`
+    (notes/todo.md item 62). This used to rebind it — `session_id = session`
     plus a commit — "so future turns find it via the session-fallback path",
     trusting that the frontend only sends documents visible in the UI. New
     Chat and switching to a chat without documents kept the previous chat's
@@ -342,7 +342,7 @@ _RECENT_WEB_CONTEXT_RE = re.compile(
     r"price|current|latest|search|look\s+up|online)\b",
     re.I,
 )
-# Shared with the agent loop's browser gate (docs/todo.md item 51). The pattern
+# Shared with the agent loop's browser gate (notes/todo.md item 51). The pattern
 # this replaced matched bare "click"/"fill"/"submit"/"automation", so a "yes"
 # after any ESP32/home-automation or "fill index.html" exchange read as a
 # browser follow-up and forced the browser tools in.
@@ -364,7 +364,7 @@ _BROWSER_MCP_TOOLS = {
 # For DISABLING: the server-wide token makes the agent loop withhold every
 # browser tool, not just the 12 named above — the connected server exposes 31,
 # incl. browser_run_code_unsafe, and 19 of them used to slip past these
-# denylists (docs/todo.md item 51). _BROWSER_MCP_TOOLS stays the FORCE set.
+# denylists (notes/todo.md item 51). _BROWSER_MCP_TOOLS stays the FORCE set.
 _BROWSER_DISABLE = _BROWSER_MCP_TOOLS | {BROWSER_SERVER_ID}
 
 

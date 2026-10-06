@@ -1447,7 +1447,7 @@ _THINKING_MODEL_PATTERNS = (
     "qwen3", "qwq", "deepseek-r1", "deepseek-reasoner", "deepseek-v4",
     "minimax", "m2-reap", "gemma", "stepfun", "step-3", "step3",
     "magistral", "mistral-small", "mistral-medium",
-    # "nemotron" added 2026-08-01 — docs/todo.md item 44. Its absence meant no
+    # "nemotron" added 2026-08-01 — notes/todo.md item 44. Its absence meant no
     # thinking suppression was ATTEMPTED for the utility model, and the
     # measurement says that cost ~220 tokens of a 200-token budget:
     # `/api/documents/ai-tidy` returned `finish_reason=length chars=0` every
@@ -1481,7 +1481,7 @@ def _is_qwen_thinking_model(model: str) -> bool:
 
 
 # Models known to accept `reasoning_effort` on Ollama's /v1 endpoint.
-# docs/todo.md item 44. Deliberately a SUPERSET of the Qwen list rather than a
+# notes/todo.md item 44. Deliberately a SUPERSET of the Qwen list rather than a
 # rename: `_is_qwen_thinking_model` also gates the agent/streaming path, where
 # widening the set would change chat behaviour, and this fault is on the
 # utility path only. Keep the two separate until something measures the other.
@@ -2526,7 +2526,7 @@ async def llm_call_async(
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
             # `_accepts_reasoning_effort`, not `_is_qwen_thinking_model`:
-            # docs/todo.md item 44. This is the UTILITY path (naming, summaries,
+            # notes/todo.md item 44. This is the UTILITY path (naming, summaries,
             # tidy verdicts) where thinking is pure token waste, and the
             # utility model was excluded from suppression purely because
             # "nemotron" was in neither pattern list. The agent/streaming gates
@@ -2599,7 +2599,7 @@ async def llm_call_async(
                             response = text_part or msg.get("reasoning_content") or ""
                     else:
                         response = content or msg.get("reasoning_content") or ""
-                    # [finish-reason] report-only — docs/todo.md item 41.
+                    # [finish-reason] report-only — notes/todo.md item 41.
                     # `llm_call_async` returns the text (plus the model id only
                     # with `return_model_metadata`), so the only channel for this
                     # is the log; changing the return type would touch every
@@ -2656,7 +2656,7 @@ async def llm_call_async(
             # `str(httpx.ReadTimeout())` is EMPTY, so these lines read
             # "... after 30.02s: " with no reason at all — indistinguishable
             # from a failure whose message got lost. Name the type.
-            # docs/todo.md item 44.
+            # notes/todo.md item 44.
             logger.warning(f"LLM async read timed out after {duration:.2f}s: {type(e).__name__}: {e or '(no message)'}")
             if attempt >= max_retries:
                 raise HTTPException(504, f"POST {target_url} timed out after {max_retries} attempts")
@@ -3258,7 +3258,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     _harmony_active = False       # sticky: gpt-oss harmony <|channel|> stream detected
     _actual_model = ""
     _actual_model_announced = False
-    # [finish-reason] report-only — docs/todo.md item 41. Without this a
+    # [finish-reason] report-only — notes/todo.md item 41. Without this a
     # generation that stopped at the token cap is indistinguishable from one
     # that finished, and every claim about output length is unfalsifiable.
     # Carried on the `usage` event rather than a new SSE type so nothing new
@@ -3388,7 +3388,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                             _usage_data["gen_tps"] = round(_tm["predicted_per_second"], 2)
                                         if _tm.get("prompt_per_second"):
                                             _usage_data["prefill_tps"] = round(_tm["prompt_per_second"], 2)
-                                    # [prompt-cache] report-only — docs/todo.md items 40/57/58.
+                                    # [prompt-cache] report-only — notes/todo.md items 40/57/58.
                                     # How much of this request's prompt the server reused from
                                     # its KV cache, and how much it had to process now.
                                     _usage_data.update(_prompt_cache_fields(j))

@@ -33,7 +33,7 @@ class DocumentUpdate(BaseModel):
     # Optimistic-concurrency guard: the version_count the client's content is
     # based on. If the server has moved past it (e.g. an AI tool wrote a new
     # version), the PUT is rejected with 409 instead of silently overwriting
-    # the newer content. See docs/resolvedissues.md, "Autosave reverting AI
+    # the newer content. See notes/resolvedissues.md, "Autosave reverting AI
     # edits" — where this guard is also shown NOT to have been the cause of
     # that data loss (a duplicated doc_update event was); it passed the CAS
     # legitimately. Keep it anyway: it is the only lost-update guard here.
@@ -192,7 +192,7 @@ def _locate_upload(
     against this wrapper, so if it ever grows a body of its own those
     assertions stop covering the live guard while staying green. That is
     exactly how ``_public_http_url`` stranded its own SSRF tests; see
-    docs/resolvedissues.md, *"Tests asserting a security property nothing
+    notes/resolvedissues.md, *"Tests asserting a security property nothing
     enforced"*.
     """
     if upload_handler is None:

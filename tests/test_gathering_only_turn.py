@@ -19,7 +19,7 @@ was non-empty, so read-only turns fell straight through to
 Scope note: this guard covers the EMPTY-response case only. Runs f14a8f52 and
 1ca0cdc0 wrote a dangling promise ("Let me first explore your workspace…") and
 then stopped — non-empty response, so nothing here fires. That is a
-stops-early problem, tracked separately in docs/todo.md.
+stops-early problem, tracked separately in notes/todo.md.
 """
 
 import json

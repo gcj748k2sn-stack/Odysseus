@@ -1,9 +1,9 @@
 """The document *reporting* path must not be gated on the finetune model.
 
-docs/todo.md, *"Closing summary under-reports, and sometimes says nothing"*
+notes/todo.md, *"Closing summary under-reports, and sometimes says nothing"*
 (item 7 as of 2026-07-28; this docstring cited **#2** until then, which is the
 unrelated fact-check-inversion item — cite by title, numbers rot).
-Closed diagnosis: docs/resolvedissues.md, *"The document reporting path was dead
+Closed diagnosis: notes/resolvedissues.md, *"The document reporting path was dead
 code on the current model — split gate"*.
 
 `_doc_tool_summary()` sat behind
@@ -153,7 +153,7 @@ def test_report_data_is_built_for_every_model():
         assert "_ody_doc_finetune_mode" not in guards, (
             "the document report payload is gated on _ody_doc_finetune_mode again — "
             "that makes the closing summary and stale-value warning dead code on "
-            "every model except the Odysseus finetune. See docs/todo.md, \"Closing summary under-reports\"."
+            "every model except the Odysseus finetune. See notes/todo.md, \"Closing summary under-reports\"."
         )
 
 
@@ -170,7 +170,7 @@ def test_loop_break_stays_gated_on_the_finetune_model():
         assert "_ody_doc_finetune_mode" in _guard_names(assign, tree), (
             "the loop break is no longer gated on _ody_doc_finetune_mode — "
             "this stops the agent at the first successful document tool for "
-            "every model. See docs/todo.md, \"Closing summary under-reports\"."
+            "every model. See notes/todo.md, \"Closing summary under-reports\"."
         )
 
 

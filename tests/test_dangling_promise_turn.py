@@ -3,7 +3,7 @@
 `tests/test_gathering_only_turn.py` covers the EMPTY-response case and closes
 with a scope note: *"Runs f14a8f52 and 1ca0cdc0 wrote a dangling promise … and
 then stopped — non-empty response, so nothing here fires. That is a stops-early
-problem, tracked separately."* This is that problem — docs/todo.md item 8.
+problem, tracked separately."* This is that problem — notes/todo.md item 8.
 
 Observed again, and measured, on run 4e217ae0 turn 3 (2026-07-19). The user
 asked "fact check and correct the document" for the second time. The model

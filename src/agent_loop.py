@@ -116,7 +116,7 @@ def _apply_browser_disable(disabled_tools: Set[str], mcp_disabled_map: Dict[str,
     ``mcp__builtin_browser__<tool>`` — so the server-wide token that the admin
     panel, the per-user ``can_use_browser`` privilege and ``manage_settings``
     ("disable browser") write used to disable nothing. Expanding it here, once,
-    makes all of those checks see the real names. docs/todo.md item 51.
+    makes all of those checks see the real names. notes/todo.md item 51.
     Returns True when the browser is disabled for this turn.
     """
     if BROWSER_SERVER_ID not in disabled_tools:
@@ -242,7 +242,7 @@ def _gathering_only_notice(tool_events: list) -> str:
 # discarded. Reporting these here would build a line the user never sees.
 #
 # The cost is a real gap: a `manage_notes` **create** is a side effect and
-# stays unreported. Recorded in docs/todo.md item 11 rather than papered over
+# stays unreported. Recorded in notes/todo.md item 11 rather than papered over
 # — the honest scope is "every side-effecting tool except the five whose
 # output is already the reply".
 _SELF_REPORTING_TOOLS = frozenset({
@@ -275,7 +275,7 @@ def _first_line(text: Any, limit: int = 180) -> str:
 def _side_effect_tool_summary(tool_events: list, failures_only: bool = False) -> str:
     """Closing report for a turn that ran a side-effecting NON-document tool.
 
-    docs/todo.md item 11. `_doc_tool_summary` is the model: derive the report
+    notes/todo.md item 11. `_doc_tool_summary` is the model: derive the report
     from the tool result rather than spending another model round on it.
 
     **Session 57dcd968, 2026-07-28.** Asked for *"a document with temperature
@@ -373,7 +373,7 @@ def _stream_error_detail(chunk: str) -> str:
 
 
 def _stream_failure_notice(stream_errors: list, tool_events: Optional[list] = None) -> str:
-    """Notice for a turn whose stream errored — docs/todo.md 9b.
+    """Notice for a turn whose stream errored — notes/todo.md 9b.
 
     Run fd0f9ba0, 2026-07-28: 380 seconds, then
     `{"error": "Read timeout", "status": 504}`. The warning went to `app.log`
@@ -582,7 +582,7 @@ def _doc_edit_retry_directive(tool: str, attempt: int) -> str:
     already does the former by setting `all_tool_schemas = []`.
 
     The mechanical backstop is still the end-of-turn guard, which refuses to
-    let a turn end silently after an unresolved edit failure. See docs/todo.md,
+    let a turn end silently after an unresolved edit failure. See notes/todo.md,
     *Notes & constraints*, for why the retracted version mattered: it is the
     stated reason item 8's active half was built as a text nudge, and that
     nudge wiped a 6,186-character document.
@@ -631,7 +631,7 @@ def _closing_doc_summary(
 ) -> tuple:
     """Closing line for a turn that changed a document but said nothing about it.
 
-    The model-agnostic half of the split gate — docs/todo.md, "Closing summary
+    The model-agnostic half of the split gate — notes/todo.md, "Closing summary
     under-reports, and sometimes says nothing" (item 7; this cited **#2** until
     2026-07-28, which is the unrelated wrong-numbers item). The finetune
     path synthesizes this at its loop break; every other model reached the end
@@ -786,7 +786,7 @@ def _doc_tool_summary(info: Dict[str, Any], warnings_only: bool = False) -> str:
     # Same principle one level up: the document disagrees with the data it was
     # built from. Across two recorded runs, 239 of 240 cells were transcribed
     # correctly and both documents were still wrong — a raw PWM register
-    # printed as a duty cycle. See docs/todo.md item 2a.
+    # printed as a duty cycle. See notes/todo.md item 2a.
     fidelity = info.get("fidelity") or []
     if fidelity:
         shown = "\n".join(f"- {f}" for f in fidelity[:4])
@@ -799,7 +799,7 @@ def _doc_tool_summary(info: Dict[str, Any], warnings_only: bool = False) -> str:
 
     # And against facts that were established once and written down. Separate
     # from `fidelity` on purpose: a document can match its source perfectly and
-    # still be wrong about the world, which is docs/todo.md item 2b. The wording
+    # still be wrong about the world, which is notes/todo.md item 2b. The wording
     # is deliberately flat — the failure this catches is a document that wears
     # the authority of a fact-check while carrying the wrong species' numbers,
     # so the report must not sound like one either.
@@ -1899,7 +1899,7 @@ _EXPLICIT_WORKSPACE_REFERENCE_RE = re.compile(
 # the configured Cookbook servers and SSH aliases (src/named_machines.py): a
 # third alternative here used to accept `on|from` + ANY word, which sent
 # "data from http://…", "a report on climate change" and "from wikipedia" down
-# the Terminus branch (docs/todo.md item 27, fix b).
+# the Terminus branch (notes/todo.md item 27, fix b).
 _LOCAL_COMPUTER_REFERENCE_RE = re.compile(
     r"\b(?:on|from|in|using|with)\s+(?:this|my|the)\s+(?:computer|machine|pc|laptop|device|system)\b"
     r"|\b(?:local|host)\s+(?:computer|machine|files?|system)\b",
@@ -1942,7 +1942,7 @@ def _looks_like_local_computer_request(text: str, machine_names=None) -> bool:
 
 def _format_prompt_cache(pc: Optional[Dict[str, Any]]) -> str:
     """` prompt_tokens=… cache_n=… prompt_n=… prompt_ms=…` for the
-    round_stream_done line (docs/todo.md items 40/57/58). `?` where the
+    round_stream_done line (notes/todo.md items 40/57/58). `?` where the
     backend reported nothing; `cached_tokens=` only when an OpenAI-style
     server sent it."""
     pc = pc or {}
@@ -1964,7 +1964,7 @@ def _terminus_toolset(intent_domains) -> set:
     named-machine alternative (`from http`; since fix b only configured
     machines count, see src/named_machines.py), the classifier
     had already said domains=['documents', 'web'], and the model was left with
-    write_file — it wrote to /tmp and reported success (docs/todo.md, "A LAN
+    write_file — it wrote to /tmp and reported success (notes/todo.md, "A LAN
     address in the prompt deletes every document tool"). It also dropped the
     Cookbook tools that _local_computer_rules() tells the model to use for a
     named machine. Retrieval noise is still dropped; only intent domains stay.
@@ -2360,7 +2360,7 @@ def _vague_turn_keeps_active_document(
     A short confirmation ("yes and include sources") classifies low_signal /
     continuation with no domains, so document-edit tools got stripped and the
     model created a DUPLICATE document instead of updating the active one
-    (observed live 2026-07-17; docs/resolvedissues.md, "Active-doc turns losing
+    (observed live 2026-07-17; notes/resolvedissues.md, "Active-doc turns losing
     edit tools on low-signal input" — fixed 2026-07-18). With a document
     open, a vague or continuation turn in an existing conversation almost
     always refers to that document. Casual greetings ("hey") stay excluded.
@@ -3838,7 +3838,7 @@ def _append_tool_results(
     so every tool round of the current turn keeps its own reasoning. It never
     reaches a provider directly — ``_sanitize_llm_messages`` drops unknown keys —
     except through ``_map_reasoning_for_ollama_compat`` in ``src/llm_core.py``,
-    which turns it into Ollama's ``reasoning`` field. docs/todo.md, *"The model
+    which turns it into Ollama's ``reasoning`` field. notes/todo.md, *"The model
     finishes the job in the reasoning channel"*: Ollama's /v1 reads only
     ``reasoning`` (never ``reasoning_content``), so without this every earlier
     round reached Qwen 3.5 as an empty ``<think></think>`` block — the
@@ -4024,11 +4024,11 @@ def _compute_final_metrics(
     if backend_prefill_tps and backend_prefill_tps > 0:
         metrics["prefill_tps"] = round(backend_prefill_tps, 2)
     # A turn that failed must not be readable as a turn that was slow.
-    # docs/todo.md 9b. Absence means the stream raised nothing — same
+    # notes/todo.md 9b. Absence means the stream raised nothing — same
     # convention as item 17's cache flag, where absence means live.
     if stream_errors:
         metrics["stream_errors"] = stream_errors
-    # [finish-reason] docs/todo.md item 41 — same convention, one row up.
+    # [finish-reason] notes/todo.md item 41 — same convention, one row up.
     # Absence means the provider reported nothing, NEVER "it finished cleanly".
     # Per ROUND, because `max_tokens` is per round and a turn total cannot say
     # which round was clipped.
@@ -4046,7 +4046,7 @@ def _compute_final_metrics(
     # `round_texts` was nested under `tool_events` and so was absent from every
     # turn that called no tools — which are exactly the turns where it is the
     # only thing that answers the question. It is the discriminator between
-    # docs/todo.md item 6 (the save path deleted the answer) and item 8 (the
+    # notes/todo.md item 6 (the save path deleted the answer) and item 8 (the
     # model stopped writing): both produce a short, truncated-looking message,
     # and comparing the round text against the saved content is what separates
     # them. Run fd0f9ba0 on 2026-07-28 could not be classified for that reason.
@@ -4431,7 +4431,7 @@ async def stream_agent_loop(
     _existing_conversation = _user_turn_count(messages) > 1
     _active_document_relevant = _turn_targets_active_document(_intent, _last_user, active_document)
     # Never strip document-edit tools on a vague or continuation turn while a
-    # document is open — see helper docstring, and docs/resolvedissues.md,
+    # document is open — see helper docstring, and notes/resolvedissues.md,
     # "Active-doc turns losing edit tools on low-signal input".
     if not _active_document_relevant and _vague_turn_keeps_active_document(
         _intent, _last_user, active_document, _existing_conversation
@@ -4943,7 +4943,7 @@ async def stream_agent_loop(
             _relevant_tools = set(ALWAYS_AVAILABLE)
         _relevant_tools.update(forced_set)
 
-    # Browser gate (docs/todo.md item 51). Retrieval alone does not count as
+    # Browser gate (notes/todo.md item 51). Retrieval alone does not count as
     # browser intent — "oh hi mark" retrieved browser_hover, and expansion then
     # sent all 31 browser tools. The browser goes out when the route forced it
     # (its own intent check, incl. short follow-ups after a form/browser turn)
@@ -5245,7 +5245,7 @@ async def stream_agent_loop(
             disabled_tools,
             needs_admin=_needs_admin,
             relevant_tools=route_tools,
-            # Browser gate (docs/todo.md item 51): the per-route prompt gets the
+            # Browser gate (notes/todo.md item 51): the per-route prompt gets the
             # map with the browser server withheld unless the turn asked for it.
             mcp_disabled_map=_prompt_mcp_disabled_map,
             compact=is_api or is_native_ollama or is_ollama_compat,
@@ -5340,7 +5340,7 @@ async def stream_agent_loop(
     time_to_first_token = None
     first_token_received = False
     _stream_errors = []  # error events from stream_llm, persisted into metrics
-    # [finish-reason] per-round completion reasons — docs/todo.md item 41.
+    # [finish-reason] per-round completion reasons — notes/todo.md item 41.
     # Same convention as _stream_errors: an empty list means nothing was
     # reported, NOT that every round finished cleanly.
     _round_finish_reasons = []
@@ -5951,7 +5951,7 @@ async def stream_agent_loop(
                     time.time() - _round_start,
                     chunk[:500],
                 )
-                # Keep it, don't just log it. docs/todo.md 9b: run fd0f9ba0
+                # Keep it, don't just log it. notes/todo.md 9b: run fd0f9ba0
                 # ended on `{"error": "Read timeout", "status": 504}` after
                 # 380 s, and `app.db` recorded a turn that merely looked slow —
                 # 29 tokens, 0.09 tok/s — with nothing to say the request had
@@ -6082,7 +6082,7 @@ async def stream_agent_loop(
                             "prompt_tokens": round_input,
                             **{k: u[k] for k in ("cache_n", "prompt_n", "prompt_ms", "cached_tokens") if k in u},
                         }
-                        # [finish-reason] report-only — docs/todo.md item 41.
+                        # [finish-reason] report-only — notes/todo.md item 41.
                         # Recorded per round, because `max_tokens` is per round:
                         # a turn total cannot say which round was clipped.
                         if u.get("finish_reason"):
@@ -7265,7 +7265,7 @@ async def stream_agent_loop(
             # Persist ALWAYS, not only on failure: c7da3649 SUCCEEDED with
             # "v5, 2 edit(s)" while silently skipping a third FIND block inside
             # the same call, and a failure-only rule would have discarded
-            # exactly that case. See docs/todo.md, "Failures aren't replayable".
+            # exactly that case. See notes/todo.md, "Failures aren't replayable".
             if is_doc_tool:
                 tool_event["full_command"] = _cap_persisted_command(full_command)
             if result.get("image_url"):
@@ -7281,7 +7281,7 @@ async def stream_agent_loop(
                 tool_event["diff"] = result["diff"]
             # A cache hit and a live fetch were previously identical in the
             # record — same shape, same exit_code — so a run read back from
-            # app.db could not be told apart. See docs/todo.md, "A cache hit is
+            # app.db could not be told apart. See notes/todo.md, "A cache hit is
             # indistinguishable from a live fetch". Absence of the key means the
             # fetch left the machine.
             if result.get("cached"):
@@ -7349,7 +7349,7 @@ async def stream_agent_loop(
                 # break, which would kill the unprompted create_document →
                 # edit_document self-correction this model does (run b5fe4ef5
                 # turn 1). Reporting is safe for everyone; breaking the loop is
-                # not. See docs/todo.md, "Closing summary under-reports".
+                # not. See notes/todo.md, "Closing summary under-reports".
                 #
                 # ACCUMULATE, don't replace. A correction turn routinely runs
                 # several edit rounds, and the user needs the total, not the
@@ -7377,7 +7377,7 @@ async def stream_agent_loop(
                 # source arrived from a web_fetch several rounds earlier and
                 # only the loop can see both. That placement also means it
                 # covers update_document, which bypasses the tool-local
-                # stale-value lint entirely (docs/todo.md item 3).
+                # stale-value lint entirely (notes/todo.md item 3).
                 #
                 # Report-only. Item 8's retry nudge destroyed a 6186-character
                 # document by telling an idle model to act, and a checker that
@@ -7399,7 +7399,7 @@ async def stream_agent_loop(
                 # placement, same report-only rule, different question — 2a asks
                 # whether the document agrees with the data it was handed, this
                 # asks whether it agrees with facts established once and written
-                # down (docs/todo.md item 2b). It exists because the model's own
+                # down (notes/todo.md item 2b). It exists because the model's own
                 # fact-check step made documents measurably worse: the run that
                 # was asked for verified information, and fetched four sources,
                 # produced the wrong species' temperature range and called
@@ -7587,7 +7587,7 @@ async def stream_agent_loop(
             )
 
     # And the third shape: the turn ran a tool that CHANGED something outside a
-    # document, and said nothing about it — docs/todo.md item 11. Session
+    # document, and said nothing about it — notes/todo.md item 11. Session
     # 57dcd968 wrote nothing to disk because `write_file` was refused, and the
     # user saw only the preamble. `_gathering_only_notice` above cannot reach
     # it (a mutating tool ran), `_doc_tool_summary` cannot (no document tool).

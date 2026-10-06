@@ -1,4 +1,4 @@
-"""Acceptance gate for docs/todo.md item 2a.
+"""Acceptance gate for notes/todo.md item 2a.
 
 Driven by two **real recorded runs**, extracted from `app.db` into
 `tests/fixtures/document_fidelity/` so the gate does not depend on a

@@ -1,4 +1,4 @@
-"""Acceptance gate for docs/todo.md item 2b.
+"""Acceptance gate for notes/todo.md item 2b.
 
 Three **real recorded documents**, extracted from `app.db` into
 `tests/fixtures/known_facts/` so the gate does not depend on a machine-local,
@@ -186,7 +186,7 @@ def test_every_contradiction_cites_where_it_was_seen(djamor):
 def test_the_ground_truth_matches_what_resolvedissues_records(djamor):
     """Pin the numbers, so a later edit to the fixture is a deliberate act.
 
-    Source: docs/resolvedissues.md, "4B retired" — colonization 24-29 °C,
+    Source: notes/resolvedissues.md, "4B retired" — colonization 24-29 °C,
     fruiting 20-30 °C with no cold shock, RH 85-95 %, CO2 500-800 ppm.
     """
     by_fact = {r["fact"]: r for r in djamor["ranges"]}

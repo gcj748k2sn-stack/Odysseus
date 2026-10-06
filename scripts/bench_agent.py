@@ -818,7 +818,7 @@ def cmd_report(args):
              "on purpose (reproducible, and no background extraction competing for the model).")
     L.append("- A failure with *tool not offered* is Odysseus's tool selection, not the model.")
     L.append("- Sampling settings are whatever each endpoint gets with no preset (Bonsai 2 relies on the "
-             "no-preset `temp=1.0`, see docs/todo.md).")
+             "no-preset `temp=1.0`, see notes/todo.md).")
 
     text = "\n".join(L) + "\n"
     if args.out:

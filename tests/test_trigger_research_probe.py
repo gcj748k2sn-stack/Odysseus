@@ -4,7 +4,7 @@ Seen 2026-10-04 20:00:12, session cdb89980: the tool returned *"Deep research
 started"* (exit_code 0) and 8 ms later the background task logged
 ``Probe failed for qwen/qwen3.5-9b: 503: Cannot reach http://localhost:1234``.
 The probe ran inside the background task, after the HTTP route had already
-answered, so the agent planned around a run that never existed (docs/todo.md,
+answered, so the agent planned around a run that never existed (notes/todo.md,
 *"trigger_research reports success when the research model is down"*).
 
 Now the tool asks ``/api/research/start`` to wait for the probe

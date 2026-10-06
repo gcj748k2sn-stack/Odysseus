@@ -5,7 +5,7 @@ and an 851-character "## Base rules" block at ~776. Python keeps the second, so
 the first has never reached a model. Nothing failed; the module imports, the
 suite is green, and the rules read as live to anyone grepping the file.
 
-That is the docs/todo.md item 16 shape — *a green suite asserting a property
+That is the notes/todo.md item 16 shape — *a green suite asserting a property
 nothing enforces* — applied to the system prompt. It matters because open items
 were being reasoned about as if those rules were in force:
 

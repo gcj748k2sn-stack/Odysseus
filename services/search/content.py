@@ -34,7 +34,7 @@ def _is_private_address(addr):
 
 
 # The SSRF policy — including the two-tier LAN opt-in (WEB_FETCH_BLOCK_PRIVATE_IPS,
-# docs/resolvedissues.md "web_fetch could not reach the LAN") — lives in
+# notes/resolvedissues.md "web_fetch could not reach the LAN") — lives in
 # src/outbound_fetch.py since upstream moved the transport there (#5953). These
 # wrappers keep this module's names, and resolve through this module's
 # ``_resolve_hostname_ips`` / ``_resolve_public_ips`` so tests that monkeypatch
@@ -248,7 +248,7 @@ _NEGATIVE_CACHE_MAX_ENTRIES = 512
 # url -> (status, error_text, stored_at). Ordered so the eviction below is
 # oldest-first. In memory rather than on disk: it clears on restart, it cannot
 # be poisoned by a stray script the way data/cache/content/ once was (see
-# docs/qwensetup.md, "never call fetch_webpage_content() against the live
+# notes/qwensetup.md, "never call fetch_webpage_content() against the live
 # tree"), and there is nothing to clean up.
 _negative_cache: "OrderedDict[str, tuple]" = OrderedDict()
 
@@ -377,7 +377,7 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
                 #
                 # Copied, not mutated in place: `cached_data["data"]` is the
                 # dict just parsed from the cache file, and callers are free to
-                # keep it. See docs/todo.md, "A cache hit is indistinguishable
+                # keep it. See notes/todo.md, "A cache hit is indistinguishable
                 # from a live fetch".
                 served = dict(cached_data["data"])
                 served["cached"] = True

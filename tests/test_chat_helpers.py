@@ -179,7 +179,7 @@ def _manifest_test_dir(name):
     # _tool_path_roots() — which is the only reason the tool_path_extra_roots
     # patch below discriminates. Under tmp_path every assertion still passes
     # and the patch stops mattering, i.e. the test goes green for a weaker
-    # reason. See docs/todo.md items 25 and 26, and CLAUDE.md §4.
+    # reason. See notes/todo.md items 25 and 26, and CLAUDE.md §4.
     root = Path(__file__).resolve().parents[1] / "tmp_pytest_probe" / f"{name}-{uuid.uuid4().hex}"
     root.mkdir(parents=True, exist_ok=False)
     return root
@@ -191,7 +191,7 @@ def _cleanup_manifest_dir(root):
     ``shutil.rmtree(root, ignore_errors=True)`` reads as "cleanup is handled"
     and means "cleanup may or may not have happened, and you will not be
     told". Four fixture directories accumulated in the repo root that way
-    (docs/todo.md item 26): a sandboxed run cannot unlink under the mount, the
+    (notes/todo.md item 26): a sandboxed run cannot unlink under the mount, the
     rmtree raised ``PermissionError``, and the flag discarded it.
 
     This must not fail the test — the sandbox genuinely cannot delete, and that

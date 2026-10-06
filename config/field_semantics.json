@@ -5,7 +5,7 @@
     "should come from an observed failure, and should say what the wrong reading",
     "looks like so the checker can recognise it.",
     "",
-    "Why this file exists (docs/todo.md item 2a): across two runs the agent",
+    "Why this file exists (notes/todo.md item 2a): across two runs the agent",
     "transcribed 239 of 240 table cells correctly and still produced a wrong",
     "document, because it selected the wrong FIELD. Every digit of the bad value",
     "was copied faithfully from the source, so a source-to-document diff cannot",

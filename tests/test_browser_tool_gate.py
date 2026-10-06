@@ -1,6 +1,6 @@
 """The built-in browser goes out only when asked for, and can be switched off.
 
-docs/todo.md item 51. Measured 2026-10-04: the built-in Playwright MCP server
+notes/todo.md item 51. Measured 2026-10-04: the built-in Playwright MCP server
 exposes 31 tools (~6k tokens of schemas, ~1.5k of prompt text). Embedding
 retrieval put one of them into 53 of 489 recorded agent turns ("oh hi mark"
 retrieved browser_hover), `_expand_browser_mcp_tools` then sent all 31, and no

@@ -1,6 +1,6 @@
 """Per-round prompt-cache figures on the `round_stream_done` line.
 
-docs/todo.md items 40, 57 and 58 all turn on one question nothing recorded:
+notes/todo.md items 40, 57 and 58 all turn on one question nothing recorded:
 how much of each request's prompt did the local server reuse from its KV
 cache? llama.cpp reports it in the final chunk's `timings` (`cache_n` reused,
 `prompt_n` processed now, `prompt_ms`); OpenAI-style servers in

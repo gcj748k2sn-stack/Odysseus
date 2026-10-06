@@ -3,7 +3,7 @@
 Two properties, both structural, both learned the hard way:
 
 1. Findings surface in the closing summary next to `stale_values`. A lint whose
-   findings only reach the logs is the failure recorded in docs/todo.md item 3
+   findings only reach the logs is the failure recorded in notes/todo.md item 3
    — `find_stale_values()` was correct and model-agnostic for weeks while its
    warning rendered through a gated summary nobody saw on this model.
 

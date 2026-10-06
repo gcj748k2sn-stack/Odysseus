@@ -1,12 +1,12 @@
 """Closing report for turns that ran a side-effecting non-document tool.
 
-docs/todo.md item 11. Behavioural, per `tests/TESTING_STANDARD.md`: every test
+notes/todo.md item 11. Behavioural, per `tests/TESTING_STANDARD.md`: every test
 here drives `_side_effect_tool_summary` with `tool_events` shaped exactly as
 `app.db` records them, and asserts on what a user would read.
 
 **The negative controls are the point of the file.** A checker with only
 positive cases can be a function that always fires and still look like it
-works (docs/todo.md item 16, and the false positives the document-fidelity
+works (notes/todo.md item 16, and the false positives the document-fidelity
 sweep caught). Four inputs here MUST produce nothing: read-only turns,
 document turns, self-reporting turns, and a successful turn the model already
 described.

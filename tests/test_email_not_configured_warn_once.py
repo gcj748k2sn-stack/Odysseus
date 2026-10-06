@@ -2,7 +2,7 @@
 
 The email poller reads the config every minute, so an instance with no email
 account printed two warnings a minute to the terminal and to app.log (seen
-live 2026-10-04, docs/todo.md item 13). Now: one WARNING per (protocol,
+live 2026-10-04, notes/todo.md item 13). Now: one WARNING per (protocol,
 account) per process, later reads log at DEBUG, and a key is forgotten when
 that protocol becomes configured so breaking it again warns again.
 """

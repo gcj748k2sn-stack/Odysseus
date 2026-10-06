@@ -1,6 +1,6 @@
 """Check a generated document against the data the model was actually handed.
 
-docs/todo.md item 2a. Two runs turned one small JSON payload into a table.
+notes/todo.md item 2a. Two runs turned one small JSON payload into a table.
 Across both, **239 of 240 table cells were transcribed correctly** — and both
 documents were still wrong, because the model picked the wrong *field*:
 ``duty: 252`` is a PWM register after a BC547 inversion, so 255 is off and 252

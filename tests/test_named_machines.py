@@ -1,5 +1,5 @@
 """Configured machine names for the agent's named-machine check
-(src/named_machines.py; docs/todo.md item 27, fix b)."""
+(src/named_machines.py; notes/todo.md item 27, fix b)."""
 import json
 import os
 

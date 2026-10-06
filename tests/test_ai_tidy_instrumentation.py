@@ -1,4 +1,4 @@
-"""`/api/documents/ai-tidy` must say why it failed — docs/todo.md item 44.
+"""`/api/documents/ai-tidy` must say why it failed — notes/todo.md item 44.
 
 Five recorded calls, five failures (4x `500` on 2026-07-30 17:31/17:32 and
 2026-08-01 10:12/10:14, plus one `504`), and **not one of them wrote an ERROR

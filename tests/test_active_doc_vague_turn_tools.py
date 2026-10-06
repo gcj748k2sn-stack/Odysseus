@@ -1,6 +1,6 @@
 """Vague/continuation turns with an open document keep the edit tools.
 
-Regression test for docs/resolvedissues.md, "Active-doc turns losing edit
+Regression test for notes/resolvedissues.md, "Active-doc turns losing edit
 tools on low-signal input" — fixed 2026-07-18, no longer an open item. With a
 document active, a short confirmation ("yes and include sources") classified
 low_signal=True, domains=[] and went down the RAG tool path WITHOUT

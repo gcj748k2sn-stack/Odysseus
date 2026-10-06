@@ -6,7 +6,7 @@ split and a divergence between their safety guarantees would be a bug in
 itself.
 
 1. Findings surface in the closing summary beside `stale_values` and `fidelity`.
-   A lint whose findings only reach the logs is the failure in docs/todo.md,
+   A lint whose findings only reach the logs is the failure in notes/todo.md,
    "Partial edits leave documents contradicting themselves" (item 3 at the time
    of writing — cited by title because a bare number across files has no
    integrity check): `find_stale_values()` was correct and model-agnostic for

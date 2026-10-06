@@ -5,7 +5,7 @@
 produced a wrong conclusion: two turns 4.5 minutes apart both reported
 `uptime: 91 s` from a device whose counter was running, and read back from
 `app.db` the second looked like a fresh reading of a frozen device. See
-docs/todo.md, "A cache hit is indistinguishable from a live fetch".
+notes/todo.md, "A cache hit is indistinguishable from a live fetch".
 
 Covers both halves of the path: the cache read labelling the dict it serves, and
 the web_fetch tool surfacing that to the model and onto the tool event.

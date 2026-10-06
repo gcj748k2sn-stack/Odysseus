@@ -71,7 +71,7 @@ def _parse_tidy_verdicts(response: str) -> Dict[int, str]:
     """Map document index -> verdict string from an AI tidy reply.
 
     Two shapes, because the model does not reliably produce the one the prompt
-    asks for — docs/todo.md item 44. Measured 2026-08-01: at `max_tokens=700`
+    asks for — notes/todo.md item 44. Measured 2026-08-01: at `max_tokens=700`
     `nemotron-3-nano:4b` finished cleanly and returned
     ``0: keep\\n1: keep\\n2: keep…`` — 28 correct verdicts, no array, no
     brackets — and the endpoint 500'd anyway. **It would have kept 500ing on an
@@ -685,7 +685,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         try:
             doc = db.query(Document).filter(Document.id == doc_id).first()
             if not doc:
-                # [doc-put-404] report-only instrumentation — docs/todo.md item 34.
+                # [doc-put-404] report-only instrumentation — notes/todo.md item 34.
                 # This raise is BEFORE the [doc-put] line below, so a PUT to an id
                 # the server has never had left no trace at all: the absence of
                 # `_streaming_` ids in app.log measured the logging, not the
@@ -705,7 +705,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 raise HTTPException(404, "Document not found")
             _verify_doc_owner(db, doc, user)
 
-            # [doc-put] report-only instrumentation — docs/todo.md item 30.
+            # [doc-put] report-only instrumentation — notes/todo.md item 30.
             # Logs every PUT that reaches this handler, BEFORE the identical-
             # content skip and before the CAS, so a cross-session write is
             # visible even when it is later rejected or skipped. The 2026-07-30
@@ -892,7 +892,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 raise HTTPException(404, "Document not found")
             _verify_doc_owner(db, doc, user)
 
-            # [doc-del] report-only instrumentation — docs/todo.md items 31, 32.
+            # [doc-del] report-only instrumentation — notes/todo.md items 31, 32.
             # This is a SOFT delete, but it is the step that makes a document
             # eligible for the permanent one: the Documents Tidy action
             # hard-deletes is_active=0 rows whose content is empty, and
@@ -1101,7 +1101,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                         doc.title = new_title
                         fixed_titles += 1
 
-            # Archive, never db.delete — docs/todo.md item 32. Same helper as
+            # Archive, never db.delete — notes/todo.md item 32. Same helper as
             # the scheduled action, so the two paths cannot drift on what
             # "tidy removed it" means.
             from src.document_actions import retire_document
@@ -1163,7 +1163,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # Fall back to default endpoint
             url, model, headers = resolve_endpoint("default", owner=user or None)
         if not url or not model:
-            # [ai-tidy] report-only instrumentation — docs/todo.md item 44.
+            # [ai-tidy] report-only instrumentation — notes/todo.md item 44.
             logger.error("[ai-tidy] no endpoint configured (task role, then default)")
             raise HTTPException(500, "No endpoint configured for AI tidy")
 
@@ -1198,7 +1198,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 + "\n".join(doc_list)
             )
 
-            # [ai-tidy] report-only instrumentation — docs/todo.md item 44.
+            # [ai-tidy] report-only instrumentation — notes/todo.md item 44.
             # This line answers "which model does ai-tidy actually run on",
             # which was previously only derivable by reading
             # `resolve_task_endpoint` and could not be checked against a run.
@@ -1209,7 +1209,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 [{"role": "system", "content": "You classify documents as junk or keep. Respond only with a JSON array."},
                  {"role": "user", "content": prompt}],
                 temperature=0.1,
-                # docs/todo.md item 44. ⚠️ REVERTED 700 -> 200 on 2026-08-01
+                # notes/todo.md item 44. ⚠️ REVERTED 700 -> 200 on 2026-08-01
                 # after trying it: at 700 the call does not finish inside the
                 # 30 s read timeout below, so it never returns and the
                 # `[finish-reason]` line added for item 41 never gets to speak.
@@ -1226,13 +1226,13 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 timeout=30,
             )
 
-            # Parse verdicts — docs/todo.md item 44. Accepts the requested JSON
+            # Parse verdicts — notes/todo.md item 44. Accepts the requested JSON
             # array AND the `N: verdict` lines the model actually produces.
             _chars = len(response or "")
             _preview = (response or "")[:400]
             verdicts = _parse_tidy_verdicts(response)
             if not verdicts:
-                # [ai-tidy] report-only instrumentation — docs/todo.md item 44.
+                # [ai-tidy] report-only instrumentation — notes/todo.md item 44.
                 # Every recorded ai-tidy 500 reaches a `raise HTTPException`,
                 # and until 2026-08-01 none of them wrote anything: the
                 # `except HTTPException: raise` below re-raises without
@@ -1281,7 +1281,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                     continue
                 if verdict == "junk":
                     doc.tidy_verdict = "junk"
-                    # Archived, not deleted — docs/todo.md item 32. This path
+                    # Archived, not deleted — notes/todo.md item 32. This path
                     # destroys a document on a MODEL's one-word verdict, which
                     # is the least defensible place in the codebase to make an
                     # irreversible call.
@@ -1307,7 +1307,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 "message": f"Reviewed {reviewed}, archived {deleted} junk document{'s' if deleted != 1 else ''} — restore from the Archive tab",
             }
         except HTTPException as _http:
-            # [ai-tidy] report-only instrumentation — docs/todo.md item 44.
+            # [ai-tidy] report-only instrumentation — notes/todo.md item 44.
             # This bare re-raise is why five recorded failures (4x500, 1x504
             # across 2026-07-30 and 08-01) left no ERROR and no traceback:
             # the only trace of any of them was `app.slow_request`, which

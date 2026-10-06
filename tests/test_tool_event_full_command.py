@@ -2,7 +2,7 @@
 
 `tool_event["command"]` is `block.content.split("\\n")[0][:80]`, which for an
 edit is literally `<<<FIND>>>` — enough to know a call happened and nothing
-about what it asked for. That blocked diagnosis three times; see docs/todo.md,
+about what it asked for. That blocked diagnosis three times; see notes/todo.md,
 "Failures aren't replayable".
 
 These pin the two properties a replay harness depends on:

@@ -1,4 +1,4 @@
-"""Terminal access-log noise (docs/todo.md item 13).
+"""Terminal access-log noise (notes/todo.md item 13).
 
 Routine 200s and GET 304s are hidden from the uvicorn access log by status
 code; 4xx/5xx stay visible. Records are produced through the real

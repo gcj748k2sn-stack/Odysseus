@@ -146,7 +146,7 @@ _NEWS_HINTS = ("news", "nyheter", "headlines", "breaking", "latest", "today", "i
 # suspension — and is still one of the two engines actually serving results.
 #
 # Read at import, so a change to the env var needs an app restart.
-# See docs/session-log.md, 2026-08-07.
+# See notes/session-log.md, 2026-08-07.
 _GENERAL_ENGINES = os.environ.get("SEARXNG_GENERAL_ENGINES", "bing,mojeek,presearch")
 
 _QUOTED_PHRASE_RE = re.compile(r'"([^"]+)"')

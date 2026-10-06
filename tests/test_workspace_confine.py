@@ -224,7 +224,7 @@ async def test_glob_confined_e2e(ws, admin):
     # unresolved /var/... path while realpath(ws) is /private/var/..., so
     # relpath would walk up to the root and back down through the ABSOLUTE
     # path, putting the secret's full path into the pattern itself.
-    # docs/todo.md item 19.
+    # notes/todo.md item 19.
     outside = os.path.realpath(tempfile.mkdtemp())
     secret = os.path.join(outside, "secret.txt")
     with open(secret, "w") as f:

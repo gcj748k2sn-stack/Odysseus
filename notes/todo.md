@@ -87,7 +87,7 @@ Setup and config: [qwensetup.md](qwensetup.md). Closed investigations: [resolved
 > ```
 > cd /Users/cedrik/odysseus && python3 -c "
 > import re
-> L=open('docs/todo.md').read().split('\n')
+> L=open('notes/todo.md').read().split('\n')
 > e=next(i for i,l in enumerate(L) if l.startswith('**Numbers are never reused'))
 > r=[l for l in L[:e] if re.match(r'^\| (\d+[ab]?) \|', l)]
 > o=[x for x in r if '~~' not in x.split('|')[2]]

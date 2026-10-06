@@ -1480,7 +1480,7 @@ def test_visible_models_empty_cached_returns_empty(monkeypatch):
 
 
 # ── The stub-package trap itself ────────────────────────────────────────────
-# docs/todo.md item 16's shape, a fourth time: a test harness that encodes the
+# notes/todo.md item 16's shape, a fourth time: a test harness that encodes the
 # import list of the code it exercises, and fails confusingly when that list
 # grows. These two tests pin the fix and bound how far it reaches.
 

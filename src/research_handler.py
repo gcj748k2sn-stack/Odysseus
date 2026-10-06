@@ -413,7 +413,7 @@ class ResearchHandler:
         trigger_research can tell the model the truth: the probe runs in the
         background task, so the job used to be reported as started even when
         the research model was down and the run died milliseconds later
-        (docs/todo.md, "trigger_research reports success when the research
+        (notes/todo.md, "trigger_research reports success when the research
         model is down").
         """
         loop = asyncio.get_running_loop()

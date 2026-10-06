@@ -537,7 +537,7 @@ async function loadEndpoints() {
               ${hasModels ? `<span style="font-size:10px;opacity:0.4;${category === 'api' ? 'flex-basis:100%;' : ''}">Click to manage models</span>` : ''}
             </div>
             <div style="display:flex;gap:4px;align-items:center;">
-              <select class="admin-btn-sm" data-adm-tools-ep="${ep.id}" aria-label="Native tool calling" title="Native tool calling. Auto guesses from the model name; set On for a local model that handles tools (docs/todo.md item 46).">
+              <select class="admin-btn-sm" data-adm-tools-ep="${ep.id}" aria-label="Native tool calling" title="Native tool calling. Auto guesses from the model name; set On for a local model that handles tools (notes/todo.md item 46).">
                 <option value="auto"${ep.supports_tools == null ? ' selected' : ''}>Tools: auto</option>
                 <option value="true"${ep.supports_tools === true ? ' selected' : ''}>Tools: on</option>
                 <option value="false"${ep.supports_tools === false ? ' selected' : ''}>Tools: off</option>

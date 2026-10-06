@@ -139,7 +139,7 @@ DEFAULT_SETTINGS = {
     # `compute_input_token_budget`.
     "agent_input_token_hard_max": 200_000,
     # Per-read INACTIVITY timeout on the model stream, not a wall-clock budget.
-    # Raised 300 -> 900 on 2026-07-28 (docs/todo.md 9b). Ollama's /v1 endpoint
+    # Raised 300 -> 900 on 2026-07-28 (notes/todo.md 9b). Ollama's /v1 endpoint
     # does not stream native tool-call arguments incrementally — zero
     # `tool_call_delta` events in 35k log lines — so the whole payload arrives
     # in one chunk after the model has finished generating it. That makes this

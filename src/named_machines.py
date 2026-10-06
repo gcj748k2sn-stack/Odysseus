@@ -1,7 +1,7 @@
 """Which machines a prompt can name: configured Cookbook servers and SSH
 aliases — nothing else.
 
-docs/todo.md item 27, fix (b). The agent's "named machine" check used to be a
+notes/todo.md item 27, fix (b). The agent's "named machine" check used to be a
 regex that accepted ``on|from`` followed by ANY word, so "data from
 http://192.168.0.185" (``from http``), "a report on climate change" and
 "mushrooms from wikipedia" all routed to the Odysseus Terminus branch: the

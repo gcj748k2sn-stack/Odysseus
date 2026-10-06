@@ -83,15 +83,7 @@ def test_pages_site_owns_its_entrypoint_and_media():
 
     assert REPO / "website/index.html" in website_files
     assert REPO / "docs/index.html" not in docs_files
-    # Merged fork (2026-10-06): this fork's working notes live in docs/ and are
-    # not part of the Pages site — CLAUDE.md and ~40 source comments point at
-    # them there. Anything else in docs/ still trips the rule.
-    fork_notes = {"todo.md", "resolvedissues.md", "session-log.md",
-                  "qwensetup.md", "merge-upstream-2026-10-06.md"}
-    assert not [
-        p for p in docs_files
-        if p.suffix.lower() in VIDEO_EXTS | {".md"} and p.name not in fork_notes
-    ]
+    assert not [p for p in docs_files if p.suffix.lower() in VIDEO_EXTS | {".md"}]
 
     website_paths = {p.relative_to(REPO / "website").as_posix() for p in website_files}
     assert PUBLIC_GUIDES <= website_paths

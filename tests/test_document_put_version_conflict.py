@@ -1,6 +1,6 @@
 """Lost-update guard on PUT /api/document/{doc_id}.
 
-Context: docs/resolvedissues.md, "Autosave reverting AI edits" — fixed and
+Context: notes/resolvedissues.md, "Autosave reverting AI edits" — fixed and
 verified live 2026-07-19. Note the final diagnosis differs from the one below:
 the root cause was a duplicated doc_update SSE event, not autosave and not this
 compare-and-swap, both of which behaved correctly throughout. This guard is
@@ -185,7 +185,7 @@ async def test_concurrent_ai_edit_after_read_loses_the_swap(monkeypatch):
     # Patch `reserve_upload_references`, NOT `_reserve_document_uploads`.
     # The latter is a closure nested in setup_document_routes() and never a
     # module attribute, so the old patch raised AttributeError on this line and
-    # these two tests had never once run (docs/todo.md item 18). The closure's
+    # these two tests had never once run (notes/todo.md item 18). The closure's
     # whole body is a call to reserve_upload_references, imported at
     # routes/document_routes.py:15 and invoked unconditionally, so patching it
     # lands in the identical window: after `base_version = doc.version_count`,

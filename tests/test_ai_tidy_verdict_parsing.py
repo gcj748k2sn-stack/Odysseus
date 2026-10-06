@@ -1,4 +1,4 @@
-"""The ai-tidy reply parser — docs/todo.md item 44.
+"""The ai-tidy reply parser — notes/todo.md item 44.
 
 `/api/documents/ai-tidy` returned `500` on every logged call across 2026-07-30
 and 08-01. Instrumentation and one live run found **two independent faults,

@@ -1,6 +1,6 @@
 """Hide routine uvicorn access-log lines from the terminal, by status code.
 
-docs/todo.md item 13: every request prints, so real errors scroll away —
+notes/todo.md item 13: every request prints, so real errors scroll away —
 worst while the UI polls (`/api/research/status/<id>`,
 `/api/chat/stream_status/<id>`). `--no-access-log` would also drop the 4xx/5xx
 lines, which are the point, so this filters by status instead.
