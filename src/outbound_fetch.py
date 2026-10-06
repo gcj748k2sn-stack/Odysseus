@@ -8,6 +8,7 @@ same transport boundary.
 
 from __future__ import annotations
 
+import inspect
 import ipaddress
 import os
 import socket
@@ -363,6 +364,18 @@ class _CappedFetch:
             )
 
 
+def _accepts_allow_private(fn: Callable[..., object]) -> bool:
+    """Whether ``fn`` can be called with ``allow_private=``."""
+    try:
+        params = inspect.signature(fn).parameters.values()
+    except (TypeError, ValueError):
+        return False
+    return any(
+        p.name == "allow_private" or p.kind is inspect.Parameter.VAR_KEYWORD
+        for p in params
+    )
+
+
 def _get_public_url(
     url: str,
     headers: dict,
@@ -388,9 +401,13 @@ def _get_public_url(
     cap = min(max_bytes or WEB_FETCH_SOFT_MAX_BYTES, WEB_FETCH_HARD_MAX_BYTES)
     current = url
     for hop in range(max_redirects + 1):
-        # The keyword only goes out when it is True, so an injected resolver
-        # that takes just the URL keeps working on the strict path.
-        if allow_private and hop == 0:
+        # The keyword only goes out when it is True AND the resolver can take
+        # it. An injected resolver that accepts just the URL (upstream's test
+        # stubs do) gets the strict call instead — failing closed, never open.
+        # Seen 2026-10-06 on the M1: with WEB_FETCH_BLOCK_PRIVATE_IPS=false in
+        # .env, eight tests/test_web_fetch_size_caps.py cases died on
+        # TypeError: unexpected keyword argument 'allow_private'.
+        if allow_private and hop == 0 and _accepts_allow_private(resolve_public_ips):
             ips = resolve_public_ips(current, allow_private=True)
         else:
             ips = resolve_public_ips(current)
