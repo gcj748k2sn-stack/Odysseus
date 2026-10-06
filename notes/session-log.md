@@ -8,6 +8,20 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-06 (19:30–20:20) — last live checks for the merge; handoff for the benchmark
+
+- ✅ **LAN `web_fetch`** (Qwen, 20:16): the router at `http://192.168.0.1` (found with `route -n get default`) was reached. The error *"no readable text content (… needs JS/login)"* only comes after a response is received. The earlier timeouts on `192.168.178.1` were a wrong address, which `curl` confirmed.
+- ✅ **Failed turn → *"what happened"*** (12:36): upstream saves nothing for a turn that fails before any output. **The maintainer decided to keep that.** Recorded under [todo.md](todo.md) item 9b. A turn that fails after a tool call does save `[Agent stopped: …]` (20:03, chat `b25e89e6`).
+- ⏭️ **Handoff, for the next session — the benchmark is blocked:**
+  - Since the merge, any workspace read (`read_file`, `grep`, …) arms the approval gate, so a later `write_file` or `edit_file` in the same turn needs an approval. `scripts/bench_agent.py` cannot answer approval cards, so `write_file`, `edit_file` and `multi_step` would stall.
+  - **Build first:** on an `ask_user` with an `approval_id`, re-post with `tool_approval_id` + `tool_approval_decision=approve_task`, and count approvals per task in the report. Test it against a stub, then run one `--quick` live.
+  - **Also:** remove the leftover note *"[bench-44b] Workshop shopping"* with `python3 scripts/bench_agent.py cleanup` before the first run.
+  - Run one model at a time, and keep Bonsai 2 off while Qwen runs ([qwensetup.md](qwensetup.md), the *Compute error* line).
+- ℹ️ **State:** `dev` is pushed; every 2026-10-06 change is committed. M1 suite 7,451 passed / 0 failed. `data/skills/` is empty. Bonsai 2 is not running. Ollama is down, so auto-naming fails (the maintainer is ignoring that).
+- **Edited:** `notes/merge-upstream-2026-10-06.md`, `notes/todo.md` (items 9b, 52, 54), this file. No `git` command run on the Mac; `data/` was read on copies only.
+
+---
+
 ## 2026-10-06 (12:25–12:45) — the 12 machine-dependent test failures fixed in the tests — committed 19:30 (`34c7abb9`)
 
 - 🧪 **The suite no longer touches the live `data/`.** `tests/conftest.py` sets a fresh temp `ODYSSEUS_DATA_DIR`. Plus 4 test-only fixes:
@@ -16,7 +30,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
   - `DEEP_RESEARCH_DIR` in `test_research_report_read.py`, which had been writing into the live research folder;
   - the opt-in pinned in one `test_security_regressions.py` test.
 - **Linux, M1-like:** 7,450 passed, 0 failed. Each fix was checked by reverting it ([merge-upstream-2026-10-06.md](merge-upstream-2026-10-06.md)). **M1, 19:2x: 7,451 passed, 3 skipped, 0 failed**; the `/etc/shadow` count in the live `app.log` stayed at 2, so the suite no longer writes there. Skills moved to `~/odysseus-snapshots/skills-2026-10-06/` at 19:24. `CLAUDE.md` §4 notes the new data directory.
-- 🧹 The two learned Arduino skills (July test leftovers) are to be moved out of `data/skills/` by the maintainer. While any skill exists, its index arms the approval gate on every turn.
+- 🧹 The two learned Arduino skills (July test leftovers) moved out of `data/skills/` by the maintainer at 19:24, because while any skill exists, its index arms the approval gate on every turn.
 - **Edited:** 5 test files, `CLAUDE.md`, `notes/merge-upstream-2026-10-06.md`, this file. No `git` command run on the Mac; `data/` only read.
 
 ---
@@ -50,9 +64,9 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 - 🔀 **Merged upstream `2992bf6d` (132 commits, 07-29 → 10-01) into fork `2dfae628`** in a separate clone, as a merge commit so every cited hash stays valid. 25 files conflicted; resolutions, behaviour changes and owed checks: [merge-upstream-2026-10-06.md](merge-upstream-2026-10-06.md).
 - ⚠️ **Item 60 is now upstream's fix** (containment of `data/`, advisory 2026-09-05); the fork's filename list was retired and its test rewritten. Wider than item 60: `data/presets.json`, `memory.json`, `logs/`, `skills/`, `hwfit/` are refused too, and the agent's bash `$HOME` moved to `data/agent_workspace/`.
-- ⚠️ **Expect approval cards** after any web result (upstream's untrusted-context gate), and `[Agent stopped: …]` instead of item 9b's notice on stream failures.
+- ⚠️ **Expect approval cards** after any web result or workspace file read (upstream's untrusted-context gate), and `[Agent stopped: …]` instead of item 9b's notice on stream failures.
 - 🐛 **Found by the fork's JS scanner:** upstream's `chat.js` reads `roundHolder` outside its block in the stream-error catch (ReferenceError) — hoisted.
-- 🧪 Linux clone, py3.13: **merge 7,443 passed, 11 skipped, 0 failed**; baselines upstream 5,945 / fork 6,254, both 0 failed. 3 mutations caught. `saveDocument` return values unverified (no JS harness). **M1 suite and live checks owed** — list in the merge note.
+- 🧪 Linux clone, py3.13: **merge 7,443 passed, 11 skipped, 0 failed**; baselines upstream 5,945 / fork 6,254, both 0 failed. 3 mutations caught. `saveDocument` return values unverified (no JS harness). **M1 suite and live checks owed** — list in the merge note *(all done the same day; see the 09:10 and 19:30 entries)*.
 - **Delivered as a git bundle**; the maintainer fetches it into `merge-upstream`, runs the suite, then fast-forwards `dev`. Nothing in `/Users/cedrik/odysseus` was changed by this session except the bundle file.
 
 ---
@@ -62,9 +76,9 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 - 📊 **First live `--quick` run (2026-10-05 08:58–09:43, 8 tasks × 1 run each, incognito):** Qwen 3.5 9B (LM Studio) **7/8**, median **51 s**/task, 18 s/round, 6 min total; Bonsai 2 (`:8090`) **8/8**, median **253 s**/task, 47 s/round, 34 min total, uncached prefill ~53 tok/s, prompt-cache hit 58 %. **0 empty answers after tool rounds** for either (0/22, 0/12). The quality gap is noise at n=8 (95 % CI 68–100 vs 53–98); **speed is the only firm result.** Report: `data/bench/agent/report.md` (gitignored).
   - Qwen's one fail: the `manage_notes` call was right but the title said `[bench-44b]` for `[bench-44b6]` — a copying slip.
   - Bonsai's 5 failed tool calls were all environment: 4 SearXNG `timed out after 30s` (09:26–09:30; the only SearXNG failures in `app.log` when checked at 09:50) and one Britannica 403. Its 3 Wikipedia fetches were item 49's menu (prompt grew ~300 tokens each), so `1889` came from the REST summary API it tried last, or from memory. That run predates item 49's fix.
-- 🔧 **Fixes after the run** (in `3bd9a006` unless marked): default URL is **7860**, not 7000 (macOS AirPlay Receiver answers 403 there; the script now says so on an `AirTunes` server header); warm-up and per-task stream errors containing *Cannot reach* abort the run instead of recording fake failures; the report splits failed tool calls into model and environment (timeouts, HTTP 4xx/5xx). **Uncommitted:** per-task cleanup now matches any `[bench-` tag (`BENCH_TAG` in `bench_agent_tasks.py`) so a model-mistyped marker is still removed — checked with a stub API, not live.
+- 🔧 **Fixes after the run** (in `3bd9a006` unless marked): default URL is **7860**, not 7000 (macOS AirPlay Receiver answers 403 there; the script now says so on an `AirTunes` server header); warm-up and per-task stream errors containing *Cannot reach* abort the run instead of recording fake failures; the report splits failed tool calls into model and environment (timeouts, HTTP 4xx/5xx). **Committed later in `2bb475b1`:** per-task cleanup now matches any `[bench-` tag (`BENCH_TAG` in `bench_agent_tasks.py`) so a model-mistyped marker is still removed — checked with a stub API, not live.
 - 🧹 **Left behind, maintainer to remove:** note *"[bench-44b] Workshop shopping"* (`fcb98691`), the only bench leftover in `app.db` (copy checked: no bench sessions, events, documents or memories). `python3 scripts/bench_agent.py cleanup` removes it. Also an unreadable `/tmp/x` tree in the agent VM from an earlier session — not in the repo.
-- ⏭️ **Next:** full suite `--runs 2` per model (Qwen ~30 min, Bonsai ~2–3 h); the `web_fact` task can be passed from memory — once item 49's fix is confirmed, add a task answerable only from the fetched page.
+- ⏭️ **Next:** full suite `--runs 2` per model (Qwen ~30 min, Bonsai ~2–3 h). ⚠️ **Blocked since the merge** until the script answers approval cards (see the 19:30 entry); the `web_fact` task can be passed from memory — once item 49's fix is confirmed, add a task answerable only from the fetched page.
 - **Edited:** `scripts/bench_agent_tasks.py`, this file. `notes/qwensetup.md` is modified in the tree by another session (Bonsai start-script defaults) — not mine, not included. Only `git --no-optional-locks log/show/archive`; no lock taken.
 
 ---
