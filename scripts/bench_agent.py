@@ -137,9 +137,13 @@ class Api:
         return self.call("DELETE", path)
 
     def login(self):
+        if not self.password and sys.stdin.isatty():
+            # Login is by password: API tokens run as the 'api' user, for whom
+            # Odysseus drops the workspace and file confinement.
+            import getpass
+            self.password = getpass.getpass(f"Odysseus password for {self.user}: ")
         if not self.password:
-            sys.exit("error: set ODYSSEUS_PASSWORD (login is by password: API tokens run as the "
-                     "'api' user, for whom Odysseus drops the workspace and file confinement).")
+            sys.exit("error: no password — set ODYSSEUS_PASSWORD, or run from a terminal to be asked.")
         try:
             r = self.post("/api/auth/login", js={"username": self.user, "password": self.password})
         except (RuntimeError, OSError) as e:
