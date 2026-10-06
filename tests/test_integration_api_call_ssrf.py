@@ -243,10 +243,18 @@ async def test_pinned_transport_reuses_httpx_ca_trust(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_real_socket_falls_back_from_dead_first_to_live_second():
-    """End-to-end over real loopback sockets: pin [127.0.0.2 (nothing
-    listening), 127.0.0.1 (live)], and the request must succeed by falling back
-    to the second address while the Host header stays the original hostname —
-    i.e. only the socket destination moved, vhost/SNI routing did not."""
+    """End-to-end over real loopback sockets: pin [::1 (nothing listening),
+    127.0.0.1 (live)], and the request must succeed by falling back to the
+    second address while the Host header stays the original hostname — i.e.
+    only the socket destination moved, vhost/SNI routing did not.
+
+    The dead address must fail FAST on every OS, because the pinned backend
+    gives all attempts one shared connect budget. It used to be 127.0.0.2:
+    refused at once on Linux, but macOS only has 127.0.0.1 on lo0, so the
+    connect hung until the budget ran out and the fallback never ran. ::1 is
+    refused at once where IPv6 exists (the server listens on IPv4 only) and
+    fails at socket creation where it does not; both are ConnectError, which
+    is what the fallback catches."""
     captured = {}
 
     async def handle(reader, writer):
@@ -263,7 +271,7 @@ async def test_real_socket_falls_back_from_dead_first_to_live_second():
     async with server:
         await server.start_serving()
         transport = integrations._PinnedAsyncTransport(
-            [ipaddress.ip_address("127.0.0.2"), ipaddress.ip_address("127.0.0.1")]
+            [ipaddress.ip_address("::1"), ipaddress.ip_address("127.0.0.1")]
         )
         try:
             async with httpx.AsyncClient(transport=transport) as client:

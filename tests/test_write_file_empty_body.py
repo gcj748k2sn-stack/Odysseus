@@ -26,9 +26,17 @@ RECIPE = "# Classic banana cake\n\nMash 3 bananas. Bake 180C for 1 hour.\n"
 
 @pytest.fixture
 def target():
-    """A fresh directory under the system temp root, which _tool_path_roots allows."""
+    """A fresh directory under the system temp root, which _tool_path_roots allows.
+
+    realpath'd because the race tests below hook os.path / open / os.link and
+    compare the path they are called with against this one, and the tool calls
+    them with its own realpath'd copy. On macOS the temp root is under the
+    /var -> /private/var symlink, so an unresolved fixture path never matched,
+    the hooks never fired, and those three tests failed there and passed on
+    Linux.
+    """
     with tempfile.TemporaryDirectory(prefix="odysseus-6414-") as directory:
-        yield os.path.join(directory, "classic-banana-cake.md")
+        yield os.path.join(os.path.realpath(directory), "classic-banana-cake.md")
 
 
 def _seed(path, text=RECIPE):

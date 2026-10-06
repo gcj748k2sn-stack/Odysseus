@@ -18,10 +18,15 @@ from pathlib import Path
 
 import pytest
 
+from src.constants import DEEP_RESEARCH_DIR
 from src.tool_implementations import do_manage_research
 from src.agent_loop import TOOL_SECTIONS
 
-_DATA_DIR = Path("data/deep_research")
+# The directory the reader actually uses. This was Path("data/deep_research"),
+# which only agreed with the app while DATA_DIR was <repo>/data and pytest ran
+# from the repo root, and on a machine that also runs Odysseus it wrote this
+# fixture into the live install's research folder.
+_DATA_DIR = Path(DEEP_RESEARCH_DIR)
 
 
 @pytest.fixture

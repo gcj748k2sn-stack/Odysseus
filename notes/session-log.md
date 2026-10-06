@@ -8,6 +8,19 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-06 (12:25–12:45) — the 12 machine-dependent test failures fixed in the tests — uncommitted
+
+- 🧪 **The suite no longer touches the live `data/`.** `tests/conftest.py` sets a fresh temp `ODYSSEUS_DATA_DIR`. Plus 4 test-only fixes:
+  - realpath in `test_write_file_empty_body.py`;
+  - `::1` in `test_integration_api_call_ssrf.py`;
+  - `DEEP_RESEARCH_DIR` in `test_research_report_read.py`, which had been writing into the live research folder;
+  - the opt-in pinned in one `test_security_regressions.py` test.
+- **Linux, M1-like:** 7,450 passed, 0 failed. Each fix was checked by reverting it ([merge-upstream-2026-10-06.md](merge-upstream-2026-10-06.md)). **The M1 run is owed.** `CLAUDE.md` §4 notes the new data directory.
+- 🧹 The two learned Arduino skills (July test leftovers) are to be moved out of `data/skills/` by the maintainer. While any skill exists, its index arms the approval gate on every turn.
+- **Edited:** 5 test files, `CLAUDE.md`, `notes/merge-upstream-2026-10-06.md`, this file. No `git` command run on the Mac; `data/` only read.
+
+---
+
 ## 2026-10-06 (09:10–12:05) — merge checked on the M1 and live, pushed to `dev`; LM Studio "Compute error" explained
 
 - 🧪 **M1 suite:** first run 21 failed (8 caused by the merge, fixed in `d946c87e`; 1 by the docs rule, fixed by moving the notes to `notes/`). Second run **12 failed, 7,439 passed**: the 12 failures are upstream tests that depend on this machine (real `data/auth.json`, `/var` symlink, `127.0.0.2`, the skills arming the gate), as predicted. Table in [merge-upstream-2026-10-06.md](merge-upstream-2026-10-06.md).

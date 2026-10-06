@@ -17,6 +17,34 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # file-backed DB across processes - tests needing that must set DATABASE_URL.
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
+# Same reasoning for the data directory. src/constants.py reads
+# ODYSSEUS_DATA_DIR once, at import, and defaults to <repo>/data - on a machine
+# that also RUNS Odysseus that is the live install. Measured 2026-10-06 on a
+# copy of such a tree: one run of three test files wrote app.log lines (tool
+# calls like `read_file: /etc/shadow` that read as agent activity),
+# memory.json, presets.json, scheduled_emails.db and skills/_usage.json into
+# it, and 8 tests failed because they saw the install's data: an existing
+# user in auth.json (the token-cache fixture's setup("admin") is refused) and
+# installed skills (whose index arms the untrusted-context approval gate).
+# A fresh empty directory per session gives every machine the same starting
+# point. Set before the imports below, because importing core.database pulls
+# in src.constants. An explicit ODYSSEUS_DATA_DIR is preserved.
+if "ODYSSEUS_DATA_DIR" not in os.environ:
+    import atexit
+    import shutil
+    import tempfile
+
+    # realpath'd: on macOS the temp root is under /var -> /private/var, and
+    # the path rules compare a resolved tool path against DATA_DIR, so an
+    # unresolved DATA_DIR fails test_workspace_confine and the case-folding
+    # test in test_agent_state_dir_confinement there (reproduced on Linux
+    # with a symlinked TMPDIR). The real <repo>/data has no such alias.
+    _TEST_DATA_DIR = os.path.realpath(tempfile.mkdtemp(prefix="odysseus-test-data-"))
+    os.environ["ODYSSEUS_DATA_DIR"] = _TEST_DATA_DIR
+    # A throwaway directory, removed after the session; ignore_errors so an
+    # open handle cannot fail the run at exit. Nothing here is evidence.
+    atexit.register(shutil.rmtree, _TEST_DATA_DIR, True)
+
 # Pre-import real heavy modules BEFORE any test file's module-level stubs can
 # replace them with MagicMock. Some test files (e.g. test_llm_core_sanitize_*)
 # stub sqlalchemy/core.database at module scope with `if mod not in sys.modules`,

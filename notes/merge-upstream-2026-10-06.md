@@ -97,6 +97,26 @@ returns the retry's result.
 
 Linux clone after the fix, run the M1's way (single process, inside a git checkout, the M1's `.env` toggles): **7,450 passed, 4 skipped, 0 failed.** Expected on the M1 after the fix: the 12 non-merge failures remain until those upstream tests are made hermetic; running them with `ODYSSEUS_DATA_DIR` pointed at an empty directory clears the 8 data-dependent ones.
 
+## The 12 machine-dependent failures, fixed in the tests (2026-10-06 12:40)
+
+Test files only; no app code changed.
+
+- **`tests/conftest.py`** gives the suite a fresh, realpath'd temp `ODYSSEUS_DATA_DIR`. Fixes the token-cache (5) and gate (3) failures, and stops the suite writing into the live `data/` (`app.log`, `skills/_usage.json`, `memory.json`, …).
+- **`test_write_file_empty_body.py`** realpaths its fixture path (3, the macOS `/var` alias).
+- **`test_integration_api_call_ssrf.py`** uses `::1` instead of `127.0.0.2` as the dead address (1).
+- **Two tests the new data directory exposed:**
+  - `test_research_report_read.py` wrote its fixture to the relative path `data/deep_research/`, which is the live install on the M1. It now uses `DEEP_RESEARCH_DIR`.
+  - `test_security_regressions.py::test_dns_rebinding_redirect_re_resolves_per_hop` assumed the LAN opt-in was off. It now pins the setting itself.
+
+**Linux clone, under M1-like conditions** (a `data/` holding a user in `auth.json` and both skills, a symlinked `TMPDIR`, `WEB_FETCH_BLOCK_PRIVATE_IPS=false`): **7,450 passed, 4 skipped, 0 failed**, and that `data/` was byte-identical afterwards.
+
+**Each change checked by reverting it:**
+- Without the conftest change, the 8 failures come back.
+- Without the realpath, the 3 come back under a symlinked `TMPDIR`.
+- Without the pin, the rebinding test fails with the opt-in on.
+- The `::1` test fails when the fallback is mutated to try only the first address.
+- ⚠️ **Not reproducible on Linux:** the macOS `127.0.0.2` timeout itself. The M1 run is the check for that one.
+
 ## Second M1 run (2026-10-06 ~10:00)
 
 `12 failed, 7,439 passed` — exactly the 12 non-merge failures in the table above, nothing new.

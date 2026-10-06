@@ -300,7 +300,8 @@ helper mechanics in [`tests/README.md`](tests/README.md). Read those. Additions:
   turned it into a test. **Revert the fix and watch it fail before believing it.**
 - **A test fixture's LOCATION can be load-bearing, and moving it can make the
   test vacuous.** `test_chat_helpers.py` builds fixtures in the repo root, which
-  looks like litter and isn't: `DATA_DIR` is `<repo>/data`, so a repo-root path
+  looks like litter and isn't: `DATA_DIR` is `<repo>/data` (in the suite, a fresh
+  temp directory since 2026-10-06 — see the next-but-one bullet), so a repo-root path
   is outside every entry in `_tool_path_roots()`, and that is the only reason
   the test's `tool_path_extra_roots` patch discriminates. Under `tmp_path` —
   which lives in `$TMPDIR` or `/tmp`, both already on the allowlist — every
@@ -319,6 +320,16 @@ helper mechanics in [`tests/README.md`](tests/README.md). Read those. Additions:
   run cannot delete under the mount, so four fixture directories accumulated in
   the repo root, unignored, showing as untracked in every `git status` — the one
   check item 5 depends on. **A cleanup that cannot fail cannot tell you it failed.**
+- **The suite gets its own empty data directory (since 2026-10-06).**
+  `tests/conftest.py` points `ODYSSEUS_DATA_DIR` at a fresh realpath'd temp
+  directory before anything imports `src.constants`, unless it is already set.
+  Before that, every run on the M1 read and wrote the live `data/`: test tool
+  calls (`read_file: /etc/shadow`, …) landed in `app.log` looking like agent
+  activity, `skills/_usage.json` was rewritten, and 8 tests failed because they
+  saw the real `auth.json` user and the installed skills. **A test that builds a
+  path from `"data/…"` by hand is the remaining way back in** — use the
+  constant (`DEEP_RESEARCH_DIR`, `SKILLS_DIR`, …), as `test_research_report_read.py`
+  now does. `--noconftest` drops this too.
 - **`--noconftest` also drops the test database.** `tests/conftest.py` sets
   `DATABASE_URL=sqlite:///:memory:`, and `core/database.py` calls `init_db()`
   **at import** (last line of the file): `_migrate_model_endpoints()` and

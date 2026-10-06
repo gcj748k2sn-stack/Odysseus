@@ -1451,6 +1451,12 @@ def test_dns_rebinding_redirect_re_resolves_per_hop(monkeypatch):
     """
     from src.search import content
 
+    # Pin the default (private targets blocked). The expected list below says
+    # allow_private=False on every hop, which is only true while the LAN
+    # opt-in is off; with WEB_FETCH_BLOCK_PRIVATE_IPS=false in the environment
+    # (or loaded from .env by an earlier `import app`) the first hop is True.
+    monkeypatch.setenv("WEB_FETCH_BLOCK_PRIVATE_IPS", "true")
+
     seen = []
 
     def fake_resolve(url, *, allow_private=False):
