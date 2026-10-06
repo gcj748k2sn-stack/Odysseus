@@ -7,19 +7,17 @@ import json
 import os
 import re
 import logging
-import socket
-import ssl
 import threading
 from collections import OrderedDict
 from datetime import datetime, timedelta
-from typing import Iterable, List, cast
-from urllib.parse import urljoin, urlparse
+from typing import List
+from urllib.parse import urlparse
 
 import httpx
-import httpcore
 from bs4 import BeautifulSoup
 
 from src.constants import WEB_FETCH_SOFT_MAX_BYTES, WEB_FETCH_HARD_MAX_BYTES, WEB_FETCH_USER_AGENT
+from src import outbound_fetch as _outbound_fetch
 
 from .analytics import RateLimitError, error_logger
 from .cache import (
@@ -31,429 +29,63 @@ from .cache import (
 
 logger = logging.getLogger(__name__)
 
-_PRIVATE_NETWORKS = (
-    ipaddress.ip_network("0.0.0.0/8"),
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("::1/128"),
-    ipaddress.ip_network("fc00::/7"),
-    ipaddress.ip_network("fe80::/10"),
-)
-
-# ── Two-tier SSRF classification ─────────────────────────────────────────────
-# Odysseus is local-first: a user pointing web_fetch at their own ESP32, NAS or
-# dev server on the LAN is a legitimate, intended thing to do. But the guard has
-# to keep rejecting the cloud instance-metadata range unconditionally, since
-# that is the credential-exfil vector and nobody serves real content there.
-#
-# So the address space splits in two, mirroring the tiering already used by
-# ``src/url_safety.py`` for the embedding/webhook/ntfy paths:
-#
-#   HARD  – never reachable, no override. Link-local (incl. 169.254.169.254),
-#           multicast, reserved, unspecified, and the 0.0.0.0/8 wildcard.
-#   GATED – reachable only when the caller opts in. Loopback, RFC-1918, ULA,
-#           and the internal-sounding hostname suffixes.
-_HARD_BLOCKED_NETWORKS = (
-    ipaddress.ip_network("0.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),
-    ipaddress.ip_network("fe80::/10"),
-)
-
-_GATED_PRIVATE_NETWORKS = (
-    ipaddress.ip_network("10.0.0.0/8"),
-    ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("172.16.0.0/12"),
-    ipaddress.ip_network("192.168.0.0/16"),
-    ipaddress.ip_network("::1/128"),
-    ipaddress.ip_network("fc00::/7"),
-)
-
-# Hostnames that must never resolve anywhere, override or not.
-_HARD_BLOCKED_HOSTS = ("metadata", "metadata.google.internal")
-# Hostnames/suffixes that only name LAN hosts — gated, not hard-blocked, so
-# `http://martha.local/` works once private targets are allowed.
-_GATED_HOSTS = ("localhost",)
-_GATED_HOST_SUFFIXES = (".local", ".localhost", ".internal", ".lan", ".intranet")
-
-_BLOCK_PRIVATE_ENV = "WEB_FETCH_BLOCK_PRIVATE_IPS"
+def _is_private_address(addr):
+    return _outbound_fetch._is_private_address(addr)
 
 
-def _normalize(addr: ipaddress._BaseAddress) -> ipaddress._BaseAddress:
-    """Judge IPv4-mapped IPv6 (e.g. ::ffff:169.254.169.254) by the embedded v4."""
-    if isinstance(addr, ipaddress.IPv6Address) and addr.ipv4_mapped is not None:
-        return addr.ipv4_mapped
-    return addr
+# The SSRF policy — including the two-tier LAN opt-in (WEB_FETCH_BLOCK_PRIVATE_IPS,
+# docs/resolvedissues.md "web_fetch could not reach the LAN") — lives in
+# src/outbound_fetch.py since upstream moved the transport there (#5953). These
+# wrappers keep this module's names, and resolve through this module's
+# ``_resolve_hostname_ips`` / ``_resolve_public_ips`` so tests that monkeypatch
+# them here still steer the real fetch path.
+_is_hard_blocked_address = _outbound_fetch._is_hard_blocked_address
+_is_gated_private_address = _outbound_fetch._is_gated_private_address
 
 
-def _is_hard_blocked_address(addr: ipaddress._BaseAddress) -> bool:
-    """Addresses no opt-in may ever reach."""
-    addr = _normalize(addr)
-    # The gated ranges win when the two overlap. Python reports IPv6 ``::1``
-    # as ``is_reserved``, which would otherwise put the v6 loopback in the
-    # hard tier while ``127.0.0.1`` sits in the gated one — same host, two
-    # different answers depending on which literal the user typed.
-    if any(addr in net for net in _GATED_PRIVATE_NETWORKS):
-        return False
-    return (
-        addr.is_link_local
-        or addr.is_multicast
-        or addr.is_reserved
-        or addr.is_unspecified
-        or any(addr in net for net in _HARD_BLOCKED_NETWORKS)
+def _private_targets_allowed():
+    return _outbound_fetch._private_targets_allowed()
+
+
+def _resolve_hostname_ips(hostname):
+    return _outbound_fetch._resolve_hostname_ips(hostname)
+
+
+def _public_http_url(url, *, allow_private=False):
+    return _outbound_fetch._public_http_url(
+        url, resolver=_resolve_hostname_ips, allow_private=allow_private
     )
 
 
-def _is_gated_private_address(addr: ipaddress._BaseAddress) -> bool:
-    """Private/loopback addresses, reachable only with an explicit opt-in."""
-    addr = _normalize(addr)
-    return (
-        addr.is_private
-        or addr.is_loopback
-        or any(addr in net for net in _GATED_PRIVATE_NETWORKS)
+def _resolve_public_ips(url, *, allow_private=False):
+    return _outbound_fetch._resolve_public_ips(
+        url, resolver=_resolve_hostname_ips, allow_private=allow_private
     )
 
 
-def _is_private_address(addr: ipaddress._BaseAddress) -> bool:
-    """Union of both tiers — the historical, always-strict predicate."""
-    return _is_hard_blocked_address(addr) or _is_gated_private_address(addr)
+_PinnedBackend = _outbound_fetch._PinnedBackend
+_PinnedTransport = _outbound_fetch._PinnedTransport
+BodyTooLargeError = _outbound_fetch.BodyTooLargeError
+_CappedFetch = _outbound_fetch._CappedFetch
 
 
-def _private_targets_allowed() -> bool:
-    """True when ``WEB_FETCH_BLOCK_PRIVATE_IPS`` is explicitly switched off.
-
-    Read per call rather than at import so a running instance picks up a
-    changed environment, and so tests can flip it with ``monkeypatch.setenv``.
-    Default is ``true``: an existing deployment keeps the strict behaviour.
-    """
-    raw = os.getenv(_BLOCK_PRIVATE_ENV, "true").strip().lower()
-    return raw in ("0", "false", "no", "off")
-
-
-def _resolve_hostname_ips(hostname: str) -> list[ipaddress._BaseAddress]:
-    try:
-        infos = socket.getaddrinfo(hostname, None)
-    except Exception:
-        return []
-    out = []
-    for info in infos:
-        try:
-            out.append(ipaddress.ip_address(info[4][0]))
-        except Exception:
-            continue
-    return out
-
-
-def _public_http_url(url: str, *, allow_private: bool = False) -> bool:
-    """Boolean form of :func:`_resolve_public_ips`.
-
-    Deliberately a thin wrapper rather than a parallel implementation. It used
-    to be the guard itself, until #704 moved the fetch path onto
-    ``_resolve_public_ips`` and left this function behind with no callers — at
-    which point the tests asserting on it stopped covering anything real.
-    Delegating keeps the two from drifting again.
-    """
-    try:
-        _resolve_public_ips(url, allow_private=allow_private)
-        return True
-    except Exception:
-        return False
-
-
-def _resolve_public_ips(
-    url: str, *, allow_private: bool = False
-) -> list[ipaddress._BaseAddress]:
-    """Resolve ``url`` to the IPs it may be connected to, or raise.
-
-    ``allow_private`` opts into loopback/RFC-1918/ULA targets — the local-first
-    case (an ESP32 or dev server on the LAN). It never unlocks the hard tier:
-    link-local and the instance-metadata range stay rejected either way.
-    """
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        raise httpx.RequestError(f"Blocked non-public URL: {url}")
-    host = (parsed.hostname or "").strip().lower()
-
-    if host in _HARD_BLOCKED_HOSTS:
-        raise httpx.RequestError(f"Blocked non-public hostname: {host}")
-    if not allow_private and (
-        host in _GATED_HOSTS or host.endswith(_GATED_HOST_SUFFIXES)
-    ):
-        raise httpx.RequestError(f"Blocked non-public hostname: {host}")
-
-    def _rejected(addr: ipaddress._BaseAddress) -> bool:
-        if _is_hard_blocked_address(addr):
-            return True
-        return not allow_private and _is_gated_private_address(addr)
-
-    try:
-        ip = ipaddress.ip_address(host)
-        if _rejected(ip):
-            raise httpx.RequestError(f"Blocked non-public IP literal: {host}")
-        return [ip]
-    except httpx.RequestError:
-        raise
-    except ValueError:
-        pass
-
-    addrs = _resolve_hostname_ips(host)
-    if not addrs or any(_rejected(a) for a in addrs):
-        raise httpx.RequestError(f"Blocked non-public URL: {url}")
-    return addrs
-
-
-class _PinnedBackend(httpcore.NetworkBackend):
-    """Network backend that connects to a pre-resolved IP.
-
-    httpcore derives the TLS SNI and the ``Host`` header from the URL's
-    origin, not from the host argument passed to ``connect_tcp``. So
-    routing the TCP connect to a resolved IP while leaving the URL
-    untouched keeps SNI / vhost behaviour correct and closes the
-    DNS-rebinding TOCTOU between the SSRF check and the connect.
-    """
-
-    def __init__(self, ip: ipaddress._BaseAddress):
-        self._ip = str(ip)
-        self._real = httpcore.SyncBackend()
-
-    def connect_tcp(
-        self,
-        host: str,
-        port: int,
-        timeout: float | None = None,
-        local_address: str | None = None,
-        socket_options=None,
-    ):
-        return self._real.connect_tcp(
-            self._ip, port, timeout, local_address, socket_options
-        )
-
-    def connect_unix_socket(self, path, timeout=None, socket_options=None):
-        return self._real.connect_unix_socket(path, timeout, socket_options)
-
-    def sleep(self, seconds: float) -> None:
-        return self._real.sleep(seconds)
-
-
-# Map httpcore exception classes to their httpx equivalents. Built
-# once at import time from the public exception classes; avoids any
-# import of httpx's private transport machinery. httpcore's
-# ``ConnectionNotAvailable`` is a pool-internal signal (the pool will
-# close and retry on its own) — we never expect to see it surface to
-# a transport caller, so it has no httpx counterpart here.
-_HTTPCORE_TO_HTTPX_EXC = {
-    httpcore.ConnectError: httpx.ConnectError,
-    httpcore.ConnectTimeout: httpx.ConnectTimeout,
-    httpcore.LocalProtocolError: httpx.LocalProtocolError,
-    httpcore.NetworkError: httpx.NetworkError,
-    httpcore.PoolTimeout: httpx.PoolTimeout,
-    httpcore.ProtocolError: httpx.ProtocolError,
-    httpcore.ProxyError: httpx.ProxyError,
-    httpcore.ReadError: httpx.ReadError,
-    httpcore.ReadTimeout: httpx.ReadTimeout,
-    httpcore.RemoteProtocolError: httpx.RemoteProtocolError,
-    httpcore.TimeoutException: httpx.TimeoutException,
-    httpcore.UnsupportedProtocol: httpx.UnsupportedProtocol,
-    httpcore.WriteError: httpx.WriteError,
-    httpcore.WriteTimeout: httpx.WriteTimeout,
-}
-
-
-class _PinnedTransport(httpx.BaseTransport):
-    """Transport that pins every TCP connect to a pre-resolved IP.
-
-    Uses only the public ``httpcore`` and ``httpx`` APIs — no
-    subclassing of ``httpx.HTTPTransport``, no reads of private
-    ``httpcore.ConnectionPool`` attributes, no imports from
-    ``httpx private transport internals``. The URL is passed through unchanged so SNI
-    / vhost work as if httpx had been given the hostname directly;
-    only the TCP destination is pinned, closing the DNS-rebinding
-    TOCTOU between the SSRF check and the connect.
-    """
-
-    def __init__(self, ip: ipaddress._BaseAddress, *, http2: bool = False):
-        self._pool = httpcore.ConnectionPool(
-            ssl_context=ssl.create_default_context(),
-            http1=True,
-            http2=http2,
-            network_backend=_PinnedBackend(ip),
-        )
-
-    def __enter__(self):
-        self._pool.__enter__()
-        return self
-
-    def __exit__(self, exc_type=None, exc_value=None, traceback=None) -> None:
-        self._pool.__exit__(exc_type, exc_value, traceback)
-
-    def handle_request(self, request: httpx.Request) -> httpx.Response:
-        httpcore_req = httpcore.Request(
-            method=request.method,
-            url=httpcore.URL(
-                scheme=request.url.raw_scheme,
-                host=request.url.raw_host,
-                port=request.url.port,
-                target=request.url.raw_path,
-            ),
-            headers=request.headers.raw,
-            content=request.stream,
-            extensions=request.extensions,
-        )
-        try:
-            httpcore_resp = self._pool.handle_request(httpcore_req)
-            # Eager materialisation matches the original
-            # ``response.text`` usage in fetch_webpage_content. The
-            # sync pool's stream is a plain Iterable[bytes] despite
-            # the httpcore type hint unioning the async variant.
-            content = b"".join(cast(Iterable[bytes], httpcore_resp.stream))
-        except Exception as exc:
-            mapped = _HTTPCORE_TO_HTTPX_EXC.get(type(exc))
-            if mapped is not None:
-                raise mapped(str(exc)) from exc
-            raise
-
-        return httpx.Response(
-            status_code=httpcore_resp.status,
-            headers=httpcore_resp.headers,
-            content=content,
-            extensions=httpcore_resp.extensions,
-        )
-
-    def close(self) -> None:
-        self._pool.close()
-
-class BodyTooLargeError(Exception):
-    """The server declared a body larger than the hard fetch ceiling."""
-
-    def __init__(self, url: str, declared_bytes: int):
-        self.url = url
-        self.declared_bytes = declared_bytes
-        super().__init__(
-            f"response body is {declared_bytes:,} bytes, over the "
-            f"{WEB_FETCH_HARD_MAX_BYTES:,}-byte hard cap"
-        )
-
-
-class _CappedFetch:
-    """Result of a size-capped streaming GET.
-
-    Carries just what fetch_webpage_content needs from an httpx.Response,
-    plus the cap bookkeeping: the (possibly truncated) body, whether the
-    cap cut it short, and the size the server declared via Content-Length
-    (wire bytes; None when absent).
-    """
-
-    __slots__ = ("status_code", "headers", "content", "truncated",
-                 "declared_bytes", "encoding", "url")
-
-    def __init__(self, status_code, headers, content, truncated,
-                 declared_bytes, encoding, url):
-        self.status_code = status_code
-        self.headers = headers
-        self.content = content
-        self.truncated = truncated
-        self.declared_bytes = declared_bytes
-        self.encoding = encoding
-        self.url = url
-
-    @property
-    def text(self) -> str:
-        return self.content.decode(self.encoding or "utf-8", errors="replace")
-
-    def raise_for_status(self):
-        if self.status_code >= 400:
-            request = httpx.Request("GET", self.url)
-            raise httpx.HTTPStatusError(
-                f"HTTP {self.status_code} for {self.url}",
-                request=request,
-                response=httpx.Response(self.status_code, request=request),
-            )
-
-
-def _get_public_url(url: str, headers: dict, timeout: int, max_redirects: int = 5,
-                    max_bytes: int = None, allow_private: bool = None) -> "_CappedFetch":
-    """Capped streaming GET with SSRF-guarded, DNS-pinned manual redirects.
-
-    Each hop is resolved once, validated as public, and then the actual TCP
-    connection is pinned to that resolved IP. The request URL is left unchanged
-    so Host and TLS SNI keep the original hostname.
-
-    ``allow_private`` (default: read from ``WEB_FETCH_BLOCK_PRIVATE_IPS``)
-    applies to the **first hop only**. A user asking for their own LAN device
-    is opting in deliberately; a public page issuing a 302 into RFC-1918 space
-    is an SSRF chain and stays blocked regardless of the setting.
-    """
+def _get_public_url(url, headers, timeout, max_redirects=5, max_bytes=None,
+                    allow_private=None):
+    """See ``src.outbound_fetch._get_public_url``. ``allow_private`` applies to
+    the first hop only and defaults to WEB_FETCH_BLOCK_PRIVATE_IPS."""
     if allow_private is None:
         allow_private = _private_targets_allowed()
-    cap = min(max_bytes or WEB_FETCH_SOFT_MAX_BYTES, WEB_FETCH_HARD_MAX_BYTES)
-    current = url
-    for hop in range(max_redirects + 1):
-        ips = _resolve_public_ips(current, allow_private=allow_private and hop == 0)
+    return _outbound_fetch._get_public_url(
+        url,
+        headers=headers,
+        timeout=timeout,
+        max_redirects=max_redirects,
+        max_bytes=max_bytes,
+        allow_private=allow_private,
+        resolve_public_ips=_resolve_public_ips,
+        transport_factory=_PinnedTransport,
+    )
 
-        # Force identity transfer-encoding. With gzip/deflate the wire bytes
-        # and Content-Length can be a small fraction of the decoded body, so a
-        # tiny compressed response could pass the hard-cap preflight and then
-        # expand past the ceiling in one decoded chunk before the streamed cap
-        # below can slice it.
-        req_headers = dict(headers or {})
-        req_headers["Accept-Encoding"] = "identity"
-
-        with httpx.Client(
-            headers=req_headers,
-            timeout=timeout,
-            follow_redirects=False,
-            transport=_PinnedTransport(ips[0]),
-        ) as client:
-            with client.stream("GET", current) as response:
-                if response.status_code in (301, 302, 303, 307, 308):
-                    location = response.headers.get("location")
-                    if not location:
-                        return _CappedFetch(response.status_code, response.headers, b"",
-                                            False, None, response.encoding, str(response.url))
-                    current = urljoin(str(response.url), location)
-                    continue
-
-                # A server can ignore the identity request and still return a
-                # compressed body; httpx.iter_bytes would then decode it, and a
-                # tiny gzip can balloon into one decoded chunk far past the cap.
-                # Refuse compressed Content-Encoding so the streamed cap stays
-                # a real memory bound.
-                enc = (response.headers.get("content-encoding") or "").strip().lower()
-                if enc and enc != "identity":
-                    raise httpx.RequestError(
-                        f"Refusing compressed response (Content-Encoding: {enc}) after "
-                        "requesting identity: cannot bound decoded body size",
-                        request=httpx.Request("GET", current),
-                    )
-
-                declared = None
-                raw_len = response.headers.get("content-length")
-                if raw_len and raw_len.isdigit():
-                    declared = int(raw_len)
-
-                if declared is not None and declared > WEB_FETCH_HARD_MAX_BYTES:
-                    raise BodyTooLargeError(current, declared)
-
-                chunks = []
-                read = 0
-                truncated = False
-                for chunk in response.iter_bytes():
-                    read += len(chunk)
-                    if read > cap:
-                        keep = cap - (read - len(chunk))
-                        if keep > 0:
-                            chunks.append(chunk[:keep])
-                        truncated = True
-                        break
-                    chunks.append(chunk)
-
-                return _CappedFetch(response.status_code, response.headers,
-                                    b"".join(chunks), truncated, declared,
-                                    response.encoding, str(response.url))
-
-    raise httpx.RequestError("Too many redirects", request=httpx.Request("GET", current))
 
 # PDF extraction (optional dependency)
 try:

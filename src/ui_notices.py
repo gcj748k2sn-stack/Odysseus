@@ -92,6 +92,13 @@ _NOTICE_PATTERNS = [
             "not the work. Ask me again and I'll do it."
         )
     ),
+    # Upstream's terminal-failure note (merged 2026-10-06): since upstream
+    # #5953-era agent_loop changes, a provider/stream failure ends the turn
+    # with `[Agent stopped: <reason>]` (agent_loop.py and chat_routes.py,
+    # grep "Agent stopped:") instead of reaching `_stream_failure_notice`.
+    # Same class of Odysseus-written text, so the model gets the same neutral
+    # marker instead of the bracketed note.
+    re.compile(r"\[Agent stopped: [^\]\n]{1,300}\]"),
     # `_tool_payload_as_text_notice`.
     re.compile(
         re.escape(

@@ -54,6 +54,17 @@ def _run_loop(monkeypatch, round_outputs, tool_results, max_rounds=4):
     monkeypatch.setattr(al, "get_setting", lambda key, default=None: default, raising=False)
     monkeypatch.setattr(al, "get_mcp_manager", lambda: None, raising=False)
     monkeypatch.setattr(al, "estimate_tokens", lambda *a, **k: 10, raising=False)
+    # Merged 2026-10-06: upstream's untrusted-context gate treats any tool
+    # result that carries text — an edit_document error included — as content
+    # that arms it, after which a second document edit needs a sealed user
+    # approval. These tests pin the end-of-turn report, not the gate (upstream
+    # covers that in tests/test_external_context_tool_gate.py), so the gate is
+    # held open here.
+    from src.tool_capabilities import ToolGateDecision, ToolRunSecurityContext
+    monkeypatch.setattr(
+        ToolRunSecurityContext, "decision_for",
+        lambda self, tool_name, content=None: ToolGateDecision(True),
+    )
 
     results = list(tool_results)
     calls = []
@@ -194,6 +205,17 @@ def test_gathering_only_turn_does_not_end_as_done(monkeypatch):
     monkeypatch.setattr(al, "get_setting", lambda key, default=None: default, raising=False)
     monkeypatch.setattr(al, "get_mcp_manager", lambda: None, raising=False)
     monkeypatch.setattr(al, "estimate_tokens", lambda *a, **k: 10, raising=False)
+    # Merged 2026-10-06: upstream's untrusted-context gate treats any tool
+    # result that carries text — an edit_document error included — as content
+    # that arms it, after which a second document edit needs a sealed user
+    # approval. These tests pin the end-of-turn report, not the gate (upstream
+    # covers that in tests/test_external_context_tool_gate.py), so the gate is
+    # held open here.
+    from src.tool_capabilities import ToolGateDecision, ToolRunSecurityContext
+    monkeypatch.setattr(
+        ToolRunSecurityContext, "decision_for",
+        lambda self, tool_name, content=None: ToolGateDecision(True),
+    )
 
     async def _fake_exec(block, *a, **k):
         return ("read_file", {"output": "// HTML page\nvoid htmlMain() {...}", "exit_code": 0})

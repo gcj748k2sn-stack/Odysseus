@@ -3,15 +3,26 @@
 Seen 2026-10-05 08:32/08:34 (session 726f7e32, Bonsai 2): looking for "the
 last saved data", the model called read_file on data/app.db twice; the second
 read pushed the next request to 36,656 tokens against a 32,768 window. DATA_DIR
-is the DEFAULT root for read_file/write_file and the deny-list only knew
+was the DEFAULT root for read_file/write_file and the deny-list only knew
 home-directory secrets, so the same call could have read data/.app_key (the key
 that decrypts stored email passwords and tokens), sessions.json (login tokens)
 or settings.json (search API keys) — and write_file could overwrite them.
 
-Every case below runs against a temporary DATA_DIR; the negative controls are
-the ordinary files in data/ that must stay readable.
+Merged with upstream 2026-10-06. Upstream fixed the same hole on 2026-09-05
+(security advisory, ``_is_app_state_path`` in src/tool_execution.py) with a
+containment rule instead of this fork's filename list: everything under
+DATA_DIR is refused except the agent-readable subdirectories (agent_workspace,
+uploads, mail attachments, personal docs). The fork's list was retired in
+favour of it. These tests keep this item's live cases and negative controls,
+re-pointed at the merged policy; upstream's own coverage is
+tests/test_agent_state_dir_confinement.py.
+
+⚠️ Deliberate tightening, recorded by NOW_REFUSED below: files the fork left
+readable directly in data/ (presets.json, memory.json, logs/, skills/, hwfit/)
+are refused now too.
 """
 import asyncio
+import importlib
 import os
 import shutil
 import sys
@@ -20,84 +31,104 @@ from unittest.mock import patch
 
 import pytest
 
-from src.tool_execution import (
-    _active_workspace,
-    _direct_fallback,
-    _is_odysseus_state_path,
-    _is_sensitive_path,
-    _resolve_tool_path,
-)
-
 STATE = [
     ".app_key", ".key", "auth.json", "sessions.json", "settings.json",
     "cookbook_state.json", "user_prefs.json",
     "app.db", "app.db-journal", "app.db-wal", "app.db-shm", "app.db.bak-before-bonsai2",
     "scheduled_emails.db", "chroma/chroma.sqlite3",
     "settings.json.bak", "auth.json.tmp-123", ".app_key~",
-    "Auth.JSON", "APP.DB",
 ]
 ALLOWED = [
     "uploads/report.txt", "uploads/settings.json", "personal_docs/a.md",
+    "agent_workspace/notes.md",
+]
+# Readable under the fork's filename list, refused under upstream's containment.
+NOW_REFUSED = [
     "presets.json", "memory.json", "logs/app.log", "skills/notes.md",
-    "hwfit/models.json", "settings.jsonx", ".keyboard", "notes.dbx",
+    "hwfit/models.json",
 ]
 
 
 @pytest.fixture
 def data_dir(tmp_path, monkeypatch):
-    """A DATA_DIR under tmp_path (itself under the default /tmp root)."""
+    """A complete DATA_DIR tree under tmp_path, wired the way
+    test_agent_state_dir_confinement.py wires it: the readable subdirectories
+    are their own constants, so patching DATA_DIR alone is not enough."""
     data = tmp_path / "data"
-    (data / "uploads").mkdir(parents=True)
+    constants = importlib.import_module("src.constants")
+    execution = importlib.import_module("src.tool_execution")
+    monkeypatch.setattr(constants, "DATA_DIR", str(data), raising=False)
+    readable = {
+        "AGENT_WORKSPACE_DIR": data / "agent_workspace",
+        "UPLOAD_DIR": data / "uploads",
+        "MAIL_ATTACHMENTS_DIR": data / "mail-attachments",
+        "PERSONAL_DIR": data / "personal_docs",
+        "PERSONAL_UPLOADS_DIR": data / "personal_uploads",
+    }
+    for name, path in readable.items():
+        path.mkdir(parents=True)
+        monkeypatch.setattr(constants, name, str(path), raising=False)
+    monkeypatch.setattr(execution, "AGENT_WORKSPACE_DIR", str(readable["AGENT_WORKSPACE_DIR"]))
     (data / "chroma").mkdir()
-    monkeypatch.setattr("src.constants.DATA_DIR", str(data))
     with patch("src.settings.get_setting", return_value=[]):
         yield data
 
 
+def _execution():
+    return importlib.import_module("src.tool_execution")
+
+
 def _run(tool, content):
-    return asyncio.run(_direct_fallback(tool, content))
+    return asyncio.run(_execution()._direct_fallback(tool, content))
 
 
 # ── the resolver every file tool goes through ──
 
 @pytest.mark.parametrize("rel", STATE)
 def test_state_files_are_refused(data_dir, rel):
-    with pytest.raises(ValueError, match="Odysseus's own state"):
-        _resolve_tool_path(str(data_dir / rel))
+    with pytest.raises(ValueError, match="application state"):
+        _execution()._resolve_tool_path(str(data_dir / rel))
 
 
 @pytest.mark.parametrize("rel", ALLOWED)
-def test_ordinary_data_files_still_resolve(data_dir, rel):
-    """Negative control: the rule is the listed files, not data/ as a whole."""
+def test_user_content_still_resolves(data_dir, rel):
+    """Negative control: the agent-readable subdirectories stay readable —
+    including an upload that happens to be called settings.json."""
     target = data_dir / rel
-    assert _resolve_tool_path(str(target)) == os.path.realpath(str(target))
+    assert _execution()._resolve_tool_path(str(target)) == os.path.realpath(str(target))
+
+
+@pytest.mark.parametrize("rel", NOW_REFUSED)
+def test_rest_of_data_dir_is_refused_after_the_merge(data_dir, rel):
+    with pytest.raises(ValueError, match="application state"):
+        _execution()._resolve_tool_path(str(data_dir / rel))
 
 
 def test_the_same_names_outside_data_dir_are_not_state(data_dir, tmp_path):
     for rel in ("app.db", "settings.json", ".app_key"):
-        assert not _is_odysseus_state_path(os.path.realpath(str(tmp_path / "elsewhere" / rel)))
+        p = os.path.realpath(str(tmp_path / "elsewhere" / rel))
+        assert not _execution()._is_app_state_path(p)
 
 
-def test_case_variant_spelling_of_data_dir(data_dir):
-    """Default macOS: DATA/Auth.JSON opens data/auth.json, and realpath keeps
-    the caller's spelling."""
-    assert _is_odysseus_state_path(str(data_dir).upper() + os.sep + "AUTH.JSON")
-
-
-def test_state_files_count_as_sensitive_for_grep_and_glob_filters(data_dir):
-    assert _is_sensitive_path(os.path.realpath(str(data_dir / "settings.json")))
-    assert not _is_sensitive_path(os.path.realpath(str(data_dir / "presets.json")))
+def test_refusal_names_the_tools_that_do_reach_this_data(data_dir):
+    """A small model told only "refused" retries the same call; naming the
+    right tool is what the 2026-10-05 live check asked for."""
+    with pytest.raises(ValueError, match="manage_documents"):
+        _execution()._resolve_tool_path(str(data_dir / "app.db"))
 
 
 def test_workspace_mode_refuses_state_too(data_dir, tmp_path):
     """A workspace that contains data/ (e.g. the repo itself) is a second way in."""
-    token = _active_workspace.set(str(tmp_path))
+    execution = _execution()
+    token = execution._active_workspace.set(str(tmp_path))
     try:
-        with pytest.raises(ValueError, match="Odysseus's own state"):
-            _resolve_tool_path("data/auth.json")
-        assert _resolve_tool_path("data/uploads/x.txt") == os.path.realpath(str(data_dir / "uploads" / "x.txt"))
+        with pytest.raises(ValueError, match="application state"):
+            execution._resolve_tool_path("data/auth.json")
+        assert execution._resolve_tool_path("data/uploads/x.txt") == os.path.realpath(
+            str(data_dir / "uploads" / "x.txt")
+        )
     finally:
-        _active_workspace.reset(token)
+        execution._active_workspace.reset(token)
 
 
 # ── the tools ──
@@ -125,7 +156,7 @@ def test_write_file_cannot_overwrite_settings(data_dir):
 
 
 def test_read_file_still_reads_an_upload(data_dir):
-    """Negative control for the two tests above."""
+    """Negative control for the three tests above."""
     (data_dir / "uploads" / "notes.txt").write_text("hello from an upload", encoding="utf-8")
     r = _run("read_file", str(data_dir / "uploads" / "notes.txt"))
     assert r.get("exit_code") == 0
@@ -146,20 +177,23 @@ def test_grep_never_prints_state_files(data_dir, monkeypatch, use_rg):
         real_which = shutil.which
         monkeypatch.setattr(shutil, "which", lambda name, *a, **k: None if name == "rg" else real_which(name, *a, **k))
     _seed_grep(data_dir)
-    r = _run("grep", f'{{"pattern": "tvly", "path": "{data_dir}"}}')
+    # Searching data/ itself is refused outright under the merged policy ...
+    whole = _run("grep", f'{{"pattern": "tvly", "path": "{data_dir}"}}')
+    assert "SECRET" not in str(whole)
+    # ... and the readable part still answers (negative control).
+    r = _run("grep", f'{{"pattern": "tvly", "path": "{data_dir / "uploads"}"}}')
     out = r.get("output", "")
     assert "notes.txt" in out, "negative control: the upload must still match"
     assert "SECRET" not in out
-    assert "settings.json" not in out and "cookbook_state.json" not in out
 
 
 def test_glob_does_not_list_state_files(data_dir):
     _seed_grep(data_dir)
-    (data_dir / "presets.json").write_text("{}", encoding="utf-8")
-    r = _run("glob", f'{{"pattern": "*.json", "path": "{data_dir}"}}')
-    out = r.get("output", "")
-    assert "presets.json" in out
-    assert "settings.json" not in out and "cookbook_state.json" not in out
+    whole = _run("glob", f'{{"pattern": "*.json", "path": "{data_dir}"}}')
+    assert "settings.json" not in whole.get("output", "")
+    assert "cookbook_state.json" not in whole.get("output", "")
+    r = _run("glob", f'{{"pattern": "*.txt", "path": "{data_dir / "uploads"}"}}')
+    assert "notes.txt" in r.get("output", "")
 
 
 # ── through the real dispatcher, as an admin ──
@@ -180,10 +214,12 @@ async def test_dispatch_read_file_refuses_state(data_dir, monkeypatch):
     monkeypatch.setattr("src.tool_execution.owner_is_admin_or_single_user", lambda owner: True)
     (data_dir / "sessions.json").write_text('{"token": "abc"}', encoding="utf-8")
 
-    from src.tool_execution import execute_tool_block
-    _, result = await execute_tool_block(
+    execution = _execution()
+    _, result = await execution.execute_tool_block(
         SimpleNamespace(tool_type="read_file", content=str(data_dir / "sessions.json")),
         owner="admin-user",
+        security_context=execution.NO_TOOL_SECURITY_CONTEXT,
     )
     assert result.get("exit_code") == 1
-    assert "Odysseus's own state" in (result.get("error") or "")
+    assert "application state" in (result.get("error") or "")
+    assert "abc" not in str(result)

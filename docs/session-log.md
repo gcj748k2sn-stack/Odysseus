@@ -8,6 +8,17 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-06 (08:20–09:00) — upstream `dev` merged into the fork, on a branch (`merge-upstream`) — not on `dev` yet
+
+- 🔀 **Merged upstream `2992bf6d` (132 commits, 07-29 → 10-01) into fork `2dfae628`** in a separate clone, as a merge commit so every cited hash stays valid. 25 files conflicted; resolutions, behaviour changes and owed checks: [merge-upstream-2026-10-06.md](merge-upstream-2026-10-06.md).
+- ⚠️ **Item 60 is now upstream's fix** (containment of `data/`, advisory 2026-09-05); the fork's filename list was retired and its test rewritten. Wider than item 60: `data/presets.json`, `memory.json`, `logs/`, `skills/`, `hwfit/` are refused too, and the agent's bash `$HOME` moved to `data/agent_workspace/`.
+- ⚠️ **Expect approval cards** after any web result (upstream's untrusted-context gate), and `[Agent stopped: …]` instead of item 9b's notice on stream failures.
+- 🐛 **Found by the fork's JS scanner:** upstream's `chat.js` reads `roundHolder` outside its block in the stream-error catch (ReferenceError) — hoisted.
+- 🧪 Linux clone, py3.13: **merge 7,443 passed, 11 skipped, 0 failed**; baselines upstream 5,945 / fork 6,254, both 0 failed. 3 mutations caught. `saveDocument` return values unverified (no JS harness). **M1 suite and live checks owed** — list in the merge note.
+- **Delivered as a git bundle**; the maintainer fetches it into `merge-upstream`, runs the suite, then fast-forwards `dev`. Nothing in `/Users/cedrik/odysseus` was changed by this session except the bundle file.
+
+---
+
 ## 2026-10-06 (02:10) — agent benchmark: first live run, follow-up fixes, cleanup — uncommitted
 
 - 📊 **First live `--quick` run (2026-10-05 08:58–09:43, 8 tasks × 1 run each, incognito):** Qwen 3.5 9B (LM Studio) **7/8**, median **51 s**/task, 18 s/round, 6 min total; Bonsai 2 (`:8090`) **8/8**, median **253 s**/task, 47 s/round, 34 min total, uncached prefill ~53 tok/s, prompt-cache hit 58 %. **0 empty answers after tool rounds** for either (0/22, 0/12). The quality gap is noise at n=8 (95 % CI 68–100 vs 53–98); **speed is the only firm result.** Report: `data/bench/agent/report.md` (gitignored).

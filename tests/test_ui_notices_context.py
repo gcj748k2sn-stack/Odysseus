@@ -151,3 +151,22 @@ def test_raw_history_keeps_notices_for_display():
     s.get_context_messages()
     assert "empty response" in s.history[1].content
     assert "stopped without producing an answer" in s.history[3].content
+
+
+# ── Upstream's terminal-failure note (merged 2026-10-06) ──
+# After the merge a provider/stream failure ends the turn with
+# "[Agent stopped: …]" (src/agent_loop.py, routes/chat_routes.py) before
+# `_stream_failure_notice` can run, so that note has to strip the same way.
+
+def test_upstream_agent_stopped_note_strips_to_the_marker():
+    reply = "Here is what I found so far.\n\n[Agent stopped: Model request failed (HTTP 504)]"
+    assert context_view_of_reply(reply) == (
+        "Here is what I found so far.\n\n" + INCOMPLETE_TURN_MARKER
+    )
+    assert context_view_of_reply("[Agent stopped: Model request failed]") == INCOMPLETE_TURN_MARKER
+
+
+def test_agent_stopped_lookalike_in_prose_is_left_alone():
+    """Negative control: only the bracketed template matches."""
+    text = "The log said Agent stopped: timeout, which is a different thing."
+    assert context_view_of_reply(text) == text

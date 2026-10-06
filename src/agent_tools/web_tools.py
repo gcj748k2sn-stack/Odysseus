@@ -66,6 +66,7 @@ class WebSearchTool:
             return {
                 "error": f"web_search failed: {type(e).__name__}: {str(e) or 'no details'}",
                 "exit_code": 1,
+                "untrusted_content": True,
             }
         if progress_cb:
             await progress_cb({
@@ -144,7 +145,11 @@ class WebFetchTool:
                 # carried these labels since the frozen-device incident; the
                 # failure path never had them because failures were never
                 # cached. See services/search/content.py, negative cache.
-                failed = {"error": f"web_fetch: {url}: {err}", "exit_code": 1}
+                failed = {
+                    "error": f"web_fetch: {url}: {err}",
+                    "exit_code": 1,
+                    "untrusted_content": True,
+                }
                 if result.get("cached"):
                     age = result.get("cache_age_seconds")
                     age_txt = (

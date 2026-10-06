@@ -45,6 +45,13 @@ def _fake_core_package():
     return core_mod
 
 
+async def _execute_without_run_context(execute_tool_block, *args, **kwargs):
+    from src.tool_execution import NO_TOOL_SECURITY_CONTEXT
+
+    kwargs.setdefault("security_context", NO_TOOL_SECURITY_CONTEXT)
+    return await execute_tool_block(*args, **kwargs)
+
+
 class _FakeColumn:
     def __init__(self, name):
         self.name = name
@@ -524,7 +531,8 @@ async def test_admin_agent_tools_require_admin(monkeypatch):
     monkeypatch.setattr(auth_mod, "AuthManager", lambda: FakeAuth())
 
     for tool_name in ("manage_tokens", "app_api", "serve_preset"):
-        desc, result = await execute_tool_block(
+        desc, result = await _execute_without_run_context(
+            execute_tool_block,
             SimpleNamespace(tool_type=tool_name, content='{"action":"create","name":"bad"}'),
             owner="regular-user",
         )
@@ -747,7 +755,8 @@ async def test_public_agent_policy_blocks_sensitive_tools(monkeypatch):
         "mark_email_read", "bulk_email", "download_attachment",
     )
     for tool_name in bare_email_tools + ("read_file", "mcp__email__send_email"):
-        desc, result = await execute_tool_block(
+        desc, result = await _execute_without_run_context(
+            execute_tool_block,
             SimpleNamespace(tool_type=tool_name, content="{}"),
             owner="regular-user",
         )
@@ -777,7 +786,8 @@ async def test_disabled_qualified_email_tool_blocks_bare_alias(monkeypatch):
         # …and a bare denylist entry blocks the qualified spelling.
         ("mcp__email__delete_email", {"delete_email"}),
     ):
-        desc, result = await execute_tool_block(
+        desc, result = await _execute_without_run_context(
+            execute_tool_block,
             SimpleNamespace(tool_type=bare, content="{}"),
             owner="admin-user",
             disabled_tools=disabled,
@@ -800,7 +810,8 @@ async def test_tool_policy_qualified_email_block_covers_bare_alias(monkeypatch):
     monkeypatch.setattr(tool_execution, "get_mcp_manager", fail_get_mcp_manager)
 
     policy = ToolPolicy(disabled_tools=frozenset({"mcp__email__send_email"}))
-    desc, result = await execute_tool_block(
+    desc, result = await _execute_without_run_context(
+        execute_tool_block,
         SimpleNamespace(tool_type="send_email", content="{}"),
         owner="admin-user",
         tool_policy=policy,
@@ -902,7 +913,8 @@ async def test_bare_email_dispatch_rejects_non_object_json_args(monkeypatch):
     mcp = _FakeMcpManager()
     monkeypatch.setattr(tool_execution, "get_mcp_manager", lambda: mcp)
 
-    desc, result = await execute_tool_block(
+    desc, result = await _execute_without_run_context(
+        execute_tool_block,
         SimpleNamespace(tool_type="bulk_email", content='["10", "11"]'),
         owner="admin-user",
     )
@@ -925,7 +937,8 @@ async def test_bare_email_dispatch_rejects_invalid_json_body(monkeypatch):
     for bad_body in ('{account: "work"}', "account: work"):
         mcp = _FakeMcpManager()
         monkeypatch.setattr(tool_execution, "get_mcp_manager", lambda: mcp)
-        desc, result = await execute_tool_block(
+        desc, result = await _execute_without_run_context(
+            execute_tool_block,
             SimpleNamespace(tool_type="list_emails", content=bad_body),
             owner="admin-user",
         )
@@ -1002,7 +1015,7 @@ async def test_write_file_inline_json_args(monkeypatch):
     from src.tool_parsing import parse_tool_blocks
     blocks = parse_tool_blocks('```write_file {"path": "/tmp/wf.txt", "content": "hi"}\n```')
     for b in blocks:
-        await execute_tool_block(b, owner="admin")
+        await _execute_without_run_context(execute_tool_block, b, owner="admin")
 
     assert captured.get("path") == "/tmp/wf.txt", (
         f"write_file did not decode inline JSON args; got path {captured.get('path')!r}"
@@ -1026,7 +1039,8 @@ async def test_plan_mode_blocks_mutating_email_aliases_without_mcp_inventory(mon
 
     for tool_name in ("draft_email", "draft_email_reply", "ai_draft_email_reply",
                       "download_attachment", "send_email", "delete_email", "unsubscribe_email"):
-        desc, result = await execute_tool_block(
+        desc, result = await _execute_without_run_context(
+            execute_tool_block,
             SimpleNamespace(tool_type=tool_name, content="{}"),
             owner="admin-user",
             disabled_tools=denied,
@@ -1034,7 +1048,8 @@ async def test_plan_mode_blocks_mutating_email_aliases_without_mcp_inventory(mon
         assert result["exit_code"] == 1, tool_name
         assert mcp.calls == [], f"{tool_name} reached the MCP server in plan mode"
 
-    desc, result = await execute_tool_block(
+    desc, result = await _execute_without_run_context(
+        execute_tool_block,
         SimpleNamespace(tool_type="search_emails", content='{"query": "x"}'),
         owner="admin-user",
         disabled_tools=denied,
@@ -1045,7 +1060,8 @@ async def test_plan_mode_blocks_mutating_email_aliases_without_mcp_inventory(mon
     ]
 
     mcp.calls.clear()
-    desc, result = await execute_tool_block(
+    desc, result = await _execute_without_run_context(
+        execute_tool_block,
         SimpleNamespace(tool_type="scan_email_unsubscribes", content='{"limit": 1}'),
         owner="admin-user",
         disabled_tools=denied,
@@ -1067,7 +1083,8 @@ async def test_bare_email_dispatch_empty_content_calls_with_empty_args(monkeypat
     mcp = _FakeMcpManager()
     monkeypatch.setattr(tool_execution, "get_mcp_manager", lambda: mcp)
 
-    desc, result = await execute_tool_block(
+    desc, result = await _execute_without_run_context(
+        execute_tool_block,
         SimpleNamespace(tool_type="list_email_accounts", content=""),
         owner="admin-user",
     )
@@ -1094,7 +1111,8 @@ async def test_email_mcp_non_object_args_fail_before_dispatch(monkeypatch):
     monkeypatch.setattr(tool_execution, "_owner_is_admin", lambda owner: True)
     monkeypatch.setattr(tool_execution, "get_mcp_manager", lambda: fake)
 
-    desc, result = await execute_tool_block(
+    desc, result = await _execute_without_run_context(
+        execute_tool_block,
         SimpleNamespace(tool_type="mcp__email__list_emails", content='["INBOX"]'),
         owner="alice",
     )
@@ -1122,7 +1140,8 @@ async def test_email_mcp_dispatch_includes_hidden_owner(monkeypatch):
     monkeypatch.setattr(tool_execution, "_owner_is_admin", lambda owner: True)
     monkeypatch.setattr(tool_execution, "get_mcp_manager", lambda: fake)
 
-    desc, result = await execute_tool_block(
+    desc, result = await _execute_without_run_context(
+        execute_tool_block,
         SimpleNamespace(tool_type="mcp__email__list_emails", content='{"folder":"INBOX"}'),
         owner="alice",
     )
@@ -1143,7 +1162,8 @@ async def test_bare_email_mcp_dispatch_includes_hidden_owner(monkeypatch):
     monkeypatch.setattr(tool_execution, "_owner_is_admin", lambda owner: True)
     monkeypatch.setattr(tool_execution, "get_mcp_manager", lambda: fake)
 
-    desc, result = await execute_tool_block(
+    desc, result = await _execute_without_run_context(
+        execute_tool_block,
         SimpleNamespace(tool_type="list_emails", content='{"folder":"INBOX"}'),
         owner="alice",
     )
