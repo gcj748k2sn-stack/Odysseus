@@ -82,6 +82,11 @@ PRESETS = {
     "qwen35": ("a5179555", "qwen/qwen3.5-9b"),     # LM Studio :1234
 }
 
+# A server that cannot answer at all is not a model result: unreachable,
+# LM Studio's broken-copy "Compute error" (2026-10-06 11:25), any HTTP 5xx.
+# An HTTP 400 such as "exceeds the available context size" stays a result.
+SERVER_FAULT_RE = re.compile(r"Cannot reach|Compute error|['\"]status['\"]: ?5\d\d|HTTP 5\d\d")
+APPROVAL_WAIT = "Waiting for an exact user approval"   # src/agent_loop.py placeholder output
 TASK_TIMEOUT_S = 20 * 60      # whole turn; Bonsai 2 rounds reach 300 s at p90
 READ_IDLE_S = 960             # Odysseus's own per-round timeout is 900 s
 
@@ -179,8 +184,9 @@ def run_one(api, task, target, rep, run_dir, args):
             "allow_web_search": "true" if task["web"] else "false",
             "workspace": ctx["ws"]}
 
-    state = {"event": None, "after_tool": False, "t0": time.time(), "first_text": None}
+    state = {"event": None, "t0": time.time(), "first_text": None, "stream_rounds": 0, "approval": None}
     final_parts, all_parts = [], []
+    rec["approvals"] = []
 
     def on_line(line):
         if not line:
@@ -203,6 +209,8 @@ def run_one(api, task, target, rep, run_dir, args):
             rec["flags"].append("stream_error")
             rec.setdefault("stream_errors", []).append(str(d)[:300])
             return
+        if not isinstance(d, dict):
+            return
         if "delta" in d:
             if d.get("thinking"):
                 rec["thinking_chars"] += len(d["delta"])
@@ -217,12 +225,28 @@ def run_one(api, task, target, rep, run_dir, args):
         if typ == "tool_start":
             rec["tools"].append({"tool": d.get("tool"), "round": d.get("round"),
                                  "command": str(d.get("full_command") or d.get("command") or "")[:400]})
+        elif typ == "tool_output" and APPROVAL_WAIT in str(d.get("output") or ""):
+            pass                         # the card's placeholder, not a tool result
         elif typ == "tool_output":
             rec["tool_results"].append({"tool": d.get("tool"), "exit_code": d.get("exit_code"),
                                         "output": str(d.get("output") or "")[:300]})
             final_parts.clear()          # text after the last tool result is the answer
         elif typ == "agent_step":
-            rec["rounds"] = max(rec["rounds"], int(d.get("round") or 0))
+            state["stream_rounds"] = max(state["stream_rounds"], int(d.get("round") or 0))
+        elif typ == "ask_user" and (d.get("data") or {}).get("kind") == "tool_approval":
+            card = d.get("data") or {}
+            state["approval"] = card
+            # Odysseus streams the card's question as assistant text so the
+            # model sees it next turn; it is not part of the model's answer.
+            q = (card.get("question") or "").strip()
+            for parts in (all_parts, final_parts):
+                if parts and parts[-1].strip() == q:
+                    parts.pop()
+        elif typ == "agent_terminal":
+            t = d.get("data") or {}
+            if t.get("failed"):
+                rec["flags"].append("agent_terminal_failed")
+                rec.setdefault("stream_errors", []).append(str(t.get("failure"))[:300])
         elif typ == "metrics":
             m = d.get("data") or {}
             rec["metrics"] = {k: m.get(k) for k in (
@@ -241,7 +265,31 @@ def run_one(api, task, target, rep, run_dir, args):
     rec["start"] = now_local()
     stopper.start()
     try:
-        api.stream("/api/chat_stream", form, on_line)
+        while True:
+            state["approval"], state["stream_rounds"] = None, 0
+            api.stream("/api/chat_stream", form, on_line)
+            rec["rounds"] += state["stream_rounds"]
+            card = state["approval"]
+            if not card or rec.get("timed_out"):
+                break
+            # Since the 2026-10-06 upstream merge, reading a workspace file or
+            # fetching a page arms the untrusted-context gate, and the next
+            # write/edit/bash stops on an approval card. A person would click
+            # "Allow for this task"; the benchmark does the same — the
+            # narrowest scope that lets the request finish — and counts it.
+            if len(rec["approvals"]) >= args.max_approvals:
+                rec["flags"].append("approval_limit")
+                break
+            rec["approvals"].append({"approval_id": card.get("approval_id"), "after_s": round(time.time() - state["t0"], 1),
+                                     "description": str(card.get("description") or "")[:200],
+                                     "decision": args.approval})
+            if args.approval == "deny":
+                rec["flags"].append("approval_denied")
+            form = {"message": "", "session": sid, "incognito": "true", "mode": "agent",
+                    "tool_approval_id": card.get("approval_id"), "tool_approval_decision": args.approval}
+            if args.approval == "deny":
+                api.stream("/api/chat_stream", form, on_line)
+                break
     except Exception as e:
         rec["status"], rec["error"] = "http_error", f"{type(e).__name__}: {e}"[:400]
     finally:
@@ -508,15 +556,18 @@ def cmd_run(args):
             rec = {"task": t["id"], "cat": t["cat"], "target": target[0], "model": target[1][1], "rep": rep,
                    "status": "harness_error", "error": f"{type(e).__name__}: {e}", "passed": False,
                    "trace": traceback.format_exc()[-1500:], "checks": [], "tools": [], "flags": []}
-        if any("Cannot reach" in e for e in rec.get("stream_errors", [])):
-            sys.exit(f"\nerror: the model server became unreachable ({rec['stream_errors'][0][:160]}); "
-                     f"result not saved. Start it and continue with --resume {run_dir}")
+        infra = [e for e in rec.get("stream_errors", []) if SERVER_FAULT_RE.search(e)]
+        if infra:
+            sys.exit(f"\nerror: the model server failed, not the model ({infra[0][:160]}); result not saved.\n"
+                     f"Fix the server (LM Studio 'Compute error': `lms unload --all && lms load <model>`), "
+                     f"then continue with --resume {run_dir}")
         with out.open("a") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         fails = [c["name"] for c in rec.get("checks", []) if not c["ok"]]
         print(("PASS" if rec["passed"] else "FAIL") + f"  {rec.get('wall_s', '-')} s"
               + (f"  [{rec['status']}]" if rec["status"] != "ok" else "")
               + (f"  ({', '.join(sorted(set(rec['flags'])))})" if rec.get("flags") else "")
+              + (f"  [{len(rec['approvals'])} approval(s)]" if rec.get("approvals") else "")
               + (f"  ✗ {'; '.join(fails)}" if fails else ""), flush=True)
     meta["finished"] = now_local()
     (run_dir / "meta.json").write_text(json.dumps(meta, indent=2))
@@ -735,8 +786,11 @@ def cmd_report(args):
     row("Timeouts / HTTP errors", lambda rs: "%d / %d" % (
         sum(r.get("status") == "timeout" for r in rs),
         sum(r.get("status") in ("http_error", "harness_error") for r in rs)))
-    row("Stream errors", lambda rs: str(sum("stream_error" in r.get("flags", []) for r in rs)))
-    row("ask_user (no one answers)", lambda rs: str(sum("ask_user" in r.get("flags", []) for r in rs)))
+    row("Stream errors / model request failed", lambda rs: str(sum(
+        any(f in r.get("flags", []) for f in ("stream_error", "agent_terminal_failed")) for r in rs)))
+    row("Approval cards answered (task runs with ≥1)", lambda rs: "%d (%d)" % (
+        sum(len(r.get("approvals") or []) for r in rs), sum(1 for r in rs if r.get("approvals"))))
+    row("Model asked the user (no one answers)", lambda rs: str(sum("ask_user" in r.get("flags", []) for r in rs)))
     row("Rounds/budget exhausted, loop breaker", lambda rs: str(sum(
         any(f in r.get("flags", []) for f in ("rounds_exhausted", "budget_exceeded", "loop_breaker_triggered"))
         for r in rs)))
@@ -804,6 +858,8 @@ def cmd_report(args):
         if r["_no_answer_log"]:
             extra.append("log: 'gathered information but produced no answer'")
         tools = " → ".join(x["tool"] or "?" for x in r.get("tools", [])) or "no tools"
+        if r.get("approvals"):
+            tools += f"; {len(r['approvals'])} approval card(s) answered"
         L.append(f"- **{r['target']} · {r['task']} r{r['rep']}** ({r.get('wall_s', '–')} s, {tools})")
         for w in why + extra:
             L.append(f"  - {w}")
@@ -817,6 +873,9 @@ def cmd_report(args):
     L.append("- Every turn ran in incognito: no memory or skills context, which differs from your normal chats "
              "on purpose (reproducible, and no background extraction competing for the model).")
     L.append("- A failure with *tool not offered* is Odysseus's tool selection, not the model.")
+    L.append("- Approval cards (Odysseus's untrusted-context gate since the 2026-10-06 merge) were answered "
+             "automatically with *Allow for this task*; they cost a round trip, not points. The count shows how "
+             "often a model's tool sequence hits the gate.")
     L.append("- Sampling settings are whatever each endpoint gets with no preset (Bonsai 2 relies on the "
              "no-preset `temp=1.0`, see notes/todo.md).")
 
@@ -843,6 +902,9 @@ def main():
     r.add_argument("--resume", help="continue this run directory")
     r.add_argument("--keep", action="store_true", help="keep sessions/notes/events/documents")
     r.add_argument("--no-warmup", action="store_true")
+    r.add_argument("--approval", choices=["approve_task", "deny"], default="approve_task",
+                   help="answer to approval cards (default approve_task, as a person finishing the task would)")
+    r.add_argument("--max-approvals", type=int, default=4, help="per task run, then stop (default 4)")
     r.add_argument("--yes", action="store_true", help="do not pause on preflight warnings (unattended runs)")
     r.add_argument("--task-timeout", type=int, default=TASK_TIMEOUT_S)
     r.set_defaults(func=cmd_run)

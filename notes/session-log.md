@@ -8,6 +8,15 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-06 (21:15–21:45) — benchmark answers approval cards (the handoff's "build first") — uncommitted
+
+- 🔧 **`scripts/bench_agent.py` answers the untrusted-context gate.** On an `ask_user` event with `kind: "tool_approval"` it re-posts the same session with `tool_approval_id` + `tool_approval_decision=approve_task` (cookie login, so `_reject_delegated_tool_approval` does not apply; incognito keeps the turn's context in `_INCOGNITO_CONTEXTS` for 6 h). Rounds are summed across the continuation; the card's question delta and its *"Waiting for an exact user approval."* placeholder are kept out of the answer and the tool results. `--approval deny` and `--max-approvals` (default 4) exist for checking the gate itself. Report: *"Approval cards answered (task runs with ≥1)"*, and a reading note that cards cost a round trip, not points.
+- 🔧 **Upstream's terminal failure path:** `agent_terminal` with `failed` is flagged (`agent_terminal_failed`) next to `event: error`. Server faults — *Cannot reach*, LM Studio's *Compute error* (the 11:25 broken copy), any HTTP 5xx — **stop the run without saving that result** and print the `--resume` line; an HTTP 400 such as the context overflow stays a result.
+- 🧪 Mock server only, extended to raise cards and terminal failures: 18/18 with two cards on each of `write_file`, `edit_file`, `multi_step`; limit, deny and the 500 abort/resume behave as intended. **Not run live** — the handoff's *"one `--quick` live"* is still owed. `notes/merge-upstream-2026-10-06.md` *Approval cards* line updated to match.
+- **Edited:** `scripts/bench_agent.py`, `notes/merge-upstream-2026-10-06.md`, this file. Only `git --no-optional-locks log/show/diff`.
+
+---
+
 ## 2026-10-06 (19:30–20:20) — last live checks for the merge; handoff for the benchmark
 
 - ✅ **LAN `web_fetch`** (Qwen, 20:16): the router at `http://192.168.0.1` (found with `route -n get default`) was reached. The error *"no readable text content (… needs JS/login)"* only comes after a response is received. The earlier timeouts on `192.168.178.1` were a wrong address, which `curl` confirmed.
