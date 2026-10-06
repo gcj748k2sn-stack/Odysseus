@@ -334,12 +334,19 @@ task(
 
 
 # 5 ─ Odysseus features (verified through the API, removed afterwards)
-def _find_notes(ctx):
+# Checks match the run's exact marker; cleanup matches any "[bench-" so an
+# item whose marker the model mistyped is still removed (2026-10-05: Qwen
+# wrote "[bench-44b]" for "[bench-44b6]" and the note was left behind).
+# Runs are sequential, so no other run's items can be caught by it.
+BENCH_TAG = "[bench-"
+
+def _find_notes(ctx, loose=False):
     try:
         notes = ctx["api"].get("/api/notes").get("notes", [])
     except Exception:
         return []
-    return [n for n in notes if ctx["marker"] in (n.get("title") or "") + (n.get("content") or "")]
+    tag = BENCH_TAG if loose else ctx["marker"]
+    return [n for n in notes if tag in (n.get("title") or "") + (n.get("content") or "")]
 
 
 def _check_note(rec, ctx):
@@ -353,7 +360,7 @@ def _check_note(rec, ctx):
 
 
 def _cleanup_note(ctx):
-    for n in _find_notes(ctx):
+    for n in _find_notes(ctx, loose=True):
         ctx["api"].delete(f"/api/notes/{n['id']}")
 
 
@@ -379,7 +386,7 @@ def _local(s):
     return base
 
 
-def _find_events(ctx):
+def _find_events(ctx, loose=False):
     d = _event_day(ctx)
     try:
         evs = ctx["api"].get("/api/calendar/events", params={
@@ -387,7 +394,8 @@ def _find_events(ctx):
             "end": (d + _dt.timedelta(days=4)).isoformat() + "T00:00:00"}).get("events", [])
     except Exception:
         return []
-    return [e for e in evs if ctx["marker"] in (e.get("summary") or "")]
+    tag = BENCH_TAG if loose else ctx["marker"]
+    return [e for e in evs if tag in (e.get("summary") or "")]
 
 
 def _check_event(rec, ctx):
@@ -405,7 +413,7 @@ def _check_event(rec, ctx):
 
 
 def _cleanup_event(ctx):
-    for e in _find_events(ctx):
+    for e in _find_events(ctx, loose=True):
         ctx["api"].delete(f"/api/calendar/events/{e['uid']}")
 
 
@@ -418,12 +426,13 @@ task(
 )
 
 
-def _find_docs(ctx):
+def _find_docs(ctx, loose=False):
     try:
         docs = ctx["api"].get(f"/api/documents/{ctx['session']}")
     except Exception:
         return []
-    return [d for d in docs or [] if ctx["marker"] in (d.get("title") or "")]
+    tag = BENCH_TAG if loose else ctx["marker"]
+    return [d for d in docs or [] if tag in (d.get("title") or "")]
 
 
 def _check_doc(rec, ctx):
@@ -437,7 +446,7 @@ def _check_doc(rec, ctx):
 
 
 def _cleanup_doc(ctx):
-    for d in _find_docs(ctx):
+    for d in _find_docs(ctx, loose=True):
         ctx["api"].delete(f"/api/document/{d['id']}")
 
 

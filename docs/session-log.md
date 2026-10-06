@@ -8,6 +8,18 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-06 (02:10) — agent benchmark: first live run, follow-up fixes, cleanup — uncommitted
+
+- 📊 **First live `--quick` run (2026-10-05 08:58–09:43, 8 tasks × 1 run each, incognito):** Qwen 3.5 9B (LM Studio) **7/8**, median **51 s**/task, 18 s/round, 6 min total; Bonsai 2 (`:8090`) **8/8**, median **253 s**/task, 47 s/round, 34 min total, uncached prefill ~53 tok/s, prompt-cache hit 58 %. **0 empty answers after tool rounds** for either (0/22, 0/12). The quality gap is noise at n=8 (95 % CI 68–100 vs 53–98); **speed is the only firm result.** Report: `data/bench/agent/report.md` (gitignored).
+  - Qwen's one fail: the `manage_notes` call was right but the title said `[bench-44b]` for `[bench-44b6]` — a copying slip.
+  - Bonsai's 5 failed tool calls were all environment: 4 SearXNG `timed out after 30s` (09:26–09:30; the only SearXNG failures in `app.log` when checked at 09:50) and one Britannica 403. Its 3 Wikipedia fetches were item 49's menu (prompt grew ~300 tokens each), so `1889` came from the REST summary API it tried last, or from memory. That run predates item 49's fix.
+- 🔧 **Fixes after the run** (in `3bd9a006` unless marked): default URL is **7860**, not 7000 (macOS AirPlay Receiver answers 403 there; the script now says so on an `AirTunes` server header); warm-up and per-task stream errors containing *Cannot reach* abort the run instead of recording fake failures; the report splits failed tool calls into model and environment (timeouts, HTTP 4xx/5xx). **Uncommitted:** per-task cleanup now matches any `[bench-` tag (`BENCH_TAG` in `bench_agent_tasks.py`) so a model-mistyped marker is still removed — checked with a stub API, not live.
+- 🧹 **Left behind, maintainer to remove:** note *"[bench-44b] Workshop shopping"* (`fcb98691`), the only bench leftover in `app.db` (copy checked: no bench sessions, events, documents or memories). `python3 scripts/bench_agent.py cleanup` removes it. Also an unreadable `/tmp/x` tree in the agent VM from an earlier session — not in the repo.
+- ⏭️ **Next:** full suite `--runs 2` per model (Qwen ~30 min, Bonsai ~2–3 h); the `web_fact` task can be passed from memory — once item 49's fix is confirmed, add a task answerable only from the fetched page.
+- **Edited:** `scripts/bench_agent_tasks.py`, this file. `docs/qwensetup.md` is modified in the tree by another session (Bonsai start-script defaults) — not mine, not included. Only `git --no-optional-locks log/show/archive`; no lock taken.
+
+---
+
 ## 2026-10-06 (00:30) — item 52 live check passed; item 45 seen live
 
 - ✅ **Item 52 verified live** in `cdb89980` (last full reply = a stream-failure notice): *"Briefly: what were we talking about"* → thinking recapped the turns with no mention of a failure, error or empty response. A 23:31 attempt was sent incognito (no history read, nothing saved) and did not count.
@@ -45,11 +57,11 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
-## 2026-10-05 (08:35–09:00) — agent benchmark through Odysseus (`scripts/bench_agent.py`) — uncommitted
+## 2026-10-05 (08:35–09:00) — agent benchmark through Odysseus (`scripts/bench_agent.py`) — committed 2026-10-06 01:56 (`3bd9a006`); live results in the 2026-10-06 (02:10) entry
 
 - 🆕 **`scripts/bench_agent.py` + `scripts/bench_agent_tasks.py`**: 17 tasks (8 in `--quick`) sent through the real `/api/chat_stream` in agent mode, one model per run, to compare Bonsai 2 (`ed1cd41c`) and Qwen 3.5 9B in LM Studio (`a5179555`) *inside* Odysseus. Checks look at the outcome (answer text, files in a per-task workspace under `data/bench/agent/`, notes/events/documents via the API); `report` joins `data/logs/app.log*` by time window for empty-after-tool rounds, `cache_n`, prefill speed and the tools Odysseus actually offered.
 - ⚠️ **Design constraints found in the code, not guessed:** turns go out **incognito** (otherwise memory/skill extraction pollutes memory and competes for the model); login is by **password**, because a bearer token runs as the `api` user and `_resolve_request_workspace` drops the workspace for it; non-web prompts must not match `chat_stream`'s web-intent regex or the turn loses its file tools — the script refuses to run such a prompt (regex copied into `bench_agent_tasks.WEB_INTENT_RE`, keep in sync).
-- 🧪 **Verified only against a mock server** in the agent's sandbox (login/session/SSE/cleanup/report, correct and wrong oracle answers, timeout, resume, Europe/Berlin calendar times). **Never run against the live app** — the sandbox cannot reach `localhost:7000`. First live `--quick` run owed.
+- 🧪 Built against a mock server (the sandbox cannot reach the app); first live run 2026-10-05 08:58–09:43, see the 2026-10-06 (02:10) entry.
 - 🔍 The 08:34 Bonsai 2 context overflow seen while reading the log is already filed as item 60 (entry below) — not re-filed.
 - **New:** `scripts/bench_agent.py`, `scripts/bench_agent_tasks.py`, this entry. Nothing else edited; no git commands run.
 
