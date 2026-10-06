@@ -8,6 +8,18 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
+## 2026-10-06 (08:40–09:00) — agent benchmark refined for the full run (Bonsai 2 first) — uncommitted
+
+- 🆕 **`web_read`** (in `--quick`, replaces `web_fact` there): read `en.wikipedia.org/wiki/Morchella`, answer who described *M. elata*, when, and *"fir forest in Sweden"* — only answerable from the article body, so it exercises item 49's fix. Sentence sits ~5,800 chars in, inside `web_fetch`'s 10,000-char output cap (checked in the 2026-10-05 21:24 cache entry). `web_fact` stays in the full suite, documented as passable from memory. **18 tasks** now.
+- 🔧 **`note_create`** splits *"note created"* from *"title copied exactly"* and only looks at notes created during the run (ids snapshotted in setup), so a mistyped marker no longer hides whether the items were right, and a stale leftover can't pass for the new note.
+- 🆕 **Preflight** (`preflight` subcommand, and automatically before every `run`): records llama.cpp `/props` (model file, `n_ctx`, build, sampling/reasoning params), LM Studio's loaded models, Ollama's loaded models, SearXNG health and the HEAD commit (read from `.git/` files, no git command) into `meta.json`; warns about other loaded models, a running `:8090` server when Qwen is the target, a SearXNG that returns nothing, and `[bench-` notes left over. Warnings pause 15 s (`--yes` skips). The report prints this setup per run and adds *"runs hit by environment errors left out"* and *"only tasks every model ran"* rows.
+- 🐛 Two runs started in the same second shared a directory and the second silently skipped every task — now suffixed `-2`, `-3`.
+- 🔍 **Checked for interference over a ~3 h run:** for `cedrik`, *Chat Sessions Tidy* and *Documents Tidy* are paused; *Memory Tidy* / *Skills Audit* fire on new memories/skills, which incognito turns never create. Nothing scheduled should hit the model mid-run.
+- 🧪 Mock server only (full suite 18/18 correct, wrong answers fail on the intended checks, mistyped-marker and stale-leftover cases, preflight warnings); on the Mac: `tasks`, prompt lint, `report` on the 2026-10-05 runs. **Not run live.** The leftover note *"[bench-44b] Workshop shopping"* is still in `app.db` (copy checked 08:45); preflight will flag it.
+- **Edited:** `scripts/bench_agent.py`, `scripts/bench_agent_tasks.py`, this file.
+
+---
+
 ## 2026-10-06 (08:20–09:00) — upstream `dev` merged into the fork, on a branch (`merge-upstream`) — not on `dev` yet
 
 - 🔀 **Merged upstream `2992bf6d` (132 commits, 07-29 → 10-01) into fork `2dfae628`** in a separate clone, as a merge commit so every cited hash stays valid. 25 files conflicted; resolutions, behaviour changes and owed checks: [merge-upstream-2026-10-06.md](merge-upstream-2026-10-06.md).
@@ -19,7 +31,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
-## 2026-10-06 (02:10) — agent benchmark: first live run, follow-up fixes, cleanup — uncommitted
+## 2026-10-06 (02:10) — agent benchmark: first live run, follow-up fixes, cleanup — committed 02:17 (`2dfae628`)
 
 - 📊 **First live `--quick` run (2026-10-05 08:58–09:43, 8 tasks × 1 run each, incognito):** Qwen 3.5 9B (LM Studio) **7/8**, median **51 s**/task, 18 s/round, 6 min total; Bonsai 2 (`:8090`) **8/8**, median **253 s**/task, 47 s/round, 34 min total, uncached prefill ~53 tok/s, prompt-cache hit 58 %. **0 empty answers after tool rounds** for either (0/22, 0/12). The quality gap is noise at n=8 (95 % CI 68–100 vs 53–98); **speed is the only firm result.** Report: `data/bench/agent/report.md` (gitignored).
   - Qwen's one fail: the `manage_notes` call was right but the title said `[bench-44b]` for `[bench-44b6]` — a copying slip.

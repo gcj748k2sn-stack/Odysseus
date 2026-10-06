@@ -311,7 +311,9 @@ task(
 
 # 4 ─ web
 task(
-    id="web_fact", cat="web", quick=True, web=True, tools=["web_search"],
+    # Passable from memory (the year is well known) — it tests that the model
+    # searches when told to, not that it reads. web_read tests reading.
+    id="web_fact", cat="web", web=True, tools=["web_search"],
     setup=lambda ws, ctx: {},
     prompt=lambda ctx: "Search the web: in which year was the Eiffel Tower completed? Answer with the year.",
     checks=lambda rec, ctx: [
@@ -332,6 +334,30 @@ task(
     ],
 )
 
+# Answerable only by reading the article body: the forest type and country
+# behind Morchella elata are not the kind of detail a 9B/27B model carries.
+# Added 2026-10-06 after item 49 (Wikipedia extracted as the site menu) was
+# fixed — on the old extractor this task cannot pass, which is the point.
+# Source text (extracted 2026-10-05 21:24, ~5,800 chars into the article, so
+# inside web_fetch's 10,000-char output cap): "The seminal taxon Morchella
+# elata ... was described by Elias Fries in 1822, from a fir forest in Sweden."
+# If Wikipedia rewrites that sentence, update the checks.
+task(
+    id="web_read", cat="web", quick=True, web=True, tools=["web_fetch"],
+    setup=lambda ws, ctx: {"who": "Fries", "year": 1822, "forest": "fir", "country": "Sweden"},
+    prompt=lambda ctx: ("Read the Wikipedia article https://en.wikipedia.org/wiki/Morchella and tell me: "
+                        "who described Morchella elata, in which year, and in what kind of forest and "
+                        "which country was it found?"),
+    checks=lambda rec, ctx: [
+        answered(rec),
+        chk("used web_fetch", used_tool(rec, "web_fetch"), "no web_fetch call"),
+        chk("fir forest", re.search(r"\bfir\b", rec["final_text"], re.I), rec["final_text"][:160]),
+        chk("Sweden", contains(rec["final_text"], "swed"), rec["final_text"][:160]),
+        chk("Fries, 1822", contains(rec["final_text"], "fries") and has_number(rec["final_text"], 1822),
+            rec["final_text"][:160]),
+    ],
+)
+
 
 # 5 ─ Odysseus features (verified through the API, removed afterwards)
 # Checks match the run's exact marker; cleanup matches any "[bench-" so an
@@ -349,11 +375,27 @@ def _find_notes(ctx, loose=False):
     return [n for n in notes if tag in (n.get("title") or "") + (n.get("content") or "")]
 
 
+def _note_ids(ctx):
+    try:
+        return {n["id"] for n in ctx["api"].get("/api/notes").get("notes", [])}
+    except Exception:
+        return set()
+
+
 def _check_note(rec, ctx):
-    notes = _find_notes(ctx)
-    out = [chk("note exists (via /api/notes)", notes, "no note with the marker")]
-    if notes:
-        blob = json.dumps(notes[0], ensure_ascii=False).lower()
+    """Exact title and content are separate checks, so a mistyped marker
+    (2026-10-05: "[bench-44b]" for "[bench-44b6]") still shows whether the
+    note itself was right. Only notes created during this run are looked at."""
+    exact = _find_notes(ctx)
+    before = ctx.get("notes_before", set())
+    near = [n for n in _find_notes(ctx, loose=True)
+            if n["id"] not in before and "workshop shopping" in (n.get("title") or "").lower()]
+    note = (exact or near or [None])[0]
+    out = [chk("note created (via /api/notes)", note, "no new note titled '… Workshop shopping'"),
+           chk("title copied exactly", exact,
+               f"title was {note.get('title')!r}" if note else "")]
+    if note:
+        blob = json.dumps(note, ensure_ascii=False).lower()
         for item in ("pla filament", "m3 screws", "isopropyl alcohol"):
             out.append(chk(f"has item '{item}'", item in blob, "missing"))
     return out
@@ -366,7 +408,7 @@ def _cleanup_note(ctx):
 
 task(
     id="note_create", cat="odysseus", quick=True, tools=["manage_notes"],
-    setup=lambda ws, ctx: {},
+    setup=lambda ws, ctx: (ctx.__setitem__("notes_before", _note_ids(ctx)), {})[1],
     prompt=lambda ctx: (f'Create a checklist note titled "{ctx["marker"]} Workshop shopping" with three items: '
                         "PLA filament, M3 screws, isopropyl alcohol."),
     checks=_check_note, cleanup=_cleanup_note,

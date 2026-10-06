@@ -8,14 +8,15 @@ thinking/tool-round handling in src/agent_loop.py. This script drives the real
 /api/chat_stream in agent mode, exactly as the browser does, and checks the
 outcome (answer text, files on disk, notes/events/documents via the API).
 
-Tasks live in scripts/bench_agent_tasks.py (17 tasks, 8 in --quick).
+Tasks live in scripts/bench_agent_tasks.py (18 tasks, 8 in --quick; `tasks` lists them).
 
 USAGE (from the repo root, Odysseus running, nobody else chatting):
 
   export ODYSSEUS_PASSWORD='…'                      # login user defaults to cedrik
   python3 scripts/bench_agent.py targets            # list endpoint ids + models
-  python3 scripts/bench_agent.py run --target bonsai2 --quick
-  python3 scripts/bench_agent.py run --target qwen35 --quick
+  python3 scripts/bench_agent.py preflight --target bonsai2   # what is loaded, SearXNG, n_ctx
+  caffeinate -i python3 scripts/bench_agent.py run --target bonsai2 --runs 2
+  python3 scripts/bench_agent.py run --target qwen35 --runs 2
   python3 scripts/bench_agent.py report data/bench/agent/2*
 
   --target NAME is a preset below, or NAME=ENDPOINT_ID:MODEL_ID for anything else.
@@ -320,26 +321,157 @@ def lint_prompts(tasks):
                  + "\n  ".join(bad))
 
 
+def probe(url, timeout=4):
+    """GET a local server's JSON; None when it is not there."""
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:
+            return json.loads(r.read().decode() or "null")
+    except Exception:
+        return None
+
+
+def git_head():
+    """HEAD commit without running git (no index lock; see CLAUDE.md §6)."""
+    try:
+        head = (REPO / ".git" / "HEAD").read_text().strip()
+        if not head.startswith("ref: "):
+            return head[:12]
+        ref = head[5:]
+        p = REPO / ".git" / ref
+        if p.exists():
+            return f"{ref.rsplit('/', 1)[-1]}@{p.read_text().strip()[:12]}"
+        for line in (REPO / ".git" / "packed-refs").read_text().splitlines():
+            if line.endswith(" " + ref):
+                return f"{ref.rsplit('/', 1)[-1]}@{line[:12]}"
+    except OSError:
+        pass
+    return None
+
+
+LMS_ROOT, OLLAMA_ROOT = "http://localhost:1234", "http://localhost:11434"
+
+
+def preflight(api, target, tasks):
+    """Record the serving setup and warn about what would distort the run.
+    Returns (env, warnings). Everything here is read-only."""
+    name, (endpoint_id, model) = target
+    env, warn = {"checked": now_local(), "git_head": git_head()}, []
+    eps = api.get("/api/model-endpoints")
+    eps = eps.get("endpoints", eps) if isinstance(eps, dict) else eps
+    base = next((ep.get("base_url") for ep in eps or [] if ep.get("id") == endpoint_id), None)
+    if not base:
+        sys.exit(f"error: endpoint {endpoint_id} not found in Odysseus — run `targets`")
+    root = re.sub(r"/v1/?$", "", base.rstrip("/"))
+    env["endpoint_base"] = base
+
+    props = probe(root + "/props")                       # llama.cpp server
+    if isinstance(props, dict) and "default_generation_settings" in props:
+        gen = props.get("default_generation_settings") or {}
+        params = gen.get("params") or {}
+        env["llamacpp"] = {
+            "model_path": props.get("model_path"), "build_info": props.get("build_info"),
+            "n_ctx": gen.get("n_ctx"), "total_slots": props.get("total_slots"),
+            "params": {k: v for k, v in params.items() if isinstance(v, (int, float, str, bool)) and k in (
+                "temperature", "top_k", "top_p", "min_p", "n_predict", "reasoning_format",
+                "reasoning_budget", "reasoning_in_content", "chat_format", "cache_prompt", "n_keep")},
+        }
+
+    lms = probe(LMS_ROOT + "/api/v0/models")
+    lms_loaded = [m for m in (lms or {}).get("data", []) if m.get("state") == "loaded"]
+    env["lmstudio_loaded"] = [{k: m.get(k) for k in ("id", "quantization", "compatibility_type",
+                                                    "loaded_context_length", "max_context_length") if k in m}
+                              for m in lms_loaded]
+    oll = probe(OLLAMA_ROOT + "/api/ps")
+    env["ollama_loaded"] = [m.get("name") for m in (oll or {}).get("models", [])]
+
+    on_lms, on_ollama = root.startswith(LMS_ROOT), root.startswith(OLLAMA_ROOT)
+    others = [m["id"] for m in lms_loaded if not (on_lms and m["id"] == model)]
+    if others:
+        warn.append(f"LM Studio has {', '.join(others)} loaded — it competes for memory with {name}. "
+                    "Unload: `lms unload --all`" + (f", then `lms load {model}`" if on_lms else ""))
+    if env["ollama_loaded"] and not on_ollama:
+        warn.append(f"Ollama has {', '.join(env['ollama_loaded'])} loaded — `ollama stop <model>`")
+    if not props and not on_lms and not on_ollama:
+        warn.append(f"{root}/props did not answer — is the llama.cpp server for {name} up?")
+    if not root.startswith("http://localhost:8090") and probe("http://localhost:8090/props", 2):
+        warn.append("llama-server on :8090 (Bonsai 2) is running — it holds ~9–10 GB; stop it for a fair run")
+
+    try:
+        stale = [n.get("title") for n in api.get("/api/notes").get("notes", []) if "[bench-" in (n.get("title") or "")]
+    except Exception:
+        stale = []
+    if stale:
+        warn.append(f"{len(stale)} bench note(s) left from earlier runs ({stale[0]!r}…) — `bench_agent.py cleanup`")
+
+    if any(t["web"] for t in tasks):
+        sx = os.environ.get("SEARXNG_INSTANCE", "http://localhost:8080").rstrip("/")
+        t0 = time.time()
+        res = probe(sx + "/search?" + urllib.parse.urlencode({"q": "Eiffel Tower", "format": "json"}), 15)
+        env["searxng"] = {"url": sx, "ok": bool(res and res.get("results")),
+                          "results": len((res or {}).get("results", [])), "seconds": round(time.time() - t0, 1)}
+        if not env["searxng"]["ok"]:
+            warn.append(f"SearXNG at {sx} returned no results — web tasks would fail for environment reasons")
+    return env, warn
+
+
+def show_preflight(env, warn):
+    lc = env.get("llamacpp")
+    if lc:
+        print(f"  llama.cpp: {os.path.basename(lc.get('model_path') or '?')}, n_ctx {lc.get('n_ctx')}, "
+              f"build {lc.get('build_info')}, params {lc.get('params')}")
+    if env.get("lmstudio_loaded"):
+        print(f"  LM Studio loaded: {env['lmstudio_loaded']}")
+    if env.get("ollama_loaded"):
+        print(f"  Ollama loaded: {env['ollama_loaded']}")
+    if env.get("searxng"):
+        print(f"  SearXNG: {env['searxng']}")
+    print(f"  Odysseus HEAD: {env.get('git_head')}")
+    for w in warn:
+        print(f"  ⚠️  {w}")
+
+
+def cmd_preflight(args):
+    tasks = select_tasks(args)
+    lint_prompts(tasks)
+    target = parse_target(args.target)
+    api = Api(args.url, args.user, os.environ.get("ODYSSEUS_PASSWORD", ""))
+    api.login()
+    env, warn = preflight(api, target, tasks)
+    print(f"preflight for {target[0]} ({len(tasks)} tasks):")
+    show_preflight(env, warn)
+    print("ok" if not warn else f"{len(warn)} warning(s)")
+
+
 def cmd_run(args):
     tasks = select_tasks(args)
     lint_prompts(tasks)
     target = parse_target(args.target)
     api = Api(args.url, args.user, os.environ.get("ODYSSEUS_PASSWORD", ""))
     api.login()
+    env, warn = preflight(api, target, tasks)
+    print(f"preflight for {target[0]}:")
+    show_preflight(env, warn)
+    if warn and not args.yes:
+        print("starting in 15 s despite the warning(s) above — Ctrl-C to abort (--yes skips this wait)", flush=True)
+        time.sleep(15)
 
     if args.resume:
         run_dir = Path(args.resume)
         meta = json.loads((run_dir / "meta.json").read_text())
         if meta["target"] != target[0]:
             sys.exit(f"error: {run_dir} is a run of {meta['target']}, not {target[0]}")
+        meta.setdefault("env_resumed", []).append(dict(env, warnings=warn))
     else:
         run_id = dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + target[0]
-        run_dir = RESULTS_ROOT / run_id
-        run_dir.mkdir(parents=True, exist_ok=True)
+        run_dir, n = RESULTS_ROOT / run_id, 1
+        while run_dir.exists():                 # two starts in one second
+            n += 1
+            run_dir = RESULTS_ROOT / f"{run_id}-{n}"
+        run_dir.mkdir(parents=True)
         meta = {"target": target[0], "endpoint_id": target[1][0], "model": target[1][1],
                 "runs": args.runs, "tasks": [t["id"] for t in tasks], "started": now_local(),
-                "url": args.url, "host": os.uname().nodename}
-        (run_dir / "meta.json").write_text(json.dumps(meta, indent=2))
+                "url": args.url, "host": os.uname().nodename, "env": dict(env, warnings=warn)}
+    (run_dir / "meta.json").write_text(json.dumps(meta, indent=2))
     out = run_dir / "results.jsonl"
     done = set()
     if out.exists():
@@ -503,13 +635,18 @@ def fmt(x, nd=0, suf=""):
 
 
 def cmd_report(args):
-    recs = []
+    recs, metas = [], {}
     for d in args.dirs:
         p = Path(d) / "results.jsonl"
         if not p.exists():
             print(f"skip {d}: no results.jsonl", file=sys.stderr)
             continue
         recs += [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+        try:
+            m = json.loads((Path(d) / "meta.json").read_text())
+            metas.setdefault(m["target"], []).append(m)
+        except (OSError, ValueError, KeyError):
+            pass
     if not recs:
         sys.exit("no results")
     log = load_log(args.log)
@@ -534,6 +671,30 @@ def cmd_report(args):
     L = []
     L.append(f"# Odysseus agent benchmark — {dt.datetime.now():%Y-%m-%d %H:%M}\n")
     L.append("Runs: " + ", ".join(f"**{t}** ({by[t][0]['model']}, {len(by[t])} task runs)" for t in targets) + "\n")
+    env_lines = []
+    for t in targets:
+        for m in metas.get(t, []):
+            e = m.get("env") or {}
+            bits = [f"started {m.get('started', '?')[:16]}", f"Odysseus {e.get('git_head') or '?'}"]
+            lc = e.get("llamacpp")
+            if lc:
+                bits.append(f"llama.cpp `{os.path.basename(lc.get('model_path') or '?')}` n_ctx {lc.get('n_ctx')}, "
+                            f"build {lc.get('build_info')}, params {lc.get('params')}")
+            if e.get("lmstudio_loaded"):
+                bits.append("LM Studio loaded " + ", ".join(
+                    f"{x.get('id')} ({x.get('quantization', '?')}, ctx {x.get('loaded_context_length', '?')})"
+                    for x in e["lmstudio_loaded"]))
+            if e.get("ollama_loaded"):
+                bits.append("Ollama loaded " + ", ".join(e["ollama_loaded"]))
+            if e.get("searxng"):
+                bits.append("SearXNG " + ("ok" if e["searxng"].get("ok") else "**not answering**"))
+            if e.get("warnings"):
+                bits.append("⚠️ " + " / ".join(e["warnings"]))
+            env_lines.append(f"- **{t}**: " + "; ".join(bits))
+    if env_lines:
+        L.append("Setup at the start of each run:\n")
+        L += env_lines
+        L.append("")
 
     L.append("## Summary\n")
     L.append("| | " + " | ".join(targets) + " |")
@@ -547,13 +708,22 @@ def cmd_report(args):
         lo, hi = wilson(k, n)
         return f"**{k}/{n}** ({100 * k / n:.0f} %, 95 % CI {100 * lo:.0f}–{100 * hi:.0f})"
 
+    env_re = re.compile(r"timed out|HTTP [45]\d\d|Cannot reach|Connection (refused|reset)", re.I)
+
+    def env_hit(r):
+        return any(str(x.get("exit_code")) not in ("0", "None") and env_re.search(x.get("output") or "")
+                   for x in r.get("tool_results", []))
+
+    common = set.intersection(*[{r["task"] for r in by[t]} for t in targets])
     row("Tasks passed", passrate)
+    if any({r["task"] for r in by[t]} != common for t in targets):
+        row("Tasks passed — only tasks every model ran", lambda rs: passrate([r for r in rs if r["task"] in common]))
+    row("Tasks passed — runs hit by environment errors left out",
+        lambda rs: passrate([r for r in rs if not env_hit(r)]) if any(not env_hit(r) for r in rs) else "–")
     row("Median time per task", lambda rs: fmt(med([r.get("wall_s") for r in rs]), 0, " s"))
     row("Total time", lambda rs: fmt(sum(r.get("wall_s") or 0 for r in rs) / 60, 0, " min"))
     row("Median agent rounds", lambda rs: fmt(med([r.get("rounds") for r in rs]), 1))
     row("Median tool calls", lambda rs: fmt(med([len(r.get("tools", [])) for r in rs]), 1))
-    env_re = re.compile(r"timed out|HTTP [45]\d\d|Cannot reach|Connection (refused|reset)", re.I)
-
     def failed_tools(rs):
         bad = [x for r in rs for x in r.get("tool_results", []) if str(x.get("exit_code")) not in ("0", "None")]
         env = sum(1 for x in bad if env_re.search(x.get("output") or ""))
@@ -673,6 +843,7 @@ def main():
     r.add_argument("--resume", help="continue this run directory")
     r.add_argument("--keep", action="store_true", help="keep sessions/notes/events/documents")
     r.add_argument("--no-warmup", action="store_true")
+    r.add_argument("--yes", action="store_true", help="do not pause on preflight warnings (unattended runs)")
     r.add_argument("--task-timeout", type=int, default=TASK_TIMEOUT_S)
     r.set_defaults(func=cmd_run)
 
@@ -682,6 +853,11 @@ def main():
     p.add_argument("--out", help="also write the markdown here")
     p.set_defaults(func=cmd_report)
 
+    pf = sub.add_parser("preflight", help="check the serving setup for a run without running it")
+    pf.add_argument("--target", required=True)
+    pf.add_argument("--quick", action="store_true")
+    pf.add_argument("--tasks")
+    pf.set_defaults(func=cmd_preflight)
     sub.add_parser("targets", help="list endpoint ids and models").set_defaults(func=cmd_targets)
     sub.add_parser("cleanup", help="delete [bench] leftovers").set_defaults(func=cmd_cleanup)
     sub.add_parser("tasks", help="list tasks").set_defaults(func=lambda a: [
