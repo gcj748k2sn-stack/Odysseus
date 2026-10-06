@@ -142,6 +142,10 @@ docs/tests/
 # Fixture root written by tests/test_chat_helpers.py (notes/todo.md item 26)
 tmp_pytest_probe/
 
+# Output of scripts/bench_qwen_backends.py (written to the cwd); kept in
+# ~/odysseus-snapshots/bench/, not in the repo
+/bench_qwen_*.json
+
 # Obsidian vault over notes/ (local only)
 notes/.obsidian/
 notes/CLAUDE.md

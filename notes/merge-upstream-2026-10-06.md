@@ -97,8 +97,28 @@ returns the retry's result.
 
 Linux clone after the fix, run the M1's way (single process, inside a git checkout, the M1's `.env` toggles): **7,450 passed, 4 skipped, 0 failed.** Expected on the M1 after the fix: the 12 non-merge failures remain until those upstream tests are made hermetic; running them with `ODYSSEUS_DATA_DIR` pointed at an empty directory clears the 8 data-dependent ones.
 
+## Second M1 run (2026-10-06 ~10:00)
+
+`12 failed, 7,439 passed` — exactly the 12 non-merge failures in the table above, nothing new.
+
+⚠️ **The suite writes to the real `data/logs/app.log`.** The `Tool executed:` lines at 10:00:07–10:00:15 (`read_file: /etc/shadow`, `write_file: ~/.ssh/authorized_keys`, `note.txt`, `run sleep 60`, …) are tests, not the agent. Check the time against the suite run before reading anything into them.
+
+## Live checks (2026-10-06 10:48–11:54, after a restart)
+
+| Check | Result |
+|---|---|
+| **New Chat twice** (item 54) | ✅ Two sessions. |
+| **Research → document**, Bonsai 2 (10:56, 11:02) | ✅ Approval card, approved, document written once. |
+| *"read the file data/settings.json"*, Bonsai 2 (11:10) | ⚠️ `read_file` refused (11:13:28, `exit_code=1`). **Bonsai then called `bash`: `cat data/settings.json 2>&1 \| head -100`.** The approval card came up (11:14:11) and was approved; it ran at 11:16:31 (`exit_code=0`). The contents ended up in chat `8abca026` and in a document *"Code (json)"*. **The maintainer deleted both at 12:05.** This is the hole [todo.md](todo.md) item 60 had already predicted, and it was not caused by the merge: the fork had the same gap. The approval card was the only barrier. |
+| Document chip after New Chat | By design: the new chat sends `active_doc_id=''`, and the chip lets you decline. |
+| **Qwen on LM Studio** (11:25–11:41) | ❌ Every round failed with `500 "Compute error."`. **LM Studio's fault, not the merge.** The request fields are the same as the fork's; the only addition, `_alias_harmony_tools`, applies to gpt-oss only. At 11:25:57 LM Studio loaded the model on demand while Bonsai 2 was still running on `:8090`. That loaded instance then failed every request within 0.03–0.09 s, including after Bonsai stopped (by 11:40). Fixed by `lms unload --all && lms load qwen/qwen3.5-9b --context-length 65536`; direct `curl` calls (plain and with a tool) worked after that. |
+| Qwen after the reload (11:49–11:54) | ✅ A plain turn took 15 s. Research → document: the approval card for `manage_documents`, then `create_document`, then the confirmation. ⚠️ **No `web_fetch` or `web_search` in that turn**, so the index of the German Wikipedia page came from the model's memory. That's how the model behaves, not something the merge caused. |
+| Failing turn → `[Agent stopped: …]` → *"what happened?"* | ⏭️ Not tested. The Qwen failures did produce stream errors, but the 11:28 *"what happened?"* hit the same LM Studio failure. |
+
+`dev` was fast-forwarded to `c398a6a5` and pushed at 12:03.
+
 ## Owed checks (M1)
 
-1. Full suite with `./venv/bin/python -m pytest` on the merge branch.
-2. Live, after a restart and a hard reload: a plain chat turn; **New Chat twice** (item 54 — two sessions); a research → document turn (expect an approval card; approve it and check the document was written once); *"read data/settings.json"* (refusal naming `manage_documents`); with LM Studio stopped, a turn that fails (expect `[Agent stopped: …]`), then *"what happened?"* — the model's thinking must not quote the note.
+1. ✅ ~~Full suite with `./venv/bin/python -m pytest` on the merge branch.~~ Second M1 run above.
+2. ✅ Mostly done, see *Live checks* above. **Still owed: the failing-turn notice and *"what happened?"*, with a working model.** Original list: live, after a restart and a hard reload: a plain chat turn; **New Chat twice** (item 54 — two sessions); a research → document turn (expect an approval card; approve it and check the document was written once); *"read data/settings.json"* (refusal naming `manage_documents`); with LM Studio stopped, a turn that fails (expect `[Agent stopped: …]`), then *"what happened?"* — the model's thinking must not quote the note.
 3. A `web_fetch` of a LAN device with `WEB_FETCH_BLOCK_PRIVATE_IPS=false` in `.env`.

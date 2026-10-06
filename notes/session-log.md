@@ -8,7 +8,20 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
-## 2026-10-06 (08:40–09:00) — agent benchmark refined for the full run (Bonsai 2 first) — uncommitted
+## 2026-10-06 (09:10–12:05) — merge checked on the M1 and live, pushed to `dev`; LM Studio "Compute error" explained
+
+- 🧪 **M1 suite:** first run 21 failed (8 caused by the merge, fixed in `d946c87e`; 1 by the docs rule, fixed by moving the notes to `notes/`). Second run **12 failed, 7,439 passed**: the 12 failures are upstream tests that depend on this machine (real `data/auth.json`, `/var` symlink, `127.0.0.2`, the skills arming the gate), as predicted. Table in [merge-upstream-2026-10-06.md](merge-upstream-2026-10-06.md).
+- ✅ **Live checks** in the same note:
+  - Passed: New Chat twice, research → document with an approval card (Bonsai 2 and Qwen), and the `read_file` refusal.
+  - ⏭️ Still owed: the failing-turn notice with *"what happened?"*, and a LAN `web_fetch`.
+- 🔴 **Item 60's `bash` hole was used live.** After the `read_file` refusal, Bonsai 2 ran `cat data/settings.json` through `bash` once the maintainer approved it. The output in chat `8abca026` and the document *"Code (json)"* were deleted at 12:05. Fix candidates are in [todo.md](todo.md) item 60; nothing built.
+- 🔍 **Qwen "doesn't work" (11:25–11:41)** was LM Studio's broken copy of the model (`500 Compute error`, first loaded while Bonsai 2 was running), not the merge: the request fields are unchanged, and direct `curl` calls worked after `lms unload --all && lms load …`. Recorded in [qwensetup.md](qwensetup.md).
+- 🔀 **`dev` fast-forwarded to `c398a6a5` and pushed at 12:03**; bundles and the `merge-upstream` branch removed. Bench JSONs moved to `~/odysseus-snapshots/bench/`, and `/bench_qwen_*.json` is now gitignored.
+- **Edited:** `notes/merge-upstream-2026-10-06.md`, `notes/todo.md` (item 60), `notes/qwensetup.md`, `.gitignore`, this file. No `git` command run on the Mac; `data/` was only read (`app.log`).
+
+---
+
+## 2026-10-06 (08:40–09:00) — agent benchmark refined for the full run (Bonsai 2 first) — committed (`2bb475b1`)
 
 - 🆕 **`web_read`** (in `--quick`, replaces `web_fact` there): read `en.wikipedia.org/wiki/Morchella`, answer who described *M. elata*, when, and *"fir forest in Sweden"* — only answerable from the article body, so it exercises item 49's fix. Sentence sits ~5,800 chars in, inside `web_fetch`'s 10,000-char output cap (checked in the 2026-10-05 21:24 cache entry). `web_fact` stays in the full suite, documented as passable from memory. **18 tasks** now.
 - 🔧 **`note_create`** splits *"note created"* from *"title copied exactly"* and only looks at notes created during the run (ids snapshotted in setup), so a mistyped marker no longer hides whether the items were right, and a stale leftover can't pass for the new note.
@@ -20,7 +33,7 @@ entry to a few lines — if it needs more, the detail belongs in `todo.md` or
 
 ---
 
-## 2026-10-06 (08:20–09:00) — upstream `dev` merged into the fork, on a branch (`merge-upstream`) — not on `dev` yet
+## 2026-10-06 (08:20–09:00) — upstream `dev` merged into the fork, on a branch (`merge-upstream`) — on `dev` since 12:03 (`c398a6a5`)
 
 - 🔀 **Merged upstream `2992bf6d` (132 commits, 07-29 → 10-01) into fork `2dfae628`** in a separate clone, as a merge commit so every cited hash stays valid. 25 files conflicted; resolutions, behaviour changes and owed checks: [merge-upstream-2026-10-06.md](merge-upstream-2026-10-06.md).
 - ⚠️ **Item 60 is now upstream's fix** (containment of `data/`, advisory 2026-09-05); the fork's filename list was retired and its test rewritten. Wider than item 60: `data/presets.json`, `memory.json`, `logs/`, `skills/`, `hwfit/` are refused too, and the agent's bash `$HOME` moved to `data/agent_workspace/`.

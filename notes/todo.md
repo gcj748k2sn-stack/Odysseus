@@ -824,6 +824,13 @@ sessions by model, 2026-08-01:   72 'qwen3.5:9b-32k'   7 'qwen3.5:9b-64k'
 - ⚠️ **Live attempt 2026-10-05 23:35 and 23:38 did not test the fix.** *"read data/settings.json"* classified as `domains=['ui']` ("settings"), so `read_file` was never offered: run 1 answered *"I don't have a file-read tool"*, run 2 tried `web_fetch` on `file:///data/settings.json` and `data/settings.json` (both refused, non-http). Nothing was read.
   - **Retest without risking a leak:** *"read the file /Users/cedrik/odysseus/data/settings.json.bak"* — `files` domain, so `read_file` is offered; the path is blocked by name and **does not exist**, so the refusal shows and nothing can be printed.
   - ⚠️ **Do not retest on the real `settings.json`:** the `files` domain also hands over `bash` (`_DOMAIN_TOOL_MAP["files"]`), and a model refused by `read_file` can `cat` the file — the block only holds on turns without the shell (THREAT_MODEL.md gap 1). That makes "refuse in `read_file`, offer `bash` next to it" the remaining hole for this item; closing it needs a `bash` policy, not a path check.
+- 🔴 **That hole was used live on 2026-10-06, on the merged code (Bonsai 2).** *"read the file data/settings.json"* (11:10): `read_file` refused (11:13:28, upstream's containment rule). In the next round the model called `bash` `cat data/settings.json 2>&1 | head -100`. The approval card was shown (11:14:11), the maintainer approved it, and it ran (11:16:31, `exit_code=0`). The contents went into chat `8abca026` and a document *"Code (json)"*; **both were deleted 12:05.** Optional: rotate the search API keys held in `settings.json`.
+  - **What this proves:** the path rule holds, and the approval card is the **only** barrier on a turn that offers `bash`. The relative path worked, so the shell's working directory is still the repo root, even though upstream moved `$HOME` to `data/agent_workspace/`.
+  - **Fix candidates, not built:**
+    - Refuse `bash` commands that name a path under `DATA_DIR` outside the readable subdirectories. That's a lexical check: catches the honest case, not an obfuscated one.
+    - Run `bash` with its cwd in `data/agent_workspace/`.
+    - Have the approval card warn when the command touches `data/`.
+  - **Check:** the same prompt must not end in `cat` succeeding without a warning. Negative control: `ls data/uploads` still runs.
 
 ### 44. ~~`/api/documents/ai-tidy` failed every logged call, and the 500s logged nothing~~ ✅ CLOSED 2026-08-01
 **Filed, diagnosed, fixed and verified live inside one day. Body in [resolvedissues.md](resolvedissues.md), *"`/api/documents/ai-tidy` failed every logged call for three days"*.**
