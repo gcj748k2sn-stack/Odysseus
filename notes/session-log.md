@@ -12,6 +12,16 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-07 (19:15–19:45) — cleanup committed and checked on the M1; items 63 and 64 filed
+
+- ✅ **M1 suite on the cleanup: 7,441 passed, 3 skipped, 0 failed** (180 s) — the previous 7,451 minus the 10 removed tests. Committed by the maintainer as `37cbbb10` (code) and `c46cf8b2` (notes); not pushed yet.
+- ⚠️ **Odysseus is still running code from 16:06** — the last `Application startup complete`; the cleanup landed at 16:10. So both 2026-10-07 benchmark runs (Bonsai 17:15, Qwen 17:54) measured the code from *before* the cleanup: **34/36 is the "before" number for Qwen.**
+- 📝 **Filed item 63** (validation-gated changes to the agent rules, after Microsoft's SkillOpt — design only) and **item 64** (decisions waiting for the maintainer, 10 entries with evidence). Checked for item 64 from a copy of `app.db` (source hash unchanged): 72 sessions still pinned to `qwen3.5:9b-32k`; `[doc-put-404]` once ever, 0 since 08-01.
+- ➡️ **Next:** restart Odysseus, then one browser chat that checks the cleanup live — an agent edit of a document and the `switchAway` trace (steps in the conversation of this session; the short form is in todo.md *Next*). **Then, next session: the owed verifications** (items 7, 21, 9b, 2a).
+- **Edited:** `notes/todo.md`, `notes/items/63-…`, `notes/items/64-…`, this file. No git command that takes a lock.
+
+---
+
 ## 2026-10-07 (17:15–19:00) — first valid benchmark runs: Bonsai 2 `--quick`, Qwen full ×2; two scoring fixes — committed 18:54 (`3b1cce60`)
 
 - 📌 **Current state of the benchmark — how to run it, why it is built this way, valid results — is now [benchmark.md](benchmark.md).** The 2026-10-05/06 benchmark entries below are history.
@@ -22,7 +32,7 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
-## 2026-10-07 (00:00–00:20, written to the M1 16:10) — streamlining: dead stream-failure path removed, fork reporting moved out of `agent_loop.py`, comments condensed, notes split — uncommitted
+## 2026-10-07 (00:00–00:20, written to the M1 16:10) — streamlining: dead stream-failure path removed, fork reporting moved out of `agent_loop.py`, comments condensed, notes split — committed 19:12 (`37cbbb10`, `c46cf8b2`)
 
 - 🔧 **Code.** Removed `_stream_failure_notice`, `_stream_error_detail` and `stream_errors` — unreachable since the merge (every `event: error` now ends in upstream's `agent_terminal` + `return`); 10 tests went with them, and `ui_notices.py` still strips the old notice from saved chats. Removed the `[doc-put]` and `[doc-del]` log lines (their removal conditions were met); **kept** the `switchAway` trace (resolvedissues ties it to the 30–35 cluster, and 34 is open), `_stackFrames`, `[doc-put-404]` and the `[ai-tidy]` logging. Moved the fork's end-of-turn reporting to `src/turn_report.py` and the browser gate to `src/browser_gate.py` — `agent_loop.py` now differs from upstream by about 370 added lines instead of 1,340. Fork comments condensed to the why, with notes cited by title.
 - 🧪 Linux clone, Python 3.13, `-n 2`: **7,440 passed, 4 skipped, 0 failed** (7,450 before, minus the 10 removed). Real `stream_agent_loop` driven through 28 scripted scenarios: output, prompts, tool calls and `src.*` log lines identical to the tree before the change. Comment-only edits checked mechanically: identical Python AST apart from docstrings, identical JS token stream. **Not run on the M1. JS not checked in a browser** (`node --check` only; the `switchToDoc` trace is unchanged code).

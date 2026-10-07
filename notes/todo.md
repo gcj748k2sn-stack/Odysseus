@@ -46,14 +46,18 @@ Items whose record is longer than a screen live in [`items/`](items/), one file 
 | 60 | `read_file` / `write_file` may read and overwrite Odysseus's own secrets — `data/` is the default tool root and the deny-list knew nothing in it | S3 | XS | **fixed 2026-10-05 09:10, commit `0a989557`** — keys, logins, settings and every SQLite DB under `data/` refused by all file tools; `grep`'s ripgrep branch now filtered too | **tests (42)** — 29 fail on HEAD, 13 negative controls pass on both · 6 mutations · live attempt 2026-10-05 23:35/23:38 **never reached `read_file`** (classified `ui`) — retest prompt in the item |
 | 61 | Web cache — review how it is cleaned, used and scoped | S4 | M | open — **scope only**, filed 2026-10-05 | none yet |
 | 62 | A document open in one chat moves into whichever chat you send from next — "New Chat" closes the panel but leaves the document current, and the server rebinds it | S2 | XS | **browser half (b) `82892264`, verified live 01:30 · server half (a) `6a313dd8`** — a document named from another chat is used for the turn and not moved; Pink Oyster restored 01:43 | **live** — doc `68647d12` moved twice in 8 min (23:31, 23:38); 11 moves in the logs since 07-14 · **code** — `closePanel()` keeps `activeDocId` · **tests (7)** source checks, 6 mutations · **live** — console: `getCurrentDocId()` `7a9e32ce…` → New Chat → `[doc-save] … stamp=7a9e32ce… len=252` → `null` |
+| 63 | Changes to what the model is told are not measured — adopt SkillOpt's validation-gated edit loop | S4 | M | filed 2026-10-07 — **design only**; item 20 first | none yet |
+| 64 | Decisions waiting for the maintainer's approval (lints, closable items, diagnostics, 32k model, …) | — | XS | filed 2026-10-07 — **10 decisions listed**, each with evidence and a recommendation | n/a |
 
-**29 open as of 2026-10-07**; the 35 closed or retired rows are indexed at the top of [resolvedissues.md](resolvedissues.md). **Numbers are never reused** — a closed item keeps its number in that index, and new items continue after the highest number in either table. Renumbering has silently rotted cross-references four times (see *Notes & constraints*); item 2 split into 2a/2b, and 9 into 9/9b, rather than taking new numbers, for the same reason.
+**31 open as of 2026-10-07**; the 35 closed or retired rows are indexed at the top of [resolvedissues.md](resolvedissues.md). **Numbers are never reused** — a closed item keeps its number in that index, and new items continue after the highest number in either table. Renumbering has silently rotted cross-references four times (see *Notes & constraints*); item 2 split into 2a/2b, and 9 into 9/9b, rather than taking new numbers, for the same reason.
 
 > ⚠️ **Item 23 changes how item 8's evidence should be read**, and the pair is reciprocal (#8↔#23) so neither can be renumbered quietly. A turn that reports *"stopped without producing an answer"* may have produced one — in the reasoning channel. **Compare `thinking` against `content` before filing another item 8.**
 
 ## Next
 
-The current plan is the ➡️ **Next** line of the newest [session-log.md](session-log.md) entry. Still open from the last full re-ranking (2026-08-01 — the list itself is in the archive):
+The current plan is the ➡️ **Next** line of the newest [session-log.md](session-log.md) entry.
+
+**Next session (agreed 2026-10-07): the owed verifications** — items 7, 21, 9b and 2a, the last bullet below. Before that, the live check of the 2026-10-07 cleanup still needs a restart of Odysseus (see session-log.md). Still open from the last full re-ranking (2026-08-01 — the list itself is in the archive):
 
 - **Item 44's two unexercised halves** — the AI tidy's archive branch has never run live (all 28 verdicts came back `keep`), and verdict quality under a suppressed reasoning channel is unmeasured.
 - **Rule adherence** — five same-prompt runs, each in a new chat with the document cloned in (item 20; first reading 1 of 4). Score item 8 by comparing `thinking` against `content`.
@@ -242,6 +246,16 @@ Recurring, and **it feeds item 2b** — the wrong-species drift there is partly 
 
 ### 62. A document open in one chat moves into whichever chat you send from next
 → Full record: [items/62-a-document-open-in-one-chat-moves.md](items/62-a-document-open-in-one-chat-moves.md)
+
+### 63. Changes to what the model is told are not measured — adopt SkillOpt's validation-gated edit loop
+One bounded edit to the agent rules at a time, kept only if held-out benchmark tasks improve; built on `scripts/bench_agent.py`. Item 20 first.
+
+→ Full record: [items/63-prompt-changes-are-not-measured.md](items/63-prompt-changes-are-not-measured.md)
+
+### 64. Decisions waiting for the maintainer's approval
+A parking list: keep or remove the document lints, close five built-and-verified items, the temporary document diagnostics, the Ollama 32k model, `qwensetup.md`, skills and the approval gate, the test fast lane, upstreaming fixes, housekeeping. Decide an entry → record it where it belongs and delete it there.
+
+→ Full record: [items/64-decisions-waiting-for-approval.md](items/64-decisions-waiting-for-approval.md)
 
 ## Notes & constraints
 Settled. Recorded so they don't get re-litigated. **Working method lives in [`CLAUDE.md`](../CLAUDE.md); this section is facts about the system.**
