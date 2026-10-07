@@ -20,9 +20,16 @@ Keep roughly the last working day here; older entries move verbatim to
 - ✅ **Live check after a restart (19:58):** an agent `edit_document` took the test document to **v2** with the change (copy of `app.db`), and the kept `switchAway` trace recorded **7 entries**. Getting the edit approved needed a console workaround, which is how the approval-flow bugs below were found.
 - 🐞 **Filed:** item **65** (S1) — a pending approval is reported as *"Updated the document."*; **66** — Allow, Resend and queued sends are swallowed by the hidden email Send button's (0,0) hit-test; **67** — Allow with the document panel closed fails as *"Document could not be saved"*; **68** (S1) — Qwen claimed *"Created 'Switch check'"* with zero tool calls. 66 and 67 are upstream code; none comes from the cleanup. **Together, a document edit that needs approval cannot be approved from the UI today.** Approvals also expire after 10 minutes, and a stale one returns an unlogged `409`.
 - 📝 **Filed items 63** (validation-gated changes to the agent rules, after SkillOpt) **and 64** (10 decisions waiting for the maintainer). From a copy of `app.db`: 72 sessions still pinned to `qwen3.5:9b-32k`; `[doc-put-404]` once ever, 0 since 08-01. A known-facts test produced no warning because the text never named the subject — test design, not a defect.
-- ❓ **Open question for the maintainer:** a blank document made with the panel's **+** (20:41, *"Pink"*) contained exactly *"Pink Oyster check"* — typed by hand, or picked up from the other tab? If the latter, it belongs under item 30.
+- ✅ The *"Pink"* test document's text was typed by hand — no cross-document leak. Both test documents deleted 21:05.
 - ➡️ **Next session, in order:** fix items 65–67 (about a line each) and log why an approval is rejected with `409`; retest an approval from a reloaded page; then the owed verifications (items 7, 21, 9b, 2a).
-- **Edited:** `notes/todo.md`, `notes/items/63-…`, `notes/items/64-…`, this file. Test documents to delete: *"Pink Oyster check"*, *"Pink"*.
+- **Edited:** `notes/todo.md`, `notes/items/63-…`, `notes/items/64-…`, this file.
+
+---
+
+## 2026-10-07 (21:10) — item 60 closed as accepted
+
+- ✅ **Item 60 closed (maintainer's decision):** file tools hold under upstream's `_is_app_state_path` (`grep` re-checked: no leak); `bash` is kept off with the *Shell Access* button and needs an approval card per command; nothing secret is stored (search keys empty, no email accounts, no keyed endpoints). Reopen conditions and three ways the button can be bypassed (chat-mode auto-escalation, absolute-path workspace binding, `ui_control` toggle) are in [items/60](items/60-read-file-write-file-can-read-and.md). Row moved to [resolvedissues.md](resolvedissues.md); `todo.md` counts corrected to 34 open / 40 closed (both were stale).
+- Read-only checks on copies of `app.db`, `settings.json`, `cookbook_state.json`; a sandbox `grep` probe. **Edited:** `notes/todo.md`, `notes/resolvedissues.md`, `notes/items/60-…`, this file.
 
 ---
 
