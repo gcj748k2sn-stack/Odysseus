@@ -11054,7 +11054,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     }
 
     // Capture old content before updating the map
-    const textarea = document.getElementById('doc-editor-textarea');
+    let textarea = document.getElementById('doc-editor-textarea');
     const oldContent = (docId === activeDocId && textarea) ? textarea.value : '';
     const isExistingDoc = docs.has(docId);
     if (isExistingDoc) {
@@ -11113,6 +11113,10 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     if (!data.title) autoTitleFromContent(newContent, docId);
 
     if (!isOpen) openPanel();
+    // openPanel() builds a fresh editor when the panel was closed; the
+    // reference taken above is null then, and the update would leave that new
+    // editor empty and unstamped - a buffer saveDocument would write back.
+    if (!textarea) textarea = document.getElementById('doc-editor-textarea');
 
     // Force doc button visible (overrides appearance settings & toolbar collapse)
     const toggleBtn = document.getElementById('overflow-doc-btn');
@@ -11136,7 +11140,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       textarea.disabled = false;
       textarea.placeholder = 'Document content...';
     }
-    if (badge) badge.textContent = `v${data.version || 1}`;
+    if (badge) { const _v = data.version || 1; badge.textContent = `v${_v}`; badge.style.display = _v > 1 ? '' : 'none'; }
     if (data.title && titleInput) titleInput.value = data.title;
     // Set language from data, or fall back to what the doc already has (e.g. from streaming)
     const docLang = data.language || (docs.has(docId) && docs.get(docId).language) || '';
@@ -11174,7 +11178,10 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
           _showEmailFields(updatedDocForEmail, { applyLocalDraft: false });
         }
       } else {
-        if (textarea) textarea.value = newContent;
+        if (textarea) {
+          textarea.value = newContent;
+          textarea.dataset.docId = docId;
+        }
         syncHighlighting();
         _refreshMarkdownPreviewIfVisible(docId, newContent);
       }
