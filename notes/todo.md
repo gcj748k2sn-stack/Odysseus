@@ -61,7 +61,7 @@ Items whose record is longer than a screen live in [`items/`](items/), one file 
 
 The current plan is the ➡️ **Next** line of the newest [session-log.md](session-log.md) entry.
 
-**Next session (agreed 2026-10-07): the owed verifications** — items 7, 21, 9b and 2a, the last bullet below. Before that, the live check of the 2026-10-07 cleanup still needs a restart of Odysseus (see session-log.md). Still open from the last full re-ranking (2026-08-01 — the list itself is in the archive):
+**Next session (agreed 2026-10-07):** first the approval-flow cluster — fix items 65, 66 and 67 (about a line each), log why an approval is rejected with `409`, and retest an approval from a reloaded page; then the owed verifications — items 7, 21, 9b and 2a (last bullet below).
 
 - **Item 44's two unexercised halves** — the AI tidy's archive branch has never run live (all 28 verdicts came back `keep`), and verdict quality under a suppressed reasoning channel is unmeasured.
 - **Rule adherence** — five same-prompt runs, each in a new chat with the document cloned in (item 20; first reading 1 of 4). Score item 8 by comparing `thinking` against `content`.

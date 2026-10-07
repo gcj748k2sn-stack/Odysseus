@@ -13,6 +13,7 @@ tree, `data/logs/app.log*` or `data/app.db`. What applies now is in
 |---|---|
 | `CLAUDE-full-2026-10-06.md` | The full working rules before they were condensed, with the incident behind each rule |
 | `todo-2026-10-06.md` | `todo.md` before the split: closed bodies, the 2026-08-01 *Next* list, owed verifications |
+| `session-log-2026-10-06.md` | Session-log entries of 2026-10-06 (00:30 to 23:05): the upstream merge and the first benchmark runs |
 | `session-log-until-2026-10-06.md` | Session-log entries from 2026-07-30 to 2026-10-06 00:20 |
 
 A closed item's file moves here from `notes/items/` when its conclusion goes to
