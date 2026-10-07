@@ -315,7 +315,9 @@ def run_one(api, task, target, rep, run_dir, args):
     rec["wall_s"] = round(time.time() - state["t0"], 2)
     rec["ttft_visible_s"] = round(state["first_text"], 2) if state["first_text"] is not None else None
     rec["text"] = "".join(all_parts).strip()
-    rec["final_text"] = "".join(final_parts).strip()
+    rec["final_text"], rec["turn_report"] = T.split_turn_report("".join(final_parts))
+    if rec["turn_report"]:
+        rec["flags"].append("odysseus_turn_report")
     if rec.get("timed_out"):
         rec["status"] = "timeout"
 
@@ -462,7 +464,7 @@ def preflight(api, target, tasks):
         warn.append("llama-server on :8090 (Bonsai 2) is running — it holds ~9–10 GB; stop it for a fair run")
 
     try:
-        stale = [n.get("title") for n in api.get("/api/notes").get("notes", []) if "[bench-" in (n.get("title") or "")]
+        stale = [n.get("title") for n in api.get("/api/notes").get("notes", []) if T.BENCH_RE.search(n.get("title") or "")]
     except Exception:
         stale = []
     if stale:
@@ -617,13 +619,13 @@ def cmd_cleanup(args):
     api.login()
     n = 0
     for note in api.get("/api/notes").get("notes", []):
-        if "[bench-" in (note.get("title") or ""):
+        if T.BENCH_RE.search(note.get("title") or ""):
             api.delete(f"/api/notes/{note['id']}"); n += 1
     today = dt.date.today()
     evs = api.get("/api/calendar/events", params={"start": f"{today - dt.timedelta(days=30)}T00:00:00",
                                                   "end": f"{today + dt.timedelta(days=60)}T00:00:00"})
     for ev in evs.get("events", []):
-        if "[bench-" in (ev.get("summary") or ""):
+        if T.BENCH_RE.search(ev.get("summary") or ""):
             api.delete(f"/api/calendar/events/{ev['uid']}"); n += 1
     sess = api.get("/api/sessions")
     sess = sess.get("sessions", sess) if isinstance(sess, dict) else sess

@@ -94,6 +94,23 @@ def chk(name, ok, detail=""):
     return (name, bool(ok), detail)
 
 
+# src/turn_report.py appends a closing report to the turn ("⚠️ **`python`
+# failed** — …", "Ran `bash` — …", "Wrote N bytes …") whenever a side-effecting
+# tool ran or failed — even a failure the model recovered from later in the
+# turn (2026-10-07, Qwen json_output r2). That text is Odysseus's, not the
+# model's, so checks see the reply without it; the runner keeps both.
+_REPORT_LINE = re.compile(r"^(⚠️ \*\*`[\w.:-]+` failed\*\* — |⚠️ \*\*That file is empty\*\*|Ran `[\w.:-]+`|Wrote \d+ bytes )")
+
+
+def split_turn_report(text):
+    """(model_text, report) — report is the trailing block of report lines."""
+    paras = (text or "").rstrip().split("\n\n")
+    tail = []
+    while len(paras) > 1 and all(_REPORT_LINE.match(l.strip()) for l in paras[-1].splitlines() if l.strip()):
+        tail.insert(0, paras.pop())
+    return "\n\n".join(paras).strip(), "\n\n".join(tail).strip()
+
+
 def answered(rec):
     return chk("final answer not empty", (rec.get("final_text") or "").strip(),
                "empty final answer")
@@ -367,15 +384,21 @@ task(
 # item whose marker the model mistyped is still removed (2026-10-05: Qwen
 # wrote "[bench-44b]" for "[bench-44b6]" and the note was left behind).
 # Runs are sequential, so no other run's items can be caught by it.
-BENCH_TAG = "[bench-"
+# 2026-10-07: Qwen dropped the brackets ("bench-2d22 Dentist"), so the loose
+# match is a pattern, not the "[bench-" prefix.
+BENCH_RE = re.compile(r"\[?bench-[0-9a-f]{3,4}\]?")
+
+
+def _tagged(text, ctx, loose):
+    return bool(BENCH_RE.search(text or "")) if loose else ctx["marker"] in (text or "")
+
 
 def _find_notes(ctx, loose=False):
     try:
         notes = ctx["api"].get("/api/notes").get("notes", [])
     except Exception:
         return []
-    tag = BENCH_TAG if loose else ctx["marker"]
-    return [n for n in notes if tag in (n.get("title") or "") + (n.get("content") or "")]
+    return [n for n in notes if _tagged((n.get("title") or "") + (n.get("content") or ""), ctx, loose)]
 
 
 def _note_ids(ctx):
@@ -439,15 +462,21 @@ def _find_events(ctx, loose=False):
             "end": (d + _dt.timedelta(days=4)).isoformat() + "T00:00:00"}).get("events", [])
     except Exception:
         return []
-    tag = BENCH_TAG if loose else ctx["marker"]
-    return [e for e in evs if tag in (e.get("summary") or "")]
+    return [e for e in evs if _tagged(e.get("summary"), ctx, loose)]
 
 
 def _check_event(rec, ctx):
-    evs = _find_events(ctx)
-    out = [chk("event exists (via /api/calendar/events)", evs, "no event with the marker")]
-    if evs:
-        e, d = evs[0], _event_day(ctx)
+    """Exact title and the event itself are separate checks, as in note_create
+    (2026-10-07: Qwen created "bench-2d22 Dentist" for "[bench-2d22] Dentist")."""
+    exact = _find_events(ctx)
+    before = ctx.get("events_before", set())
+    near = [e for e in _find_events(ctx, loose=True)
+            if e["uid"] not in before and "dentist" in (e.get("summary") or "").lower()]
+    ev = (exact or near or [None])[0]
+    out = [chk("event created (via /api/calendar/events)", ev, "no new event titled '… Dentist'"),
+           chk("title copied exactly", exact, f"title was {ev.get('summary')!r}" if ev else "")]
+    if ev:
+        e, d = ev, _event_day(ctx)
         try:
             s, en = _local(e["dtstart"]), _local(e["dtend"])
             out.append(chk(f"starts {d} 14:00", s.date() == d and (s.hour, s.minute) == (14, 0), e["dtstart"]))
@@ -464,7 +493,7 @@ def _cleanup_event(ctx):
 
 task(
     id="calendar_create", cat="odysseus", tools=["manage_calendar"],
-    setup=lambda ws, ctx: {},
+    setup=lambda ws, ctx: (ctx.__setitem__("events_before", {e["uid"] for e in _find_events(ctx, loose=True)}), {})[1],
     prompt=lambda ctx: (f'Add a calendar event "{ctx["marker"]} Dentist" on '
                         f'{_event_day(ctx).strftime("%A, %d %B %Y")} from 14:00 to 15:00.'),
     checks=_check_event, cleanup=_cleanup_event,
@@ -476,8 +505,7 @@ def _find_docs(ctx, loose=False):
         docs = ctx["api"].get(f"/api/documents/{ctx['session']}")
     except Exception:
         return []
-    tag = BENCH_TAG if loose else ctx["marker"]
-    return [d for d in docs or [] if tag in (d.get("title") or "")]
+    return [d for d in docs or [] if _tagged(d.get("title"), ctx, loose)]
 
 
 def _check_doc(rec, ctx):

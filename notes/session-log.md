@@ -12,6 +12,15 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-07 (17:15–19:00) — first valid benchmark runs: Bonsai 2 `--quick`, Qwen full ×2; two scoring fixes — uncommitted
+
+- 📊 **Bonsai 2** `--quick` (`20261007-171522`, plus `20261007-012621` from the night): **16/16**, median 142 s/task, 62 s/round, uncached prefill ~64 tok/s, cache hit 51 %. **Qwen 3.5 9B** full suite ×2 (`20261007-175428`): **34/36 as scored, 35/36 after the fix below**, median 42 s/task, 19 s/round, 30 min. On the 8 tasks both ran: 16/16 each. 0 empty answers after tool rounds for either; approval cards 7 (Bonsai, mostly its habit of computing with `python`) and 11 (Qwen). Report: `data/bench/agent/report.md` (gitignored).
+- 🔧 **Odysseus's closing report is no longer scored as model text.** `src/turn_report.py` appends *"⚠️ **`python` failed** — …"* for any failed side-effecting tool, **even one the model recovered from** later in the turn; Qwen's `json_output` r2 replied exactly `{"rows":36,"nodes":3}` and failed *"no prose"* on that appended line. Checks now see the reply without the trailing report block (`split_turn_report`); the record keeps it as `turn_report` with flag `odysseus_turn_report`. ⚠️ Worth deciding separately whether a recovered failure should still be reported to the user that way — it is the fork's deliberate *"failures always"* rule.
+- 🔧 **`calendar_create` split like `note_create`:** *"event created"* vs *"title copied exactly"*; Qwen r1 created `bench-2d22 Dentist` (brackets dropped) and then told the user it created `"[bench-2d22] Dentist"`. Cleanup and preflight match `BENCH_RE` (`\[?bench-[0-9a-f]{3,4}\]?`) instead of the `[bench-` prefix, which had left that event in the calendar (14 Oct, 14:00) — **`bench_agent.py cleanup` removes it once this is committed.**
+- 🧪 Stub/mock only for the two fixes; the runs above used the previous version. **Edited:** `scripts/bench_agent.py`, `scripts/bench_agent_tasks.py`, this file.
+
+---
+
 ## 2026-10-07 (00:00–00:20, written to the M1 16:10) — streamlining: dead stream-failure path removed, fork reporting moved out of `agent_loop.py`, comments condensed, notes split — uncommitted
 
 - 🔧 **Code.** Removed `_stream_failure_notice`, `_stream_error_detail` and `stream_errors` — unreachable since the merge (every `event: error` now ends in upstream's `agent_terminal` + `return`); 10 tests went with them, and `ui_notices.py` still strips the old notice from saved chats. Removed the `[doc-put]` and `[doc-del]` log lines (their removal conditions were met); **kept** the `switchAway` trace (resolvedissues ties it to the 30–35 cluster, and 34 is open), `_stackFrames`, `[doc-put-404]` and the `[ai-tidy]` logging. Moved the fork's end-of-turn reporting to `src/turn_report.py` and the browser gate to `src/browser_gate.py` — `agent_loop.py` now differs from upstream by about 370 added lines instead of 1,340. Fork comments condensed to the why, with notes cited by title.
