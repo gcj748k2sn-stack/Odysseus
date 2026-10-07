@@ -4,7 +4,9 @@ Fork-only code moved out of ``src/agent_loop.py`` so that upstream's agent loop
 carries call sites instead of bodies (smaller merge surface). Behaviour is
 unchanged by the move; ``stream_agent_loop`` calls:
 
+- ``doc_tool_result_landed``  - whether a document tool result counts as done
 - ``record_doc_tool_result``  - per successful document tool, in the tool loop
+  and for an approved document action replayed at the start of a turn
 - ``doc_tool_break_report``   - the finetune path's loop break
 - ``end_of_turn_report``      - closing line and notices, after strip_tool_blocks
 
@@ -95,6 +97,27 @@ _SELF_REPORTING_TOOLS = frozenset({
 })
 
 
+def doc_tool_result_landed(result: Dict[str, Any]) -> bool:
+    """True when a document tool actually ran and did not fail.
+
+    An approval placeholder ("Waiting for an exact user approval.") carries no
+    ``error`` key, yet nothing ran; counting it reported an edit that never
+    happened (notes: "A document edit waiting on an approval card is reported
+    as done").
+    """
+    return bool(
+        isinstance(result, dict)
+        and not result.get("error")
+        and not result.get("approval_required")
+    )
+
+
+def _awaiting_approval(event: Dict[str, Any]) -> bool:
+    """True for a tool event that stopped at an approval card and did not run."""
+    card = event.get("ask_user")
+    return isinstance(card, dict) and card.get("kind") == "tool_approval"
+
+
 def _tool_event_failed(event: Dict[str, Any]) -> bool:
     """True when a tool event carries a non-zero exit code.
 
@@ -140,6 +163,9 @@ def _side_effect_tool_summary(tool_events: list, failures_only: bool = False) ->
         if not name:
             continue
         if name in READ_ONLY_TOOLS or name in DOC_TOOLS or name in _SELF_REPORTING_TOOLS:
+            continue
+        if _awaiting_approval(event):
+            # Nothing ran; the card on screen is the report.
             continue
         detail = _first_line(event.get("output"))
         if _tool_event_failed(event):

@@ -141,7 +141,7 @@ def test_snapshot_is_taken_before_every_tool_not_just_document_tools():
     # snapshot would never have seen it.
     assert "_text_before_last_tool = full_response" in AGENT_LOOP_SRC
     snap_at = AGENT_LOOP_SRC.index("_text_before_last_tool = full_response")
-    doc_gate_at = AGENT_LOOP_SRC.index("if block.tool_type in DOC_TOOLS and not result.get(\"error\")")
+    doc_gate_at = AGENT_LOOP_SRC.index("if block.tool_type in DOC_TOOLS and doc_tool_result_landed(result)")
     assert snap_at < doc_gate_at, "snapshot must be taken for every tool block"
 
 

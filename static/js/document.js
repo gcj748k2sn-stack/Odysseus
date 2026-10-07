@@ -5594,7 +5594,12 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
     const _eventInsideElement = (e, el) => {
       if (!e || !el || typeof e.clientX !== 'number' || typeof e.clientY !== 'number') return false;
+      // A hidden button measures 0x0 at (0,0), and a scripted .click() reports
+      // (0,0): without this, every programmatic chat send (Allow, Resend,
+      // queued sends) was taken for an email send once the panel had rendered.
+      if (e.isTrusted === false) return false;
       const rect = el.getBoundingClientRect();
+      if (!(rect.width > 0 && rect.height > 0)) return false;
       return e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
     };
 

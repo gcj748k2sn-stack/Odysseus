@@ -1772,7 +1772,11 @@ import { loadPanel } from './panels.js';
         approvalForSend.document_id
         && approvalForSend.document_id === activeDocIdForSend
       );
-      if (documentModule && activeDocIdForSend && shouldSaveActiveDoc) {
+      // No editor buffer (panel closed, e.g. after a reload) means nothing
+      // unsaved. saveDocument() returns false for that too, which refused
+      // every approval sent with the panel closed.
+      const hasEditorBuffer = !!document.getElementById('doc-editor-textarea');
+      if (documentModule && activeDocIdForSend && shouldSaveActiveDoc && hasEditorBuffer) {
         try {
           _sendPerf.mark('doc_save_begin');
           const documentSaved = await documentModule.saveDocument({

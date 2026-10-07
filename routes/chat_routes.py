@@ -1208,6 +1208,18 @@ def setup_chat_routes(
                     or pending_tool_approval.owner != normalized_owner
                     or pending_tool_approval.session_id != str(session)
                 ):
+                    # The store cannot tell expired from used, retired by a
+                    # later message, or lost in a restart; say which check failed.
+                    logger.warning(
+                        "Tool approval %s… rejected (409): %s",
+                        str(tool_approval_id)[:8],
+                        "not pending (expired, already used, retired by a later "
+                        "message, or lost in a restart)"
+                        if pending_tool_approval is None
+                        else "owner mismatch"
+                        if pending_tool_approval.owner != normalized_owner
+                        else "session mismatch",
+                    )
                     raise HTTPException(
                         409,
                         "This tool approval is invalid, expired, or belongs to another thread.",
@@ -1222,6 +1234,10 @@ def setup_chat_routes(
                 if decision not in {"approve", "approve_task", "deny"}:
                     raise HTTPException(400, "Invalid tool approval decision.")
                 if plan_mode:
+                    logger.warning(
+                        "Tool approval %s… rejected (409): plan mode is active",
+                        str(tool_approval_id)[:8],
+                    )
                     raise HTTPException(
                         409,
                         "Tool approvals cannot be consumed while plan mode is active.",
@@ -1237,6 +1253,11 @@ def setup_chat_routes(
                     decision in {"approve", "approve_task"}
                     and exact_tool_approval is None
                 ):
+                    logger.warning(
+                        "Tool approval %s… rejected (409): consumed concurrently "
+                        "or expired between check and use",
+                        str(tool_approval_id)[:8],
+                    )
                     raise HTTPException(
                         409,
                         "This tool approval could not be consumed.",

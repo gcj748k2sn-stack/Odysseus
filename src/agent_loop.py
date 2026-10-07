@@ -44,6 +44,7 @@ from src.turn_report import (
     _doc_edit_retry_directive,
     _format_prompt_cache,
     doc_tool_break_report,
+    doc_tool_result_landed,
     end_of_turn_report,
     record_doc_tool_result,
 )
@@ -4969,6 +4970,12 @@ async def stream_agent_loop(
             approved_tool_event["doc_id"] = approved_result["doc_id"]
             approved_tool_event["doc_title"] = approved_result.get("title", "")
         tool_events.append(approved_tool_event)
+        if approved.tool_name in DOC_TOOLS and doc_tool_result_landed(approved_result):
+            # The approved edit is this turn's document report (see turn_report).
+            _ody_doc_tool_info = record_doc_tool_result(
+                _ody_doc_tool_info, approved.tool_name, approved_result, tool_events,
+            )
+            _ody_doc_text_before_tool = full_response
         if approved.tool_name in _VERIFIER_EFFECTFUL_TOOLS:
             _effectful_used = True
         formatted_approved_result = format_tool_result(desc, approved_result)
@@ -6556,7 +6563,7 @@ async def stream_agent_loop(
                 and result.get("action") == "create"
             ):
                 _doc_stream_create_completed = True
-            if block.tool_type in DOC_TOOLS and not result.get("error"):
+            if block.tool_type in DOC_TOOLS and doc_tool_result_landed(result):
                 # Report data is built for every model; only the loop break
                 # stays behind _ody_doc_finetune_mode. See turn_report.
                 _ody_doc_tool_info = record_doc_tool_result(
