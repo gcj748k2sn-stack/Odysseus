@@ -12,8 +12,9 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
-## 2026-10-07 (17:15–19:00) — first valid benchmark runs: Bonsai 2 `--quick`, Qwen full ×2; two scoring fixes — uncommitted
+## 2026-10-07 (17:15–19:00) — first valid benchmark runs: Bonsai 2 `--quick`, Qwen full ×2; two scoring fixes — committed 18:54 (`3b1cce60`)
 
+- 📌 **Current state of the benchmark — how to run it, why it is built this way, valid results — is now [benchmark.md](benchmark.md).** The 2026-10-05/06 benchmark entries below are history.
 - 📊 **Bonsai 2** `--quick` (`20261007-171522`, plus `20261007-012621` from the night): **16/16**, median 142 s/task, 62 s/round, uncached prefill ~64 tok/s, cache hit 51 %. **Qwen 3.5 9B** full suite ×2 (`20261007-175428`): **34/36 as scored, 35/36 after the fix below**, median 42 s/task, 19 s/round, 30 min. On the 8 tasks both ran: 16/16 each. 0 empty answers after tool rounds for either; approval cards 7 (Bonsai, mostly its habit of computing with `python`) and 11 (Qwen). Report: `data/bench/agent/report.md` (gitignored).
 - 🔧 **Odysseus's closing report is no longer scored as model text.** `src/turn_report.py` appends *"⚠️ **`python` failed** — …"* for any failed side-effecting tool, **even one the model recovered from** later in the turn; Qwen's `json_output` r2 replied exactly `{"rows":36,"nodes":3}` and failed *"no prose"* on that appended line. Checks now see the reply without the trailing report block (`split_turn_report`); the record keeps it as `turn_report` with flag `odysseus_turn_report`. ⚠️ Worth deciding separately whether a recovered failure should still be reported to the user that way — it is the fork's deliberate *"failures always"* rule.
 - 🔧 **`calendar_create` split like `note_create`:** *"event created"* vs *"title copied exactly"*; Qwen r1 created `bench-2d22 Dentist` (brackets dropped) and then told the user it created `"[bench-2d22] Dentist"`. Cleanup and preflight match `BENCH_RE` (`\[?bench-[0-9a-f]{3,4}\]?`) instead of the `[bench-` prefix, which had left that event in the calendar (14 Oct, 14:00) — **`bench_agent.py cleanup` removes it once this is committed.**
@@ -30,7 +31,7 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
-## 2026-10-06 (22:45–23:05) — first post-merge `--quick` (Bonsai 2) invalid: workspace refused; fixed — uncommitted
+## 2026-10-06 (22:45–23:05) — first post-merge `--quick` (Bonsai 2) invalid: workspace refused; fixed — committed (`aa8dec5d`)
 
 - 🔴 **Run `20261006-212201-bonsai2` is invalid — delete it.** Every task came back `workspace_rejected`: since the merge `vet_workspace` refuses anything under `data/` except `agent_workspace/` & co. (`_is_app_state_path`), and the fixtures were in `data/bench/agent/<run>/ws/`. Consequences seen: `read_fact` went down the **direct low-signal reply path with no tools** (`_direct_low_signal` only applies when no workspace is bound) and Bonsai wrote a `<tool_call><function=Read>` as text; on `write_file` the file tools refused the path and **Bonsai wrote `summary.md` with `bash` instead** (item 60's hole, from the model side), which the check counted as a pass.
 - 🔧 **Fixtures now go to `~/odysseus-bench/<run-id>/`** (`BENCH_WS_ROOT` overrides); results stay in `data/bench/agent/`. A `workspace_rejected` now **stops the run** unsaved with the `--resume` line.
@@ -42,7 +43,7 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
-## 2026-10-06 (21:15–21:45) — benchmark answers approval cards (the handoff's "build first") — uncommitted
+## 2026-10-06 (21:15–21:45) — benchmark answers approval cards (the handoff's "build first") — committed (`87ab5385`, password prompt `ef7d5c42`)
 
 - 🔧 **`scripts/bench_agent.py` answers the untrusted-context gate.** On an `ask_user` event with `kind: "tool_approval"` it re-posts the same session with `tool_approval_id` + `tool_approval_decision=approve_task` (cookie login, so `_reject_delegated_tool_approval` does not apply; incognito keeps the turn's context in `_INCOGNITO_CONTEXTS` for 6 h). Rounds are summed across the continuation; the card's question delta and its *"Waiting for an exact user approval."* placeholder are kept out of the answer and the tool results. `--approval deny` and `--max-approvals` (default 4) exist for checking the gate itself. Report: *"Approval cards answered (task runs with ≥1)"*, and a reading note that cards cost a round trip, not points.
 - 🔧 **Upstream's terminal failure path:** `agent_terminal` with `failed` is flagged (`agent_terminal_failed`) next to `event: error`. Server faults — *Cannot reach*, LM Studio's *Compute error* (the 11:25 broken copy), any HTTP 5xx — **stop the run without saving that result** and print the `--resume` line; an HTTP 400 such as the context overflow stays a result.

@@ -8,6 +8,86 @@ Closed investigations. Setup and config in [qwensetup.md](qwensetup.md); open it
 
 ---
 
+## Index of closed and retired items
+
+Moved here from the [todo.md](todo.md) index on 2026-10-07, rows verbatim as they stood then. Item numbers are never reused: this table plus the open index in `todo.md` is the number registry. Bodies that were still in `todo.md` are in [archive/todo-2026-10-06.md](archive/todo-2026-10-06.md).
+
+| # | Item | Sev | Effort | Status | Verified |
+|---|---|---|---|---|---|
+| 1 | ~~Autosave reverting AI edits — data loss~~ | S1 | M | ✅ fixed | **live** — 20 reverts → 0 |
+| 2a | ~~Document doesn't match its source~~ | S1 | S | ✅ built 2026-07-28 — report-only | **tests (27)** — needs a live turn |
+| 2b | ~~Fact-check inverts ground truth~~ | S1 | M | ✅ built 2026-07-28 — report-only | **live** — fb5525eb |
+| 4 | ~~Retired 4B still on the research path~~ | S1 | XS | ✅ done | live |
+| 5 | ~~Uncommitted work — four recurrences~~ | S2 | XS | ✅ **closed 2026-07-31 — moved to [`CLAUDE.md`](../CLAUDE.md) §6, not fixed in code** | n/a — it was never a defect |
+| 6 | ~~Answer text lost to the reasoning channel~~ | S2 | S | ✅ fixed 2026-07-28 — a save-path regex | **tests (15)** |
+| 7 | ~~Closing summary under-reports / stays silent~~ | S3 | S | ✅ fixed | **live — both branches** |
+| 9 | ~~Throughput cliff: 2.84 → 0.39 tok/s~~ | — | — | ⊘ **retired — disproved by its own data** | n/a |
+| 10 | ~~Failures aren't replayable~~ | S4 | XS | ✅ fixed 2026-07-28 — `full_command` | **live** — 42889f7b |
+| 11 | ~~Non-document tools have no closing report~~ | S3 | M | ✅ built 2026-07-28 — report-only | **tests (20)** — needs a live turn |
+| 15 | ~~`web_fetch` failure rate on cultivation sources~~ | — | — | ⊘ **folded into 2 — premise already answered** | n/a |
+| 16 | ~~SSRF guard tests covered an orphaned function~~ | S4 | S | ✅ **closed 2026-07-31 — instance fixed 07-27, audit run 07-31** | tests; **audit: 271 files, 1,672 names, 3 hits** |
+| 17 | ~~Cache hits indistinguishable from live fetches~~ | S4 | XS | ✅ fixed 2026-07-28 | **live** — 42889f7b |
+| 18 | ~~Two CAS tests have never passed~~ | S4 | XS | ✅ **fixed 2026-07-31** — patched the module attribute, not the closure | **M1 suite green + mutation**: both fail with the CAS clause removed |
+| 19 | ~~Five tests failed on macOS only~~ | S4 | XS | ✅ fixed 2026-07-28 | **live** — M1 suite |
+| 21 | ~~Three S1 warnings suppressed when the model wrote a summary~~ | S1 | XS | ✅ **fixed 2026-07-28** | tests (13) |
+| 22 | ~~Documents never stream into the editor on this setup~~ | S4 | — | ⊘ **retired — disproved 2026-07-28** | n/a |
+| 23 | ~~Finished answers delivered in the reasoning channel~~ | S2 | S | ✅ **CLOSED 2026-10-04 — fixed 2026-10-02 on the request side; body in [resolvedissues.md](resolvedissues.md)** | **live** ×11 incl. a non-price topic, Ollama 0.31.1 and 0.35.1 · replay ×24 · tests (7) · suite 5,858 on macOS 27 |
+| 24 | ~~Cloned documents were all named "Untitled"~~ | S4 | XS | ✅ fixed 2026-07-29 | **live** — both paths, 2026-07-29 |
+| 26 | ~~Test litter in the repo root, hidden by `ignore_errors=True`~~ | S4 | XS | ✅ **closed 2026-07-31** — gitignore half was already done; silence fixed | **verified + negative control**: warns under the mount, silent on a removable tree |
+| 28 | ~~The model writes the tool call instead of making it~~ | S2 | S | ✅ built + **committed `1a8e804e`** 2026-07-29 | **tests (14)** — live ×3 pre-fix |
+| 29 | ~~Quoted phrases return locale filler~~ | S3 | S | built 2026-07-29, ⚠️ **UNCOMMITTED** | **tests (16) green on the M1** — not live |
+| 30 | ~~Switching chats writes the editor buffer into the other chat's document~~ | S2 | M | ✅ **fixed 2026-07-30** — root cause and guard, both branches observed | **live** — 21:27, no flush attempted |
+| 33 | ~~`switchToDoc` deletes the document you are leaving, from the map~~ | S2 | XS | ✅ **closed 2026-07-31 — fixed AND unreachable by construction** | **live** — 35 `switchAway` traces; two independent barriers |
+| 31 | ~~Closing a document tab overwrites a *different* document~~ | S2 | M | ✅ **closed 2026-07-31** — (a) and (b) both verified live; (c) retracted | **live** — (a) 16:02 · (b) 16:55, `syncedLen` 5 and 9270, no `[doc-del]` |
+| 32 | ~~A scheduled tidy hard-deletes duplicate documents, versions and all~~ | S2 | S | ✅ **fixed 2026-07-30** — archives, session-scoped, logged | **live** — 17:31, counts held · tests (7 + 3 mutations) |
+| 35 | ~~`loadSessionDocs` flushes the editor buffer into the document it is switching TO~~ | S4 | XS | ✅ **CLOSED 2026-08-01 — verified live, positively** | **live** — 4 `prev === to` switches, **zero `[doc-map]` warnings** |
+| 36 | ~~The document-tab actions menu is unreachable — its button is never rendered~~ | S4 | XS | ✅ **closed 2026-07-31 — ACCEPTED AS IS, deliberately not fixed** | **live** — `${menuBtn}` occurs 0 times; every action has another route |
+| 37 | ~~Model probes ignore session-backed credentials~~ | — | — | ⊘ **retired 2026-07-31 — out of scope for this deployment, NOT disproved** | source-level; **0 session-backed endpoints, 0 auth sessions** |
+| 38 | ~~Four functions look like calls that were never wired up~~ | — | — | ⊘ **retired 2026-07-31 — investigated, 4 of 4 deliberate or superseded** | **wiring three of them up would have caused regressions** |
+| 39 | ~~A permanently-failing URL is re-fetched once per appearance~~ | S4 | XS | ✅ **closed 2026-08-01 — fixed, tests (21), verified live** | **3 attempts → 1 request**; ages 44 s / 196 s off one stored failure |
+| 41 | ~~A truncated answer is indistinguishable from a short one~~ | S2 | XS | ✅ **CLOSED 2026-08-01 — built and verified live on BOTH paths the day it was filed** | **live ×2** — `length` closed item 44; `stop`/`tool_calls` on real chat turns, **no `?`** |
+| 44 | ~~`/api/documents/ai-tidy` failed every logged call, and the 500s logged nothing~~ | S3 | S | ✅ **CLOSED 2026-08-01 — two faults, both fixed, filed and closed the same day** | **live** — `status=200`, `parsed 28 of 30`, 17.8 s, no retry · ⚠️ **archive branch still unexercised** |
+| 49 | ~~Wikipedia pages are extracted as three copies of the site menu — the article never reaches the model~~ | S2 | S | ✅ **CLOSED 2026-10-05 — built and verified live the same evening, commit `867c2d1e`** | **live** — `/wiki/Morchella` 21:24 → 51,880 chars of article · **M1 suite 6,245 passed** · fixture reproduces the recorded 627-char extract on the old code |
+| 51 | ~~The built-in browser's 31 tools went out on turns that never asked for a browser, and `builtin_browser` in a disabled list disabled nothing~~ | S3 | S | ✅ **CLOSED 2026-10-04 — filed, built and verified live the same day** | **live ×3** — greeting withheld (`31`), explicit request sent 39 tools and **ran `browser_navigate` + `browser_take_screenshot`, the first browser executions ever recorded**, panel toggle off → `browser disabled for this turn`, 8 tools · **M1 suite 5,920 passed, 0 failed** |
+
+---
+
+## Two CAS tests in `test_document_put_version_conflict.py` had never passed — closed 2026-07-31 (item 18)
+
+Both patched `_reserve_document_uploads`, a closure nested inside `setup_document_routes()`, so the attribute lookup raised `AttributeError` and the tests could never have run. Fixed by patching `reserve_upload_references` instead — the module attribute that closure calls unconditionally — which lands in the same window: after `base_version` is read, before the compare-and-swap.
+
+- ❌ **Retracted: *"fixing it is a design decision, not a repair."*** The hook was one level down the whole time; no production change was needed.
+- ✅ **Verified on the M1 with a mutation:** with `Document.version_count == base_version` deleted from the CAS filter, exactly these two fail. The suite's old "2 failed" baseline became 0, so any note that says *"expect 2 failed"* is historical.
+- ⚠️ **Do not delete these tests.** They cover the CAS race behind *"Autosave reverting AI edits"*.
+
+## Test litter in the repo root, hidden by `ignore_errors=True` — closed 2026-07-31 (item 26)
+
+`tests/test_chat_helpers.py` builds fixtures under `<repo>/tmp_pytest_probe/`, and `shutil.rmtree(..., ignore_errors=True)` discarded the sandbox's `PermissionError`, so directories piled up silently.
+
+- ❌ **The claim *"`tmp_pytest_probe/` is not in `.gitignore`"* was stale when re-checked** — it already was.
+- ✅ **`_cleanup_manifest_dir()` now warns with the path when removal fails.** It does not raise: a sandbox genuinely cannot unlink under the mount. Verified with a negative control — one warning under the mount, none on a removable `/tmp` tree. Because the directory is gitignored, that warning is the only thing that can report the leak.
+- ⚠️ **The repo-root location is load-bearing.** It is outside every default tool root, which is what makes the test's `tool_path_extra_roots` patch discriminate; under `tmp_path` the test would pass for a weaker reason. If you replace `_tool_path_roots` in a test, `realpath` the root (macOS `/var` → `/private/var`).
+- `tests/test_code_nav_tools.py` keeps `ignore_errors=True` on purpose: it writes to `/tmp` and fails loudly in a sandbox instead of leaking.
+
+## The document-tab actions menu is unreachable — accepted as is 2026-07-31 (item 36)
+
+`renderTabs` builds `menuBtn` and never interpolates it (`grep -c '\${menuBtn}' static/js/document.js` → `0`), so the 133-line `showDocTabMenu`, its click handler and its stylesheet are unreachable. Every action it offers has another route — footer save/export, `.doc-tab-play`, `.doc-tab-close`, the compose reply button, the Library — so nothing is missing for the user. Left alone: wiring it in adds a UI surface nobody asked for, and deleting ~150 lines needs a suite run for little return.
+
+- ⚠️ **The trap stays:** the code reads as if the menu ships. If it is ever wanted, the fix is to interpolate `${menuBtn}` into the tab template.
+
+## Model probes ignore session-backed credentials — retired 2026-07-31, out of scope (item 37)
+
+Source-level only and **not disproved**: this deployment has 0 session-backed endpoints and 0 auth sessions, so nothing can exercise it. Re-open if a subscription endpoint is ever configured.
+
+## Four "never wired up" functions — retired 2026-07-31, all four deliberate or superseded (item 38)
+
+`_compact_tool_line` (would bring back the tool syntax the compact prompt forbids), `_event_pings_loop` (disabled on purpose: running it alongside the Notes scanner duplicated reminder emails), `_looks_like_notes_list_request` (superseded by `_looks_like_notes_calendar_followup`), `_is_private_address` (superseded by the two-tier LAN design; calling it would revert that fix). **Wiring three of them up would have caused regressions;** nothing was deleted.
+
+- **The transferable lesson:** the reason a function is uncalled is recorded at the site that deliberately does *not* call it, never at the function. Triage a zero-caller sweep from the callers, not from the definitions.
+- **Not one of the four, and still unchecked:** `_send_email_sync` (`routes/email_routes.py`) — see *Next* in [todo.md](todo.md). About 250 further unreferenced lines (cookbook helpers, `_ssh`, duplicated `_format_error_response` and `_embed`) were left alone: no deletion on a grep without a suite run.
+
+---
+
 ## Wikipedia pages were extracted as three copies of the site menu — closed 2026-10-05 (item 49)
 `fetch_webpage_content` took the first three elements whose class matched `content|main|body|article|post|entry|text`, in document order. On English Wikipedia (Vector 2022) all three are containers of the header's "Main menu", so every desktop article came back as the menu ×3 — **627 chars, just above `THIN_CONTENT_CHARS = 600`**, so the body fallback that strips `nav`/`header` never ran. Every cached `en.wikipedia.org/wiki/…` entry from 2026-07-31 to 2026-10-05 was exactly that, while 204–806 KB had been downloaded; the model then reported Wikipedia "verification" it never had (session `2ef18f85`).
 
