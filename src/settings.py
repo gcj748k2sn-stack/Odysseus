@@ -114,12 +114,11 @@ DEFAULT_SETTINGS = {
     "research_run_timeout_seconds": 1800,
     "agent_max_tool_calls": 0,
     "agent_max_rounds": 20,  # per-message agent step cap (clamped 1..200)
-    # Suppress Qwen (qwen3/qwq) thinking blocks in agent/tool rounds on
-    # Ollama's native /api/chat (`think: false` + `/no_think` soft-switch
-    # fallback for Ollama <0.9). Thinking otherwise eats the round's
-    # num_predict budget before any tool call is emitted (empty-round
-    # failure #9). Normal chat rounds are unaffected. Set False to let
-    # agent rounds think again.
+    # Suppress Qwen (qwen3/qwq) thinking in agent/tool rounds on Ollama's
+    # native /api/chat (think: false + /no_think fallback for Ollama <0.9).
+    # Thinking otherwise eats the round's num_predict before any tool call.
+    # Normal chat rounds are unaffected. Set False to let agent rounds think
+    # again.
     "agent_disable_thinking": True,
     # Soft input-token budget for the agent loop. The DEFAULT value (6000) is the
     # "auto" sentinel: it means "scale the budget to the model's context window"
@@ -139,29 +138,22 @@ DEFAULT_SETTINGS = {
     # `compute_input_token_budget`.
     "agent_input_token_hard_max": 200_000,
     # Per-read INACTIVITY timeout on the model stream, not a wall-clock budget.
-    # Raised 300 -> 900 on 2026-07-28 (notes/todo.md 9b). Ollama's /v1 endpoint
-    # does not stream native tool-call arguments incrementally — zero
-    # `tool_call_delta` events in 35k log lines — so the whole payload arrives
-    # in one chunk after the model has finished generating it. That makes this
-    # value a hard cap on how long a single tool call may take to produce. At
-    # the measured 8.9-13.6 tok/s, 300 s capped a document at roughly 2,700
-    # tokens, and four turns died on it: 305 s and 314 s of silence against a
-    # successful sibling that finished in 185 s, same prompt.
-    # ⚠️ This also scales the runaway wall-clock deadline, which is
-    # `max(agent_stream_timeout * 4, 1200)` in `src/agent_loop.py` — 900 makes
-    # that 3600 s per round. Lower both together if that is too loose.
+    # Raised 300 -> 900 because Ollama's /v1 does not stream tool-call
+    # arguments incrementally: the whole payload arrives in one chunk after
+    # generation, so this caps how long a single tool call (e.g. a whole
+    # document) may take. This also scales the runaway deadline in
+    # src/agent_loop.py (max(agent_stream_timeout * 4, 1200), i.e. 3600 s per
+    # round at 900). Lower both together if that is too loose.
     "agent_stream_timeout_seconds": 900,
     # Extra directory roots that read_file / write_file may access, in
     # addition to the built-in project data/ and system temp dirs. Each
     # entry is an absolute path. Sensitive subpaths (.ssh, .gnupg, shell
     # rc files, SSH key files) are always blocked regardless of roots.
     "tool_path_extra_roots": [],
-    # Terminal access-log lines to hide (src/access_log_filter.py). Entries are
-    # a status (200) or "METHOD STATUS" ("GET 200"). 4xx/5xx should stay
-    # visible. "GET 304" is hidden because every page load revalidates every
-    # no-cache JS module (~150 lines, all 304 when nothing changed); a
-    # stale-cache bug shows as a missing request, which no access log shows.
-    # [] shows every request. Does not affect data/logs/app.log.
+    # Terminal access-log lines to hide (src/access_log_filter.py): a status
+    # (200) or "METHOD STATUS" ("GET 200"). Keep 4xx/5xx visible. "GET 304" is
+    # hidden because every page load revalidates every no-cache JS module. []
+    # shows every request. Does not affect data/logs/app.log.
     "access_log_hide_statuses": [200, "GET 304"],
     "task_endpoint_id": "",
     "task_model": "",

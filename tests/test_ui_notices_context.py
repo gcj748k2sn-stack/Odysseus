@@ -1,6 +1,6 @@
 """Odysseus's own end-of-turn notices must not reach the model as its words.
 
-The guards in `src/agent_loop.py` append notices to the saved reply when a
+The guards in `src/turn_report.py` and `src/agent_loop.py` append notices to the saved reply when a
 turn fails or stops early. They are written for the person reading the
 transcript — "the tool results above are real", "Ask me to continue…" — and
 `Session.get_context_messages` used to replay them to the model verbatim.
@@ -8,9 +8,12 @@ Measured 2026-10-04 over 268 recorded replies: 56 carried a notice, 48 were
 followed by more turns, and after a notice "continue" carried the work on in
 0 of 6 cases (the tool results were never kept for the model).
 
-Every notice below is built through the REAL function, so a wording change in
-`agent_loop.py` that the patterns in `src/ui_notices.py` no longer match fails
-here instead of leaking silently. The negative controls are the other half:
+Every notice the agent loop can still write is built through the REAL function,
+so a wording change in `turn_report.py` / `agent_loop.py` that the patterns in `src/ui_notices.py`
+no longer match fails here instead of leaking silently. The stream-failure
+notice is no longer written (upstream's `[Agent stopped: …]` replaced it in the
+2026-10-06 merge), but chats saved before then carry it, so its last wording is
+frozen below as saved text. The negative controls are the other half:
 a stripper that also ate ordinary replies would pass a positive-only suite.
 """
 import os
@@ -20,10 +23,9 @@ os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 import pytest  # noqa: E402
 
 from core.models import ChatMessage, Session  # noqa: E402
-from src.agent_loop import (  # noqa: E402
-    _empty_response_fallback,
+from src.agent_loop import _empty_response_fallback  # noqa: E402
+from src.turn_report import (  # noqa: E402
     _gathering_only_notice,
-    _stream_failure_notice,
     _tool_payload_as_text_notice,
     _unstarted_promise_notice,
 )
@@ -31,6 +33,27 @@ from src.ui_notices import (  # noqa: E402
     INCOMPLETE_TURN_MARKER,
     context_view_of_reply,
     strip_ui_notices,
+)
+
+# Verbatim output of the removed `_stream_failure_notice`, as stored in chats
+# saved before the 2026-10-06 merge.
+_SAVED_STREAM_FAILED_NO_TOOLS = (
+    "⚠️ **The request to the model failed after 0s — `Cannot reach "
+    "http://localhost:1234 (503)`.** Anything above is the part that arrived "
+    "before it did; the turn did not finish, so treat it as incomplete rather "
+    "than as an answer."
+)
+_SAVED_STREAM_FAILED_WITH_TOOLS = (
+    "⚠️ **The request to the model failed after 0s — `{\"status\": 400, "
+    "\"text\": \"request (17539 tokens) exceeds `ctx`\"}` (+1 more).** Work "
+    "completed before it failed has been kept — the tool results above are "
+    "real. What is missing is whatever the model would have done next, so the "
+    "task may be half-finished."
+)
+_SAVED_STREAM_FAILED_NO_ELAPSED = (
+    "⚠️ **The request to the model failed — `boom`.** Anything above is the "
+    "part that arrived before it did; the turn did not finish, so treat it as "
+    "incomplete rather than as an answer."
 )
 
 _EDIT_PAYLOAD = (
@@ -41,18 +64,12 @@ _EDIT_PAYLOAD = (
 
 
 def _real_notices():
-    """(label, notice text) for every template, built by agent_loop itself."""
+    """(label, notice text) for every template, built by the real functions."""
     empty, _ = _empty_response_fallback("", "", [])
     yield "empty_response", empty
-    yield "stream_failed_no_tools", _stream_failure_notice(
-        [{"detail": "Cannot reach http://localhost:1234 (503)", "elapsed": 0.01}]
-    )
-    yield "stream_failed_with_tools", _stream_failure_notice(
-        [{"detail": '{"status": 400, "text": "request (17539 tokens) exceeds `ctx`"}', "elapsed": 0.05},
-         {"detail": "second", "elapsed": 1.0}],
-        tool_events=[{"tool": "web_search"}],
-    )
-    yield "stream_failed_no_elapsed", _stream_failure_notice([{"detail": "boom"}])
+    yield "saved_stream_failed_no_tools", _SAVED_STREAM_FAILED_NO_TOOLS
+    yield "saved_stream_failed_with_tools", _SAVED_STREAM_FAILED_WITH_TOOLS
+    yield "saved_stream_failed_no_elapsed", _SAVED_STREAM_FAILED_NO_ELAPSED
     yield "gathering_one_tool", _gathering_only_notice([{"tool": "web_search"}])
     yield "gathering_two_tools", _gathering_only_notice(
         [{"tool": "web_search"}, {"tool": "web_fetch"}]
@@ -78,7 +95,7 @@ def test_model_text_before_a_notice_survives(label, notice):
 def test_stacked_notices_all_strip():
     # The empty-response text and a stream failure arrive together on a dead endpoint.
     empty, _ = _empty_response_fallback("", "", [])
-    failed = _stream_failure_notice([{"detail": "Cannot reach http://localhost:1234 (503)", "elapsed": 0.0}])
+    failed = _SAVED_STREAM_FAILED_NO_TOOLS
     assert context_view_of_reply(empty + "\n\n" + failed) == INCOMPLETE_TURN_MARKER
 
 
@@ -155,8 +172,8 @@ def test_raw_history_keeps_notices_for_display():
 
 # ── Upstream's terminal-failure note (merged 2026-10-06) ──
 # After the merge a provider/stream failure ends the turn with
-# "[Agent stopped: …]" (src/agent_loop.py, routes/chat_routes.py) before
-# `_stream_failure_notice` can run, so that note has to strip the same way.
+# "[Agent stopped: …]" (src/agent_loop.py, routes/chat_routes.py) instead of
+# the fork's old stream-failure notice, so that note has to strip the same way.
 
 def test_upstream_agent_stopped_note_strips_to_the_marker():
     reply = "Here is what I found so far.\n\n[Agent stopped: Model request failed (HTTP 504)]"

@@ -36,17 +36,14 @@ _PRIVATE_NETWORKS = (
 
 
 # ── Two-tier SSRF classification ─────────────────────────────────────
-# Odysseus is local-first: a user pointing web_fetch at their own ESP32, NAS or
-# dev server on the LAN is a legitimate, intended thing to do. But the guard has
-# to keep rejecting the cloud instance-metadata range unconditionally, since
-# that is the credential-exfil vector and nobody serves real content there.
+# Odysseus is local-first: pointing web_fetch at your own ESP32, NAS or dev
+# server is intended. The cloud instance-metadata range stays rejected
+# unconditionally - that is the credential-exfil vector. The address space
+# splits in two, mirroring src/url_safety.py:
 #
-# So the address space splits in two, mirroring the tiering already used by
-# ``src/url_safety.py`` for the embedding/webhook/ntfy paths:
-#
-#   HARD  – never reachable, no override. Link-local (incl. 169.254.169.254),
+#   HARD  - never reachable, no override. Link-local (incl. 169.254.169.254),
 #           multicast, reserved, unspecified, and the 0.0.0.0/8 wildcard.
-#   GATED – reachable only when the caller opts in. Loopback, RFC-1918, ULA,
+#   GATED - reachable only when the caller opts in. Loopback, RFC-1918, ULA,
 #           and the internal-sounding hostname suffixes.
 #
 # The opt-in is WEB_FETCH_BLOCK_PRIVATE_IPS=false, and it applies to the first
@@ -153,11 +150,10 @@ def _public_http_url(
 ) -> bool:
     """Boolean form of :func:`_resolve_public_ips`.
 
-    Deliberately a thin wrapper rather than a parallel implementation. It used
-    to be the guard itself, until #704 moved the fetch path onto
-    ``_resolve_public_ips`` and left this function behind with no callers — at
-    which point the tests asserting on it stopped covering anything real.
-    Delegating keeps the two from drifting again.
+    A thin wrapper, not a parallel implementation: it once was the guard, was
+    left behind with no callers when the fetch path moved, and its tests
+    stopped covering anything real. Delegating keeps the two from drifting
+    again.
     """
     try:
         _resolve_public_ips(url, resolver=resolver, allow_private=allow_private)
@@ -403,10 +399,7 @@ def _get_public_url(
     for hop in range(max_redirects + 1):
         # The keyword only goes out when it is True AND the resolver can take
         # it. An injected resolver that accepts just the URL (upstream's test
-        # stubs do) gets the strict call instead — failing closed, never open.
-        # Seen 2026-10-06 on the M1: with WEB_FETCH_BLOCK_PRIVATE_IPS=false in
-        # .env, eight tests/test_web_fetch_size_caps.py cases died on
-        # TypeError: unexpected keyword argument 'allow_private'.
+        # stubs) gets the strict call - failing closed, never open.
         if allow_private and hop == 0 and _accepts_allow_private(resolve_public_ips):
             ips = resolve_public_ips(current, allow_private=True)
         else:

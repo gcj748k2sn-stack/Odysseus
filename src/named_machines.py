@@ -1,25 +1,20 @@
-"""Which machines a prompt can name: configured Cookbook servers and SSH
-aliases — nothing else.
+"""Which machines a prompt can name: configured Cookbook servers and SSH aliases,
+nothing else.
 
-notes/todo.md item 27, fix (b). The agent's "named machine" check used to be a
-regex that accepted ``on|from`` followed by ANY word, so "data from
-http://192.168.0.185" (``from http``), "a report on climate change" and
-"mushrooms from wikipedia" all routed to the Odysseus Terminus branch: the
-model got ``bash`` plus rules framing the request as a machine to inspect. Live
-on 2026-10-04 that turned a document request into eleven rounds of ``ping``,
-port scans and listings of ``~/Documents``. The rules text the model sees
-already says *"Configured Cookbook server names and SSH aliases are target
-machines"*; this module makes the check agree with it.
+The old check accepted "on|from" + ANY word, so "data from http://..." routed
+to the Terminus branch and a document request became rounds of ping and port
+scans (notes: "A LAN address in the prompt deletes every document tool"). The
+rules text already says configured server names and SSH aliases are target
+machines; this makes the check agree.
 
 Sources, both re-read when their mtime changes:
 
-- ``data/cookbook_state.json`` → ``env.servers[].name`` and ``.host`` (also the
-  part after ``user@``). The "Local" entry and ``localhost`` are skipped — a
-  request about this computer is matched by the separate "this computer"
-  pattern in ``agent_loop``.
-- ``~/.ssh/config`` → ``Host`` aliases, skipping patterns (``*``, ``?``, ``!``).
-  ``Include`` is not followed. Only the alias strings are kept, in memory, for
-  matching; nothing from the file reaches a prompt.
+- data/cookbook_state.json: env.servers[].name and .host (and the part after
+  user@). "Local" and localhost are skipped; "this computer" is matched
+  separately in agent_loop.
+- ~/.ssh/config: Host aliases, skipping patterns (*, ?, !). Include is not
+  followed. Only alias strings are kept, in memory; nothing from the file
+  reaches a prompt.
 """
 from __future__ import annotations
 

@@ -24,9 +24,9 @@ stops-early problem, tracked separately in notes/todo.md.
 
 import json
 
-from src.agent_loop import (
+from src.agent_loop import _empty_response_fallback
+from src.turn_report import (
     READ_ONLY_TOOLS,
-    _empty_response_fallback,
     _gathering_only_notice,
 )
 

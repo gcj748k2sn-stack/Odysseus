@@ -120,8 +120,8 @@ except Exception as e:
     _root_logger.warning(f"Failed to initialize file logging handler (falling back to console-only): {e}")
 
 # Hide routine access-log lines (200s by default) from the terminal; 4xx/5xx
-# stay. Every launch path imports this module, so this is the one place to
-# wire it (notes/todo.md item 13; setting `access_log_hide_statuses`).
+# stay. Every launch path imports this module, so this is the one place to wire
+# it (setting `access_log_hide_statuses`).
 from src.access_log_filter import install_access_log_filter
 install_access_log_filter()
 

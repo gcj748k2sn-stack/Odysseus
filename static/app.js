@@ -39,14 +39,14 @@ import './js/modalManager.js';
 // Desktop window tiling — drag a modal near an edge/corner to snap.
 import './js/tileManager.js';
 import themeModule from './js/theme.js';
-// IMPORTANT: import EVERY module with NO ?v= query — the same plain specifier
+// IMPORTANT: import EVERY module with NO ?v= query - the same plain specifier
 // every other importer uses. A query mismatch makes the browser load the file
-// twice as separate modules with separate state. It broke cookbook server
-// selection (two _envState objects), and on 2026-10-04 it was found doing the
-// same to sessions.js: New Chat cleared one copy, sending read the other, and
-// messages landed in the previously open chat (notes/todo.md item 54). JS is
-// served `Cache-Control: no-cache` (app.py `_RevalidatingStatic`), so no
-// cache-buster is needed. Guarded by tests/test_static_module_single_url.py.
+// twice as separate modules with separate state: it split cookbook server
+// selection, and split sessions.js so New Chat cleared one copy while sending
+// read the other (todo: "\"New Chat\" sent the next message into the
+// previously open chat"). JS is served `Cache-Control: no-cache` (app.py
+// _RevalidatingStatic), so no cache-buster is needed. Guarded by
+// tests/test_static_module_single_url.py.
 import cookbookModule from './js/cookbook.js';
 import groupModule from './js/group.js';
 import * as researchPanelModule from './js/research/panel.js';
@@ -851,9 +851,10 @@ function initializeEventListeners() {
     }
     // Close document panel if open
     if (documentModule && documentModule.closePanel) documentModule.closePanel();
-    // …and leave its document, or the first message here moves it into this
-    // chat (notes/todo.md item 62). Mobile New Chat and the no-models path land
-    // here instead of sessions.createDirectChat().
+    // ...and leave its document, or the first message here moves it into this
+    // chat (todo: "A document open in one chat moves into whichever chat you
+    // send from next"). Mobile New Chat and the no-models path land here
+    // instead of sessions.createDirectChat().
     if (documentModule && documentModule.releaseCurrentDoc) documentModule.releaseCurrentDoc('fresh-chat');
     if (researchPanelModule && researchPanelModule.isOpen()) researchPanelModule.closePanel();
     // Reset research overflow dot (but don't touch research state — caller manages that)

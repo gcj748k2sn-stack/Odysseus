@@ -19,7 +19,7 @@ import os
 
 os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
 
-from src.agent_loop import (  # noqa: E402
+from src.turn_report import (  # noqa: E402
     _fenced_regions,
     _tool_payload_as_text_notice,
     _tool_payload_looks_like_edit,

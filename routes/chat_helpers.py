@@ -851,33 +851,20 @@ _AUTHORED_HEADING_RE = re.compile(r'^\s{0,3}#{1,6}\s+', re.MULTILINE)
 def _reasoning_split_is_safe(think: str, reply: str) -> bool:
     """Is it safe to move ``think`` out of the message and keep only ``reply``?
 
-    notes/todo.md item 6. `_normalize_thinking`'s fallbacks below pick the split
-    point by **position** — "the last line that doesn't look like reasoning" —
-    and everything above it is moved into the thinking panel, out of the saved
-    message. Position is not evidence. Two recorded runs lost most of an answer
-    that way, both because the text opened with a first-person sentence:
+    The fallbacks below pick the split point by POSITION ("the last line that
+    doesn't look like reasoning"), and position is not evidence: recorded runs
+    lost most of an answer that way (resolvedissues: "The save path decided
+    which half of the answer was thinking"). So a fallback split must clear
+    this check:
 
-      f14a8f52  300 chars -> 79. A numbered list of clarifying questions; the
-                model's first and most important question was deleted and the
-                user saw a reply that began "2.".
-      c7da3649  705 chars -> 28. A complete fact-check naming three real errors,
-                reduced to the words "Let me correct these issues:" — which
-                then reads as the dangling promise of item 8, manufactured by
-                the save path rather than produced by the model.
+    - A reply ending in a colon is a lead-in, not an answer - what it
+      introduced is in the half about to be thrown away.
+    - Markdown structure in the discarded half means authored output;
+      stream-of-thought does not come with numbered lists and headings.
 
-    So the fallbacks now have to clear this check, which asks whether the half
-    being discarded looks like prose the model was thinking or output it
-    authored for a reader:
-
-    * **A reply ending in a colon is a lead-in, not an answer.** Whatever it was
-      introducing is in the half about to be thrown away.
-    * **Markdown structure in the discarded half means authored output.**
-      Stream-of-thought does not come with numbered lists and headings.
-
-    Refusing costs nothing worse than reasoning staying visible in the message.
-    Accepting wrongly destroys text the model actually wrote, and the message is
-    the only copy the user ever sees. The failure modes are not symmetric, so
-    this returns False whenever it is unsure.
+    Refusing costs at worst visible reasoning; accepting wrongly destroys the
+    only copy of text the model wrote. So this returns False whenever it is
+    unsure.
     """
     think = (think or "").strip()
     reply = (reply or "").strip()
@@ -899,7 +886,7 @@ def _normalize_thinking(text: str) -> str:
     - Garbled <think> tags (reasoning before the tag, unclosed tags)
 
     Every split that is inferred rather than declared goes through
-    `_reasoning_split_is_safe` first — see item 6 there. The one exception is
+    `_reasoning_split_is_safe` first — see its docstring. The one exception is
     the "Thinking Process:" clean-boundary match, where the model has both
     named the section and marked its end.
     """
@@ -1010,10 +997,8 @@ def _normalize_thinking(text: str) -> str:
                     return text
                 return '<think>' + think + '</think>\n' + reply
 
-        # Last resort: find last non-reasoning line.
-        # This is the branch that lost both recorded runs in item 6: it has no
-        # evidence the discarded lines are reasoning beyond their position, so
-        # `_reasoning_split_is_safe` is doing all the work here.
+        # Last resort: find the last non-reasoning line. Position is its only
+        # evidence, so `_reasoning_split_is_safe` does all the work here.
         for i in range(len(lines) - 1, 0, -1):
             stripped = lines[i].strip()
             if stripped and not any(stripped.startswith(p) for p in reasoning_starts) and not stripped.startswith('*') and len(stripped) > 3:

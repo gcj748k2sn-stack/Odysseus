@@ -87,21 +87,18 @@ _active_streams: Dict[str, dict] = {}
 
 
 def _explicit_active_document(db, active_doc_id: str, session: str, user):
-    """The document the frontend named as active, scoped to the caller — or None.
+    """The document the frontend named as active, scoped to the caller - or None.
 
-    A document from ANOTHER chat is used for this turn and left where it is
-    (notes/todo.md item 62). This used to rebind it — `session_id = session`
-    plus a commit — "so future turns find it via the session-fallback path",
-    trusting that the frontend only sends documents visible in the UI. New
-    Chat and switching to a chat without documents kept the previous chat's
-    document current (fixed in the frontend, 82892264), so each such send moved
-    a document out of its own chat and bumped its updated_at: 11 moves in
-    app.log since 2026-07-14, one document twice in 8 minutes on 2026-10-05.
+    A document from ANOTHER chat is used for this turn and left where it is. It
+    used to be rebound to the sending chat (session_id + commit), trusting that
+    the frontend only sends visible documents; New Chat broke that and
+    documents moved between chats (todo: "A document open in one chat moves
+    into whichever chat you send from next").
 
-    The case the rebind was written for — open an email draft from chat A, ask
-    chat B to write into it — still works: the frontend sends the id on every
-    turn while the draft is open, and the document tools resolve documents by
-    id + owner, not by session.
+    The case the rebind was written for - an email draft from chat A written
+    into from chat B - still works: the frontend sends the id on every turn
+    while the draft is open, and the document tools resolve by id + owner, not
+    by session.
     """
     logger.info(f"[doc-inject] active_doc_id from frontend: {active_doc_id}")
     # Scope to the caller's documents. The session and in-memory fallbacks are
@@ -342,10 +339,9 @@ _RECENT_WEB_CONTEXT_RE = re.compile(
     r"price|current|latest|search|look\s+up|online)\b",
     re.I,
 )
-# Shared with the agent loop's browser gate (notes/todo.md item 51). The pattern
-# this replaced matched bare "click"/"fill"/"submit"/"automation", so a "yes"
-# after any ESP32/home-automation or "fill index.html" exchange read as a
-# browser follow-up and forced the browser tools in.
+# Shared with the agent loop's browser gate. The pattern this replaced matched
+# bare "click"/"fill"/"submit"/"automation", so a "yes" after a home-automation
+# or "fill index.html" exchange read as a browser follow-up.
 _RECENT_BROWSER_CONTEXT_RE = BROWSER_INTENT_RE
 _BROWSER_MCP_TOOLS = {
     "mcp__builtin_browser__browser_navigate",
@@ -362,9 +358,8 @@ _BROWSER_MCP_TOOLS = {
     "mcp__builtin_browser__browser_close",
 }
 # For DISABLING: the server-wide token makes the agent loop withhold every
-# browser tool, not just the 12 named above — the connected server exposes 31,
-# incl. browser_run_code_unsafe, and 19 of them used to slip past these
-# denylists (notes/todo.md item 51). _BROWSER_MCP_TOOLS stays the FORCE set.
+# browser tool (the server exposes ~31, incl. browser_run_code_unsafe), not
+# just the ones named above. _BROWSER_MCP_TOOLS stays the FORCE set.
 _BROWSER_DISABLE = _BROWSER_MCP_TOOLS | {BROWSER_SERVER_ID}
 
 

@@ -22,21 +22,18 @@ three tools. **That verification was real and its scope was narrower than the
 item claimed**, which is the thing this project keeps paying for: record what a
 fix was verified against, not just that it was.
 
-It also pins what that turn's record could not say. **`app.log` had the
-mechanism the whole time** — `stream_error … {"error": "Read timeout", "status":
-504}` at 380.673 s — while `app.db` held 29 output tokens at 0.09 tok/s, which
-reads as a slow turn rather than a failed one. `round_texts` and `stream_errors`
-are both persisted now, for the same reason items 10 and 17 exist: a fault
-nobody can see in the record is a fault that gets re-diagnosed as something
-else.
+It also pins `round_texts`, which is persisted for the same reason items 10
+and 17 exist: a fault nobody can see in the record is a fault that gets
+re-diagnosed as something else. (The stream-failure half — `stream_errors` in
+the metrics and its notice — was retired after the 2026-10-06 merge: upstream
+now ends a failed stream with `[Agent stopped: …]` and records `failed` /
+`failure` itself, and the fork's path became unreachable.)
 """
 import pytest
 
-from src.agent_loop import (
-    _compute_final_metrics,
+from src.agent_loop import _compute_final_metrics
+from src.turn_report import (
     _gathering_only_notice,
-    _stream_error_detail,
-    _stream_failure_notice,
     _unstarted_promise_notice,
 )
 
@@ -133,88 +130,3 @@ def test_round_texts_is_still_recorded_alongside_tool_events():
 
 def test_no_round_texts_means_no_key_rather_than_an_empty_list():
     assert "round_texts" not in _metrics(round_texts=[])
-
-
-FD0F9BA0_ERROR = (
-    'event: error\ndata: {"error": "Read timeout", "status": 504}\n\n'
-)
-
-
-def test_the_recorded_timeout_is_parsed_into_something_readable():
-    assert _stream_error_detail(FD0F9BA0_ERROR) == "Read timeout (504)"
-
-
-def test_an_unparseable_error_is_still_recorded_as_an_error():
-    """Silence reads as success here, so a bad payload must not become ""."""
-    assert _stream_error_detail("event: error\ndata: not json at all")
-    assert _stream_error_detail("event: error\n")  # no data line at all
-
-
-def test_a_failed_turn_says_so():
-    notice = _stream_failure_notice([
-        {"round": 1, "elapsed": 380.67, "detail": "Read timeout (504)"}
-    ])
-    assert "Read timeout (504)" in notice
-    assert "381s" in notice  # 380.67 rounded, matching what the log reported
-    assert "did not finish" in notice
-
-
-def test_a_clean_turn_gets_no_failure_notice():
-    assert _stream_failure_notice([]) == ""
-
-
-def test_a_failure_after_real_work_does_not_claim_nothing_happened():
-    """Run bbde3e51 turn 4, 2026-07-28.
-
-    Rounds 1–3 searched, fetched and wrote **v6 of a real document**; round 4's
-    stream returned a 502. The first version of this notice told the user the
-    turn "did not finish, so treat it as incomplete rather than as an answer" —
-    which reads as *nothing landed* about a turn that changed a file on disk.
-    **A failure notice that overstates the failure is still a false report**,
-    and it is the `"Done."` bug pointing the other way.
-    """
-    errs = [{"round": 4, "elapsed": 69.83,
-             "detail": "All model candidates returned no substantive output (502)"}]
-    notice = _stream_failure_notice(errs, [{"tool": "edit_document"}])
-    assert "502" in notice
-    assert "has been kept" in notice
-    assert "the tool results above are real" in notice
-    assert "did not finish" not in notice
-    assert "treat it as incomplete" not in notice
-
-
-def test_a_failure_with_no_tool_results_still_says_the_turn_produced_nothing():
-    """The negative control for the branch above — fd0f9ba0 and bbde3e51 turn 1
-    both failed having run no tools at all, and must not be softened."""
-    errs = [{"round": 1, "elapsed": 375.24, "detail": "Read timeout (504)"}]
-    for empty in ([], None):
-        notice = _stream_failure_notice(errs, empty)
-        assert "did not finish" in notice
-        assert "has been kept" not in notice
-
-
-def test_stream_errors_reach_the_metrics():
-    errs = [{"round": 1, "elapsed": 380.67, "detail": "Read timeout (504)"}]
-    assert _metrics(stream_errors=errs)["stream_errors"] == errs
-
-
-def test_absence_of_the_key_means_the_stream_raised_nothing():
-    """Same convention as item 17's cache flag: absent = clean, not unknown."""
-    assert "stream_errors" not in _metrics(stream_errors=[])
-    assert "stream_errors" not in _metrics()
-
-
-def test_a_failed_turn_is_not_readable_as_a_merely_slow_one():
-    """The property the retired throughput item needed and did not have.
-
-    Both rows below are 29 tokens in 380 s — identical `tokens_per_second`,
-    identical `response_time`. One model generated slowly; the other returned a
-    504. Three sessions of "throughput" analysis were built on rows that could
-    not tell these apart.
-    """
-    slow = _metrics(total_duration=380.0, real_output_tokens=29)
-    failed = _metrics(total_duration=380.0, real_output_tokens=29,
-                      stream_errors=[{"round": 1, "elapsed": 380.67,
-                                      "detail": "Read timeout (504)"}])
-    assert slow["tokens_per_second"] == failed["tokens_per_second"]
-    assert "stream_errors" not in slow and "stream_errors" in failed

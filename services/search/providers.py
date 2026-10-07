@@ -126,27 +126,17 @@ def _safesearch_for(provider: str) -> Optional[str]:
 
 _NEWS_HINTS = ("news", "nyheter", "headlines", "breaking", "latest", "today", "idag")
 
-# Optional engine pin for general (non-news) queries, via SEARXNG_GENERAL_ENGINES.
-# An empty value disables it — both use sites below gate on truthiness — and that
-# is how this machine is configured (`.env`), because the pin was measured to HURT.
+# Optional engine pin for general (non-news) queries, via
+# SEARXNG_GENERAL_ENGINES. Empty disables it (both use sites gate on
+# truthiness), which is how this machine is configured: the pin was measured to
+# HURT - pinned engines returned a fraction of the results SearXNG's defaults
+# did (one query, then confirmed healthy on three more; see
+# notes/archive/session-log-2026-08.md).
 #
-# ⚠️ The previous comment here claimed the default general engines "are routinely
-# rate-limited / CAPTCHA-blocked on this instance and return nothing". That was
-# false by 2026-08-07 and is the reason the pin outlived its usefulness:
-#   - pinned  (bing,mojeek,presearch) → 10 results, bing only; mojeek returned
-#     nothing at all and presearch timed out
-#   - default (no engines= param)     → 28 results (google cse 20, duckduckgo 10)
-# Confirmed live on 3 further queries 2026-08-08: with the pin off, attribution
-# moved from `bing, duckduckgo, …` to `google cse` ×5 and every query returned a
-# full result set. ⚠️ The 28-vs-10 figure is n=1 — later runs only expose the
-# top 5 after `_get_result_count()` capping, so they confirm health, not margin.
-#
-# ⚠️ A startup CAPTCHA line does NOT mean a dead engine: duckduckgo logs
-# `CAPTCHA (wt-wt) (suspended_time=0)` at init — suspended_time=0 is not a
-# suspension — and is still one of the two engines actually serving results.
+# A startup CAPTCHA line does NOT mean a dead engine: duckduckgo logs "CAPTCHA
+# ... (suspended_time=0)" at init and still serves results.
 #
 # Read at import, so a change to the env var needs an app restart.
-# See notes/session-log.md, 2026-08-07.
 _GENERAL_ENGINES = os.environ.get("SEARXNG_GENERAL_ENGINES", "bing,mojeek,presearch")
 
 _QUOTED_PHRASE_RE = re.compile(r'"([^"]+)"')
@@ -183,10 +173,8 @@ def result_has_phrases(result: dict, phrases: List[str]) -> bool:
     """
     if not phrases:
         return True
-    # URL separators become spaces so a slug like ``/pleurotus-djamor-guide``
-    # matches the phrase "pleurotus djamor". Replaying the recorded corpus with
-    # and without this normalisation gives identical counts (18 junk dropped,
-    # 0 false positives), so it costs nothing and is correct for real slugs.
+    # URL separators become spaces so a slug like /pleurotus-djamor-guide
+    # matches the phrase "pleurotus djamor".
     url = re.sub(r"[^a-z0-9]+", " ", (result.get("url") or "").lower())
     hay = " ".join([
         result.get("title") or "",
@@ -231,9 +219,9 @@ def searxng_search_api(query: str, count: Optional[int] = None, categories: str 
             params["time_range"] = "week" if time_filter in ("day", "week") else time_filter
     else:
         params["categories"] = categories
-        # Apply the engine pin, if one is configured. Empty/unset = send no
-        # engines= param and let SearXNG use its defaults, which is the
-        # measured-better option here — see _GENERAL_ENGINES for the numbers.
+        # Apply the engine pin, if configured. Empty/unset sends no engines=
+        # param and lets SearXNG use its defaults - the measured-better option
+        # here (see _GENERAL_ENGINES).
         if categories == "general" and _GENERAL_ENGINES:
             params["engines"] = _GENERAL_ENGINES
     phrases = quoted_phrases(query)

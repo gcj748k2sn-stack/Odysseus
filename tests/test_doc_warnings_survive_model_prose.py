@@ -23,7 +23,10 @@ that never happened; this reported success for work that happened wrongly.
 """
 import pytest
 
-from src.agent_loop import _closing_doc_summary, _doc_tool_summary
+from src.turn_report import (
+    _closing_doc_summary,
+    _doc_tool_summary,
+)
 
 # Abbreviated from the real run.
 EB2D0AC1 = {

@@ -23,10 +23,8 @@ import pathlib
 
 import pytest
 
-from src.agent_loop import (
-    _PERSISTED_COMMAND_MAX,
-    _cap_persisted_command,
-)
+from src.agent_loop import _cap_persisted_command
+from src.turn_report import _PERSISTED_COMMAND_MAX
 
 AGENT_LOOP = pathlib.Path(__file__).resolve().parents[1] / "src" / "agent_loop.py"
 

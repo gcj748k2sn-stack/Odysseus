@@ -14,8 +14,8 @@ versus *"the model said nothing"* is precisely `length` versus `stop`.
 
 **The convention, and it is the whole design:** absence means the provider did
 not report a reason. It NEVER means the generation finished cleanly. That is
-the same rule as `stream_errors` (item 9b) and the cache flag (item 17), and
-the tests below pin it in both directions — which is why the first two are
+the same rule as the cache flag (item 17), and the tests below pin it in both
+directions — which is why the first two are
 negative controls. A recorder that always records is not a recorder.
 
 Report-only: nothing here changes what any request sends or what any caller
@@ -96,21 +96,6 @@ def test_length_is_recorded_per_round():
     ])
     assert [e["reason"] for e in m["finish_reasons"]] == ["stop", "length"]
     assert [e["round"] for e in m["finish_reasons"]] == [1, 2]
-
-
-def test_reasons_sit_beside_stream_errors_not_instead_of_them():
-    """Both may be true at once: a stream can error AND a round can clip.
-
-    Recorded separately because they have different causes and different
-    fixes, and because item 9b spent sessions on turns where a 504 was read
-    as slow generation.
-    """
-    m = _metrics(
-        stream_errors=[{"status": 504}],
-        finish_reasons=[{"round": 1, "reason": "length"}],
-    )
-    assert m["stream_errors"] == [{"status": 504}]
-    assert m["finish_reasons"] == [{"round": 1, "reason": "length"}]
 
 
 # --------------------------------------------------------------------------

@@ -18,21 +18,19 @@ GUIDE_ONLY_DIRECTIVE = (
 
 WEB_TOOL_NAMES = frozenset({"web_search", "web_fetch"})
 
-# ── Built-in browser (Playwright MCP) — notes/todo.md item 51 ─────────────────
-# The browser server exposes ~31 tools (≈6k tokens of schemas plus ≈1.5k of
-# prompt text, measured 2026-10-04 against @playwright/mcp 1.64). Two rules:
-#   * ``BROWSER_SERVER_ID`` in a disabled-tools list switches the whole server
-#     off — schemas, prompt text, retrieval and execution (agent_loop applies it).
-#   * Otherwise the browser is sent only when the request asks for it. Embedding
-#     retrieval alone does not count: on 2026-10-04 it put the browser into 53 of
-#     489 recorded agent turns ("oh hi mark" retrieved browser_hover), and no
-#     browser tool had ever been called.
+# ── Built-in browser (Playwright MCP) ──────────────────────────────────────
+# The browser server exposes ~31 tools (several thousand tokens of schemas and
+# prompt text). Two rules:
+# - BROWSER_SERVER_ID in a disabled-tools list switches the whole server off:
+#   schemas, prompt text, retrieval and execution (agent_loop applies it).
+# - Otherwise the browser is sent only when the request asks for it. Embedding
+#   retrieval alone does not count - it pulled the browser into many turns that
+#   never used it.
 BROWSER_SERVER_ID = "builtin_browser"
 BROWSER_TOOL_PREFIX = "mcp__builtin_browser__"
 
-# Deliberately narrow. The pattern this replaces also matched bare "click",
-# "fill" and "submit", so "fill index.html with … martha9_1.ino" read as a
-# browser request. Matches 0 of the 489 agent turns recorded up to 2026-10-04.
+# Deliberately narrow: the pattern this replaces also matched bare "click",
+# "fill" and "submit", so "fill index.html with ..." read as a browser request.
 BROWSER_INTENT_RE = re.compile(
     r"\b(?:"
     r"(?:web\s*)?browser|headless|playwright|screenshots?"

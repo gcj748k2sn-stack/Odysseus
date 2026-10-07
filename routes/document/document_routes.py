@@ -71,25 +71,19 @@ def _parse_tidy_verdicts(response: str) -> Dict[int, str]:
     """Map document index -> verdict string from an AI tidy reply.
 
     Two shapes, because the model does not reliably produce the one the prompt
-    asks for — notes/todo.md item 44. Measured 2026-08-01: at `max_tokens=700`
-    `nemotron-3-nano:4b` finished cleanly and returned
-    ``0: keep\\n1: keep\\n2: keep…`` — 28 correct verdicts, no array, no
-    brackets — and the endpoint 500'd anyway. **It would have kept 500ing on an
-    unlimited token budget**, so the cap was never the whole fault.
+    asks for:
 
-        ["keep","junk",…]        the requested JSON array — mapped POSITIONALLY
-        0: keep / 1. junk / …    line per index — mapped by the STATED index
+        ["keep","junk",...]      the requested JSON array - mapped POSITIONALLY
+        0: keep / 1. junk / ...  line per index - mapped by the STATED index
 
-    **The stated index is used, never the line's position.** A reply that skips
-    an index must leave that document alone rather than shifting every verdict
-    after it by one — this function decides what gets ARCHIVED, so an off-by-one
-    is a document retired on another document's verdict.
+    The stated index is used, never the line's position: this decides what gets
+    ARCHIVED, so a skipped index must leave that document alone rather than
+    shift every later verdict by one.
 
-    Returns only indices that carried a recognised verdict; **an unparseable
-    reply returns `{}` and the caller archives nothing.** Verdict strings are
-    returned as written (lowercased) rather than as a boolean, so the caller
-    keeps its existing "anything that isn't `junk` is `keep`" rule and this
-    change stays a parsing change.
+    Returns only indices with a recognised verdict; an unparseable reply
+    returns {} and the caller archives nothing. Verdicts are returned as
+    written (lowercased) so the caller keeps its "anything that isn't junk is
+    keep" rule.
     """
     import json as _json
     import re as _re
@@ -685,17 +679,13 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         try:
             doc = db.query(Document).filter(Document.id == doc_id).first()
             if not doc:
-                # [doc-put-404] report-only instrumentation — notes/todo.md item 34.
-                # This raise is BEFORE the [doc-put] line below, so a PUT to an id
-                # the server has never had left no trace at all: the absence of
-                # `_streaming_` ids in app.log measured the logging, not the
-                # behaviour. The client can reach here with an orphaned
-                # `_streaming_<ts>` placeholder after a document stream is aborted
-                # — the placeholder has no lastSyncedContent, so the no-op skip in
-                # saveDocument cannot suppress the write. Counting these is what
-                # decides whether item 34 needs a fix or is already bounded by the
-                # 404 reaper at static/js/document.js:9835.
-                # Length only, never content. Remove once item 34 is closed.
+                # [doc-put-404] report-only. A PUT to an id the server never
+                # had otherwise leaves no trace. The client can reach here with
+                # an orphaned `_streaming_<ts>` placeholder after an aborted
+                # document stream (todo: "An aborted document stream orphans
+                # its placeholder as activeDocId"). Counting these decides
+                # whether that needs a fix. Length only, never content. Remove
+                # once that item is closed.
                 logger.info(
                     "[doc-put-404] doc=%s len=%d base_version=%s",
                     doc_id,
@@ -704,23 +694,6 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 )
                 raise HTTPException(404, "Document not found")
             _verify_doc_owner(db, doc, user)
-
-            # [doc-put] report-only instrumentation — notes/todo.md item 30.
-            # Logs every PUT that reaches this handler, BEFORE the identical-
-            # content skip and before the CAS, so a cross-session write is
-            # visible even when it is later rejected or skipped. The 2026-07-30
-            # data loss was reconstructed from document_versions after the fact;
-            # nothing recorded which document each PUT carried at the time.
-            # Remove once item 30 is closed.
-            import hashlib as _hashlib
-            logger.info(
-                "[doc-put] doc=%s doc_session=%s base_version=%s len=%d sha=%s",
-                doc_id,
-                getattr(doc, "session_id", None),
-                req.base_version,
-                len(req.content or ""),
-                _hashlib.sha256((req.content or "").encode()).hexdigest()[:12],
-            )
 
             incoming_content = req.content
             from src.agent_tools.document_tools import _coerce_email_document_content, _looks_like_email_document
@@ -739,19 +712,14 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             if doc.current_content == incoming_content and not req.force_version:
                 return _doc_to_dict(doc)
 
-            # Lost-update guard: reject stale writes. Without this, a browser
-            # autosave holding a cached copy PUTs it back over a newer AI edit
-            # ~60ms after the edit lands, recorded as source="user" (observed
-            # 2026-07-18: v3 user == v1 content, 60-70ms after v2 ai). The
-            # client resolves a 409 by refetching and reconciling.
+            # Lost-update guard: reject stale writes (an autosave holding a
+            # cached copy used to PUT it back over a newer AI edit). The client
+            # resolves a 409 by refetching and reconciling.
             #
-            # This early check is an optimization only — it rejects obviously
-            # stale writes before doing any work. It is NOT sufficient on its
-            # own: it compares against a value SELECTed at the top of the
-            # handler, so an AI edit committing between that read and our write
-            # slips straight through (observed again 2026-07-18 07:49:02 — v5
-            # clobbered v4 within the same second). The authoritative guard is
-            # the compare-and-swap below.
+            # This early check is an optimization only: it compares against a
+            # value read at the top of the handler, so an AI edit committing in
+            # between slips through. The authoritative guard is the
+            # compare-and-swap below.
             base_version = doc.version_count
             if req.base_version is not None and req.base_version != base_version:
                 raise HTTPException(
@@ -891,24 +859,6 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             if not doc:
                 raise HTTPException(404, "Document not found")
             _verify_doc_owner(db, doc, user)
-
-            # [doc-del] report-only instrumentation — notes/todo.md items 31, 32.
-            # This is a SOFT delete, but it is the step that makes a document
-            # eligible for the permanent one: the Documents Tidy action
-            # hard-deletes is_active=0 rows whose content is empty, and
-            # document_versions cascades. Nothing recorded which document each
-            # close targeted, which is why the 2026-07-30 loss had to be
-            # reconstructed from a task_runs result string. `len` is the point:
-            # a close of a non-empty document is the browser deciding it was
-            # empty. Remove once items 31 and 32 are closed.
-            logger.info(
-                "[doc-del] doc=%s doc_session=%s versions=%s len=%d active=%s",
-                doc_id,
-                getattr(doc, "session_id", None),
-                getattr(doc, "version_count", None),
-                len(doc.current_content or ""),
-                getattr(doc, "is_active", None),
-            )
 
             doc.is_active = False
             # Closed/deleted — drop the in-memory active-doc pointer so it isn't
@@ -1101,9 +1051,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                         doc.title = new_title
                         fixed_titles += 1
 
-            # Archive, never db.delete — notes/todo.md item 32. Same helper as
-            # the scheduled action, so the two paths cannot drift on what
-            # "tidy removed it" means.
+            # Archive, never db.delete. Same helper as the scheduled action, so
+            # the two paths cannot drift on what "tidy removed it" means.
             from src.document_actions import retire_document
             retired: List[tuple] = []
             for doc in to_delete:
@@ -1111,12 +1060,11 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
 
             # Also retire inactive empty docs from previous soft-deletes.
             #
-            # ⚠️ This is the second half of item 31(b)'s chain and the reason
-            # the archived filter below is load-bearing: a document emptied by
-            # item 30 and closed by item 31 lands here as `is_active=0` with
-            # empty content. It used to be hard-deleted at that point. It is
-            # now archived — and archived rows are excluded, so retiring one
-            # is terminal rather than a step toward deletion on the next run.
+            # The archived filter below is load-bearing: an emptied, closed
+            # document lands here as is_active=0 with empty content. It is
+            # archived (not hard-deleted), and archived rows are excluded, so
+            # retiring one is terminal rather than a step toward deletion on
+            # the next run.
             inactive_q = (
                 db.query(Document)
                 .outerjoin(DbSession, Document.session_id == DbSession.id)
@@ -1163,7 +1111,7 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             # Fall back to default endpoint
             url, model, headers = resolve_endpoint("default", owner=user or None)
         if not url or not model:
-            # [ai-tidy] report-only instrumentation — notes/todo.md item 44.
+            # [ai-tidy] say why the route failed.
             logger.error("[ai-tidy] no endpoint configured (task role, then default)")
             raise HTTPException(500, "No endpoint configured for AI tidy")
 
@@ -1198,10 +1146,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 + "\n".join(doc_list)
             )
 
-            # [ai-tidy] report-only instrumentation — notes/todo.md item 44.
-            # This line answers "which model does ai-tidy actually run on",
-            # which was previously only derivable by reading
-            # `resolve_task_endpoint` and could not be checked against a run.
+            # [ai-tidy] which model ai-tidy actually runs on, checkable against
+            # a run.
             logger.info("[ai-tidy] start model=%s batch=%d unreviewed=%d", model, len(batch), len(to_review))
 
             response = await llm_call_async(
@@ -1209,15 +1155,11 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 [{"role": "system", "content": "You classify documents as junk or keep. Respond only with a JSON array."},
                  {"role": "user", "content": prompt}],
                 temperature=0.1,
-                # notes/todo.md item 44. ⚠️ REVERTED 700 -> 200 on 2026-08-01
-                # after trying it: at 700 the call does not finish inside the
-                # 30 s read timeout below, so it never returns and the
-                # `[finish-reason]` line added for item 41 never gets to speak.
-                # **Raising the cap destroyed the observation it was meant to
-                # produce.** At 200 the call completes in ~20 s, returns, and
-                # the reason is recorded — which is the measurement to take
-                # first. Do not raise this again until the timeout is raised
-                # WITH it, and not in the same run as anything else.
+                # REVERTED 700 -> 200 after trying it: at 700 the call does not
+                # finish inside the 30 s read timeout below, so the
+                # [finish-reason] line never gets to speak. Do not raise this
+                # again unless the timeout is raised WITH it, and not in the
+                # same run as anything else.
                 max_tokens=200,
                 headers=headers,
                 # ⚠️ Load-bearing, and smaller than the route's own 45 s cap:
@@ -1226,28 +1168,22 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 timeout=30,
             )
 
-            # Parse verdicts — notes/todo.md item 44. Accepts the requested JSON
+            # Parse verdicts. Accepts the requested JSON
             # array AND the `N: verdict` lines the model actually produces.
             _chars = len(response or "")
             _preview = (response or "")[:400]
             verdicts = _parse_tidy_verdicts(response)
             if not verdicts:
-                # [ai-tidy] report-only instrumentation — notes/todo.md item 44.
-                # Every recorded ai-tidy 500 reaches a `raise HTTPException`,
-                # and until 2026-08-01 none of them wrote anything: the
-                # `except HTTPException: raise` below re-raises without
-                # logging, so the only trace was the slow_request middleware.
-                # ⚠️ Do NOT "fix" that by widening the generic except — the
+                # [ai-tidy] Every ai-tidy 500 reaches a `raise HTTPException`,
+                # and the bare re-raise below logs nothing - so log the reason
+                # here. Do NOT "fix" that by widening the generic except: the
                 # missing reason is the defect, not the raise.
                 #
-                # ⚠️ The two shapes are logged DISTINCTLY and that is
-                # load-bearing: "the model wrote no verdicts" and "the model
-                # wrote a broken array" have different causes and different
-                # fixes. `_parse_tidy_verdicts` swallows the JSON error while
-                # falling through to the line form, so the distinction has to
-                # be re-derived here — which is why this re-runs the bracket
-                # search instead of trusting the empty dict. Conflating them is
-                # how this stayed one undiagnosable bug for three days.
+                # The two shapes are logged DISTINCTLY: "the model wrote no
+                # verdicts" and "the model wrote a broken array" have different
+                # causes and fixes. _parse_tidy_verdicts swallows the JSON
+                # error while falling back to the line form, so this re-runs
+                # the bracket search instead of trusting the empty dict.
                 import re as _re_shape
                 _bracket = _re_shape.search(r"\[.*?\]", response or "", _re_shape.DOTALL)
                 if _bracket:
@@ -1274,16 +1210,15 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
             for i, doc in enumerate(batch):
                 verdict = verdicts.get(i)
                 if verdict is None:
-                    # Not covered by this reply — a truncated answer stops
-                    # partway (measured: 28 of 30), and a document the model did
-                    # not judge must stay UNREVIEWED so the next run picks it up.
-                    # `continue`, not `break`: the shape is a gap, not a tail.
+                    # Not covered by this reply (a truncated answer stops
+                    # partway): a document the model did not judge stays
+                    # UNREVIEWED for the next run. `continue`, not `break`: the
+                    # shape is a gap, not a tail.
                     continue
                 if verdict == "junk":
                     doc.tidy_verdict = "junk"
-                    # Archived, not deleted — notes/todo.md item 32. This path
-                    # destroys a document on a MODEL's one-word verdict, which
-                    # is the least defensible place in the codebase to make an
+                    # Archived, not deleted: this path acts on a model's
+                    # one-word verdict, the least defensible place to make an
                     # irreversible call.
                     from src.document_actions import retire_document
                     retire_document(doc, "ai verdict: junk", _ai_retired)
@@ -1307,11 +1242,8 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
                 "message": f"Reviewed {reviewed}, archived {deleted} junk document{'s' if deleted != 1 else ''} — restore from the Archive tab",
             }
         except HTTPException as _http:
-            # [ai-tidy] report-only instrumentation — notes/todo.md item 44.
-            # This bare re-raise is why five recorded failures (4x500, 1x504
-            # across 2026-07-30 and 08-01) left no ERROR and no traceback:
-            # the only trace of any of them was `app.slow_request`, which
-            # exists for another purpose. Every exit now names itself.
+            # [ai-tidy] The bare re-raise left failures with no ERROR and no
+            # traceback; every exit now names itself.
             logger.warning("[ai-tidy] returning HTTP %s: %s", _http.status_code, _http.detail)
             raise
         except Exception as e:

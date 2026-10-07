@@ -24,8 +24,6 @@ from src.llm_core import (
     _normalize_usage_counts,
 )
 from src.model_context import estimate_tokens
-from src.document_fidelity import check_document
-from src.known_facts import check_document as check_known_facts
 from src.context_compactor import (
     apply_compaction_state,
     apply_compaction_state_for_session,
@@ -33,6 +31,22 @@ from src.context_compactor import (
 )
 from src.settings import get_setting
 from src.named_machines import configured_machine_names, mentions_named_machine
+from src.browser_gate import (
+    _apply_browser_disable,
+    _browser_tool_names,
+    _withhold_browser,
+)
+from src.turn_report import (
+    DOC_EDIT_FAILED_NOTICE,
+    DOC_EDIT_RETRY_TOOLS,
+    DOC_TOOLS,
+    _cap_persisted_command,
+    _doc_edit_retry_directive,
+    _format_prompt_cache,
+    doc_tool_break_report,
+    end_of_turn_report,
+    record_doc_tool_result,
+)
 from src.prompt_security import untrusted_context_message
 from src.tool_security import (
     blocked_tools_for_owner,
@@ -42,7 +56,6 @@ from src.tool_security import (
 )
 from src.tool_policy import (
     BROWSER_SERVER_ID,
-    BROWSER_TOOL_PREFIX,
     GUIDE_ONLY_DIRECTIVE,
     WEB_TOOL_NAMES,
     ToolPolicy,
@@ -108,65 +121,6 @@ def _expand_browser_mcp_tools(tool_names: Set[str], mcp_mgr) -> Set[str]:
     return names
 
 
-def _apply_browser_disable(disabled_tools: Set[str], mcp_disabled_map: Dict[str, set], mcp_mgr) -> bool:
-    """Make ``builtin_browser`` in a disabled-tools list switch the whole server off.
-
-    Every downstream check matches exact tool names (schema filter, executor,
-    MCP prompt text, retrieval index), and the browser's tools are named
-    ``mcp__builtin_browser__<tool>`` — so the server-wide token that the admin
-    panel, the per-user ``can_use_browser`` privilege and ``manage_settings``
-    ("disable browser") write used to disable nothing. Expanding it here, once,
-    makes all of those checks see the real names. notes/todo.md item 51.
-    Returns True when the browser is disabled for this turn.
-    """
-    if BROWSER_SERVER_ID not in disabled_tools:
-        return False
-    names: Set[str] = set()
-    if mcp_mgr:
-        try:
-            for tool in mcp_mgr.get_all_tools():
-                if tool.get("server_id") == BROWSER_SERVER_ID and tool.get("name"):
-                    names.add(tool["name"])
-        except Exception as exc:
-            logger.warning("Failed to enumerate browser MCP tools for disabling: %s", exc)
-    disabled_tools.update(f"{BROWSER_TOOL_PREFIX}{name}" for name in names)
-    if names:
-        mcp_disabled_map.setdefault(BROWSER_SERVER_ID, set()).update(names)
-    return True
-
-
-def _browser_tool_names(mcp_mgr, disabled_map: Optional[Dict[str, set]] = None) -> Set[str]:
-    """Qualified names of the connected browser tools that are not disabled."""
-    if not mcp_mgr:
-        return set()
-    try:
-        return {
-            tool["qualified_name"]
-            for tool in mcp_mgr.get_all_tools(disabled_map or {})
-            if tool.get("server_id") == BROWSER_SERVER_ID
-            and not tool.get("is_disabled")
-            and tool.get("qualified_name")
-        }
-    except Exception as exc:
-        logger.warning("Failed to list browser MCP tools: %s", exc)
-        return set()
-
-
-def _withhold_browser(disabled_map: Optional[Dict[str, set]], browser_names: Set[str]) -> Dict[str, set]:
-    """Copy of ``disabled_map`` that also hides ``browser_names`` for one turn.
-
-    The MCP schemas and the MCP prompt text are both built from this map, so
-    one entry removes the browser from the native tool list, from the
-    "local model" schema branch and from the text block that otherwise
-    advertises tools the model was not given.
-    """
-    out = {k: set(v) for k, v in (disabled_map or {}).items()}
-    out.setdefault(BROWSER_SERVER_ID, set()).update(
-        name[len(BROWSER_TOOL_PREFIX):] for name in browser_names if name.startswith(BROWSER_TOOL_PREFIX)
-    )
-    return out
-
-
 def _looks_like_notes_list_request(text: str) -> bool:
     """Whether the user is asking to see existing notes, not create one."""
     t = (text or "").lower()
@@ -174,645 +128,6 @@ def _looks_like_notes_list_request(text: str) -> bool:
         re.search(r"\b(what|show|list|see|current|existing|all|my)\b.{0,60}\bnotes?\b", t)
         or re.search(r"\bnotes?\b.{0,60}\b(what|show|list|see|current|existing|all|my)\b", t)
     )
-
-
-DOC_EDIT_RETRY_TOOLS = ("edit_document", "suggest_document", "update_document")
-DOC_TOOLS = ("create_document",) + DOC_EDIT_RETRY_TOOLS
-
-# Tools that only LOOK at things. A turn that ran nothing but these and then
-# produced no text gathered information and never used it — it cannot have
-# completed any task the user asked for.
-#
-# Deliberately an explicit allowlist rather than "everything that isn't
-# effectful". An unknown tool (MCP, cookbook, a future built-in) must NOT be
-# assumed read-only: guessing wrong the other way would tell a user their
-# email wasn't sent when it was. Unknown tool in the turn -> guard stays quiet.
-READ_ONLY_TOOLS = frozenset({
-    "glob", "grep", "ls", "read_file", "get_workspace",
-    "web_search", "web_fetch",
-    "search_chats", "manage_documents",
-    "list_downloads", "list_models", "list_served_models", "list_sessions",
-    "resolve_contact",
-})
-
-
-def _gathering_only_notice(tool_events: list) -> str:
-    """Notice for a turn that only gathered information and then said nothing.
-
-    Runs dd3e7371 and 0b12aadb (2026-07-19), same request twice: the agent
-    ran `glob` (found martha9_1.ino), then `read_file` (10,035 chars of Arduino
-    sketch), reasoned correctly that the file embeds an HTML page — its own
-    thinking ends "I'll create a standalone index.html ... Let me write out the
-    extracted content:" — and then emitted nothing. 393 seconds, no
-    `write_file`, no file. Saved as **"Done."**
-
-    That is the same shape as the document "Done." bug, on a different tool
-    path. The document fix keyed off DOC_TOOLS and `_empty_response_fallback`
-    still returns early whenever `tool_events` is non-empty, so every
-    read-only turn kept falling through to `routes/chat_routes.py:1495`.
-    "Done." on a turn that produced nothing is not a summary, it's a false
-    success — the user retried this task four times in 16 minutes.
-
-    Returns "" when the turn used any tool that might have changed something,
-    or any tool this function doesn't recognise.
-
-    MUST be evaluated AFTER `strip_tool_blocks`. Before stripping,
-    `full_response` still contains the tool fence the model emitted, so the
-    turn looks like it produced text when the user would see none — the first
-    version of this guard sat in `_empty_response_fallback` and never fired for
-    exactly that reason.
-    """
-    names = [ev.get("tool") or "" for ev in (tool_events or [])]
-    seen = [n for n in dict.fromkeys(names) if n]
-    if not seen or any(n not in READ_ONLY_TOOLS for n in seen):
-        return ""
-    listed = ", ".join(f"`{n}`" for n in seen)
-    return (
-        f"I ran {listed} and then stopped without producing an answer — "
-        "**nothing was created or changed.** The information was gathered but "
-        "never used. The results were not kept, so send the request again to "
-        "rerun it."
-    )
-
-
-# Tools whose output the end-of-turn path already promotes into the reply
-# verbatim — the `manage_notes` / `manage_calendar` / `manage_tasks` /
-# `list_emails` / `read_email` block near the end of `stream_agent_response`.
-# That block *replaces* `full_response`, so anything appended before it is
-# discarded. Reporting these here would build a line the user never sees.
-#
-# The cost is a real gap: a `manage_notes` **create** is a side effect and
-# stays unreported. Recorded in notes/todo.md item 11 rather than papered over
-# — the honest scope is "every side-effecting tool except the five whose
-# output is already the reply".
-_SELF_REPORTING_TOOLS = frozenset({
-    "manage_notes", "manage_calendar", "manage_tasks",
-    "list_emails", "read_email",
-    "mcp__email__list_emails", "mcp__email__read_email",
-})
-
-
-def _tool_event_failed(event: Dict[str, Any]) -> bool:
-    """True when a tool event carries a non-zero exit code.
-
-    Document tools record ``exit_code=None`` on success, so ``None`` must read
-    as "no verdict", never as failure — an ``is not 0`` test here would flag
-    every successful `create_document` in the corpus.
-    """
-    code = event.get("exit_code")
-    return isinstance(code, int) and not isinstance(code, bool) and code != 0
-
-
-def _first_line(text: Any, limit: int = 180) -> str:
-    """First non-empty line of a tool's output, truncated for a closing line."""
-    for line in str(text or "").splitlines():
-        line = line.strip()
-        if line:
-            return line[:limit] + ("…" if len(line) > limit else "")
-    return ""
-
-
-def _side_effect_tool_summary(tool_events: list, failures_only: bool = False) -> str:
-    """Closing report for a turn that ran a side-effecting NON-document tool.
-
-    notes/todo.md item 11. `_doc_tool_summary` is the model: derive the report
-    from the tool result rather than spending another model round on it.
-
-    **Session 57dcd968, 2026-07-28.** Asked for *"a document with temperature
-    and humidity data over time from http://192.168.0.185"*, the turn ran
-    `web_fetch` → `write_file` → `get_workspace` and the entire saved reply was
-    the 175-character preamble written before any tool ran. Every existing
-    guard misses it, each for a defensible reason: `_gathering_only_notice`
-    requires all tools to be in ``READ_ONLY_TOOLS`` and `write_file` is not
-    one; `_unstarted_promise_notice` bails when any tool ran;
-    `_doc_tool_summary` only knows document tools.
-
-    ⚠️ **What that turn actually did, corrected 2026-07-28 from `tool_events`.**
-    todo.md recorded it as a file written and not reported. The record says
-    ``exit_code=1``: *"write_file: path 'TEMPERATURE_HUMIDITY_READINGS.md' is
-    outside the allowed roots"*. `get_workspace` then answered *"No workspace
-    is set"*, and the next round produced 0 characters and 0 tool calls. **The
-    tool failed with an actionable error, the model was handed the fix, and the
-    user was told none of it.** The filed claim was read from the tool
-    *sequence* without reading the tool *result* — which is why this function
-    reports the result and not the call.
-
-    Coverage is deliberately the inverse of ``READ_ONLY_TOOLS``: anything that
-    is not known-read-only, not a document tool and not self-reporting gets a
-    line, including MCP and tools that do not exist yet. The allowlist argument
-    on ``READ_ONLY_TOOLS`` does not transfer — there, guessing wrong tells a
-    user nothing happened when something did; here, guessing wrong costs one
-    extra line quoting what a tool returned. **The failure modes are not
-    symmetric, so the defaults should not be either.**
-
-    ``failures_only`` mirrors ``_doc_tool_summary(warnings_only=True)`` and
-    exists for the same reason (item 21): a model that writes a confident
-    summary must not be able to suppress the report of a tool that failed.
-    Successes are reported only when the model said nothing about them;
-    failures are reported either way.
-
-    This guard only reports. It never asks the model to act — item 8's
-    reverted nudge is why that distinction is load-bearing here.
-    """
-    lines = []
-    for event in tool_events or []:
-        name = _resolved_tool_event_name(event)
-        if not name:
-            continue
-        if name in READ_ONLY_TOOLS or name in DOC_TOOLS or name in _SELF_REPORTING_TOOLS:
-            continue
-        detail = _first_line(event.get("output"))
-        if _tool_event_failed(event):
-            lines.append(
-                f"⚠️ **`{name}` failed** — {detail or 'no reason was returned'}"
-            )
-        elif failures_only:
-            continue
-        elif name == "write_file":
-            # The tool's own output is already "Wrote N bytes to <path>".
-            lines.append(detail or "Ran `write_file`")
-            if re.match(r"^wrote 0 bytes\b", detail, re.I):
-                lines.append(
-                    "⚠️ **That file is empty** — 0 bytes were written, so "
-                    "whatever it held before is gone."
-                )
-        else:
-            lines.append(f"Ran `{name}`" + (f" — {detail}" if detail else ""))
-    if not lines:
-        return ""
-    if len(lines) == 1:
-        return lines[0]
-    return "\n".join(f"- {line}" for line in lines)
-
-
-def _stream_error_detail(chunk: str) -> str:
-    """Pull a short, readable reason out of an `event: error` SSE chunk.
-
-    The chunk is `event: error\\ndata: {json}`. Falls back to the raw text
-    rather than "" — an unparseable error still has to be recorded as *an
-    error*, because the whole point is that silence here reads as success.
-    """
-    for line in (chunk or "").split("\n"):
-        line = line.strip()
-        if not line.startswith("data:"):
-            continue
-        payload = line[5:].strip()
-        try:
-            obj = json.loads(payload)
-        except Exception:
-            return payload[:200]
-        if isinstance(obj, dict):
-            msg = obj.get("error") or obj.get("message") or ""
-            status = obj.get("status")
-            if msg and status:
-                return f"{msg} ({status})"
-            if msg:
-                return str(msg)[:200]
-        return payload[:200]
-    return (chunk or "").strip()[:200]
-
-
-def _stream_failure_notice(stream_errors: list, tool_events: Optional[list] = None) -> str:
-    """Notice for a turn whose stream errored — notes/todo.md 9b.
-
-    Run fd0f9ba0, 2026-07-28: 380 seconds, then
-    `{"error": "Read timeout", "status": 504}`. The warning went to `app.log`
-    and **nowhere else**. What reached the user was a sentence ending in a
-    colon; what reached `app.db` was 29 output tokens at 0.09 tok/s, which reads
-    as *a slow turn* rather than *a failed one* — and a retired throughput
-    investigation was built partly on rows of that shape.
-
-    **A failure that only appears in the log is a failure the record denies.**
-    Same argument as item 17: labelling the database is not enough if the label
-    never reaches the person reading the answer.
-
-    ``tool_events`` is not decoration. The first version of this notice said
-    *"the turn did not finish, so treat it as incomplete"* unconditionally, and
-    run bbde3e51 turn 4 showed why that is wrong: the stream failed on **round
-    4**, after rounds 1–3 had searched, fetched and written **v6 of a real
-    document**. Telling someone their turn produced nothing when it changed a
-    file on disk is the same class of error as the `"Done."` bug this codebase
-    spent three diagnoses on, pointing the other way. **A failure notice that
-    overstates the failure is still a false report.**
-    """
-    if not stream_errors:
-        return ""
-    first = stream_errors[0]
-    detail = (first.get("detail") or "the connection failed").strip()
-    elapsed = first.get("elapsed")
-    when = f" after {elapsed:.0f}s" if isinstance(elapsed, (int, float)) else ""
-    more = f" (+{len(stream_errors) - 1} more)" if len(stream_errors) > 1 else ""
-    head = f"⚠️ **The request to the model failed{when} — `{detail}`{more}.**"
-    if tool_events:
-        return (
-            f"{head} Work completed before it failed has been kept — the tool "
-            "results above are real. What is missing is whatever the model "
-            "would have done next, so the task may be half-finished."
-        )
-    return (
-        f"{head} Anything above is the part that arrived before it did; the "
-        "turn did not finish, so treat it as incomplete rather than as an answer."
-    )
-
-
-def _unstarted_promise_notice(full_response: str, tool_events: list) -> str:
-    """Notice for a turn that announced work, called nothing, and stopped.
-
-    `_gathering_only_notice` above returns "" when `seen` is empty, so it can
-    only ever fire on a turn that ran at least one tool — and the whole
-    end-of-turn guard is reached through `_text_is_only_preamble`, which needs a
-    tool boundary to be positional about. **A turn that called no tools at all
-    has neither**, and falls through both.
-
-    Run fd0f9ba0 turn 3, 2026-07-28: *"I'll create a new comprehensive document
-    about pink oyster mushroom growth phases with detailed cultivation
-    guidance:"* — 380 seconds, no tool call, no document, and the user was told
-    nothing. It was the third identical request in ten minutes and none of them
-    produced a file.
-
-    **Why this one may be lexical when `_text_is_only_preamble` may not.** That
-    function has to decide whether prose *describes* work that happened, which
-    is a question about meaning, so it is answered positionally. Here nothing
-    happened — no tool ran, so "nothing was created or changed" is a fact, not
-    an inference. The only remaining question is whether the message stops
-    mid-thought, and a trailing colon answers it structurally: a lead-in with
-    nothing after it is incomplete in any language that uses the punctuation.
-
-    **Measured before shipping, on all 67 recorded assistant turns:** 3 called
-    no tools, 5 end on a colon, and exactly 1 does both — the failing turn.
-    Deliberately narrow: an intent regex over the same corpus would not even
-    have matched this text ("create" is not in `_INTENT_RE`'s verb list) while
-    matching turns that were fine.
-    """
-    if tool_events:
-        return ""
-    body = strip_tool_blocks(full_response or "").strip()
-    if not body or not body.endswith(":"):
-        return ""
-    return (
-        "…and then I stopped there — **nothing was created or changed, and I "
-        "called no tools this turn.** That sentence was the setup, not the "
-        "work. Ask me again and I'll do it."
-    )
-
-
-_PAYLOAD_FENCE_OPEN_RE = re.compile(r"```([A-Za-z0-9_-]*)[^\n]*\n")
-
-
-def _fenced_regions(text: str):
-    """Yield (tag, body) for every fence, INCLUDING an unterminated trailing one.
-
-    ⚠️ **The unterminated branch is DEFENSIVE, not observed.** All three recorded
-    instances (2026-07-29 17:48, 17:55, 18:07) close their fence, and a mutation
-    requiring a closing fence still catches **3 of 3** on the corpus. It is kept
-    because a turn cut off mid-payload is the same failure with a truncated tail,
-    and the cost is one branch — but nothing has exercised it in the wild, so do
-    not cite it as evidence for anything. *(An earlier draft of this docstring
-    claimed it was "half the corpus". That was wrong: the first detector missed
-    one instance because of `json.loads`, not because of the fence — see below.)*
-
-    ⚠️ **This docstring said "2 of 2" until 2026-07-29; the corpus held 3.**
-    Re-measured against all 129 assistant rows in `app.db` by lifting these two
-    functions out with `ast` and running them over `chat_messages` — 3 hits, and
-    the closed-fence mutation scores 3 of 3. The count was written when only the
-    17:48 and 17:55 instances existed and was never revisited. **A count in a
-    docstring is a claim with no test; re-measure it rather than trusting it.**
-    """
-    pos = 0
-    while True:
-        m = _PAYLOAD_FENCE_OPEN_RE.search(text, pos)
-        if not m:
-            return
-        end = text.find("```", m.end())
-        yield m.group(1).lower(), (text[m.end():] if end == -1 else text[m.end():end])
-        if end == -1:
-            return
-        pos = end + 3
-
-
-def _tool_payload_looks_like_edit(body: str) -> str:
-    """Lexical, deliberately NOT json.loads().
-
-    A payload the model writes as prose can be INVALID JSON — it embeds literal
-    newlines inside string values, so the 2026-07-29 17:55 instance fails with
-    `Unterminated string`. **Measured 2026-07-29 over all 129 assistant rows:
-    this lexical check catches 3 of 3.** Parsing would reject exactly the
-    malformed calls this exists to catch.
-
-    ⚠️ **The `json.loads` comparison figure is NOT reproducible and should not be
-    cited.** An earlier draft claimed "1 of the 2 recorded instances"; `CLAUDE.md`
-    carries "1 of 3". Neither recorded *which* parsing variant was run, and a
-    plausible reconstruction (parse, then require an `edits`/`suggestions` key)
-    scores **2 of 3** — so the filed number cannot be checked. **A mutation
-    result needs the mutation written down, not just its score.** What survives
-    is the direction, which is what the design rests on: parsing loses instances
-    that lexical matching keeps.
-    """
-    if "<<<FIND>>>" in body and "<<<REPLACE>>>" in body:
-        return "FIND/REPLACE markers"
-    if '"find"' in body and '"replace"' in body and ('"edits"' in body or '"suggestions"' in body):
-        return "edits/find/replace keys"
-    return ""
-
-
-def _tool_payload_as_text_notice(full_response: str, tool_events: list) -> str:
-    """Notice for a turn that WROTE a tool call instead of MAKING one.
-
-    Session ae223b4c, 2026-07-29. An `edit_document` call failed with "received
-    no content", whose error text says *"Retry by writing the edit as a fenced
-    block"*. The model complied and tagged the fence ```json — and the fence tag
-    IS the dispatch key (`_TOOL_BLOCK_RE` over `TOOL_TAGS`), so ```json is inert
-    display text. Two consecutive turns emitted 1,524 and 1,516 bytes of edit
-    payload, ran no tools, and changed nothing. The second one closed with
-    *"Updated ... now contains only current sensor readings as requested"* — a
-    false success claim, the `"Done."` family again.
-
-    **Every existing guard is blind to this.** `_gathering_only_notice` needs a
-    tool to have run; `_unstarted_promise_notice` needs the text to end on a
-    colon and this text ends on a confident sentence; `_text_is_only_preamble`
-    needs a tool boundary. A turn with 2,266 characters of prose looks answered.
-
-    **Measured on all 122 recorded assistant turns before shipping: fires on 2,
-    both true positives.** Negative control over the same corpus: 0 turns that
-    DID run tools carry these tokens, so the `tool_events` gate is not what is
-    doing the work — but it stays, because with tools the payload may well have
-    been an illustrative example.
-
-    Report-only, which is why it can ship on test evidence (items 11 and 21).
-    """
-    if tool_events:
-        return ""
-    for _tag, body in _fenced_regions(full_response or ""):
-        reason = _tool_payload_looks_like_edit(body)
-        if reason:
-            return (
-                "\n\n⚠️ **I wrote that edit out as text instead of running it — "
-                "nothing was created or changed.** A fenced block only executes "
-                "when its tag is the tool name (```edit_document); any other tag "
-                "is display text. Ask me to try again and I'll make the call "
-                "properly."
-            )
-    return ""
-
-
-def _doc_edit_retry_directive(tool: str, attempt: int) -> str:
-    """Corrective instruction appended to a FAILED document-edit tool result.
-
-    Run b5fe4ef5 (2026-07-18): `edit_document` failed, the model was told
-    nothing except a generic parse error, it re-emitted the same broken call,
-    then quit. 526 seconds and the document was never touched — and because
-    the turn had tool events, the empty-response guard let it save a bare
-    "Done.". The user asked for a correction and got a success-shaped reply.
-
-    The system prompt already says "after a tool fails, retry" (`:180`, `:230`,
-    `:289`) and the 9B did try — it just had no idea what to change. Generic
-    advice at the top of a 30k-token prompt is not a retry mechanism. This puts
-    the exact syntax at the point of failure, and escalates: a second failure
-    stops asking for a targeted edit at all and demands a full rewrite, which
-    has no FIND text to get wrong.
-
-    Note this is still guidance, not enforcement — but not, as this docstring
-    claimed until 2026-07-28, because guidance is the only channel available.
-    That said tool schemas are never sent to local models. **`all_tool_schemas`
-    is empty unless `_is_api_model`, and `qwen3.5:9b-32k` IS `_is_api_model`**
-    (see the resolution above: `_model_supports_tools` on a tool-capable
-    endpoint). Every recorded round since 2026-07-15 logs
-    `native_tools=True tools_sent=24..31`, and `tool_choice` is plumbed through
-    `stream_llm`. Narrowing and forcing are both available here; `_force_answer`
-    already does the former by setting `all_tool_schemas = []`.
-
-    The mechanical backstop is still the end-of-turn guard, which refuses to
-    let a turn end silently after an unresolved edit failure. See notes/todo.md,
-    *Notes & constraints*, for why the retracted version mattered: it is the
-    stated reason item 8's active half was built as a text nudge, and that
-    nudge wiped a 6,186-character document.
-    """
-    if attempt <= 1:
-        return (
-            "\n\n⚠️ THE EDIT DID NOT HAPPEN — the document is UNCHANGED. "
-            "Retry NOW, in this same turn. If you write it as a fenced block, the "
-            "fence tag MUST be the tool name — a ```json block is display text and "
-            "runs nothing. Exactly this shape:\n"
-            "```edit_document\n"
-            "<<<FIND>>>\n"
-            "exact text copied from the document\n"
-            "<<<REPLACE>>>\n"
-            "your corrected text\n"
-            "<<<END>>>\n"
-            "```\n"
-            "Copy the FIND text verbatim from the document — same punctuation, same "
-            "units, same capitalisation. Do not describe the edit in prose, and do not "
-            "end the turn until an edit succeeds."
-        )
-    return (
-        f"\n\n⚠️ {tool} has now failed {attempt} times and the document is STILL "
-        "UNCHANGED. Stop trying to target individual passages — the FIND text is not "
-        "matching. Call `update_document` instead and send the COMPLETE document with "
-        "your corrections already applied:\n"
-        "```update_document\n"
-        "the entire document, corrected\n"
-        "```\n"
-        "This has no FIND text to match, so it cannot fail the same way. Do not end "
-        "the turn without doing this."
-    )
-
-
-DOC_EDIT_FAILED_NOTICE = (
-    "I couldn't apply the edit — **the document is unchanged.** The edit tool "
-    "rejected {count} attempt{plural} this turn ({reason}). Ask me to try again and "
-    "I'll rewrite the document in full instead of patching individual passages."
-)
-
-
-def _closing_doc_summary(
-    full_response: str,
-    doc_info: Dict[str, Any],
-    preamble_only: bool = False,
-) -> tuple:
-    """Closing line for a turn that changed a document but said nothing about it.
-
-    The model-agnostic half of the split gate — notes/todo.md, "Closing summary
-    under-reports, and sometimes says nothing" (item 7; this cited **#2** until
-    2026-07-28, which is the unrelated wrong-numbers item). The finetune
-    path synthesizes this at its loop break; every other model reached the end
-    of the turn with an empty response and got saved as a bare "Done." by
-    `routes/chat_routes.py` — no version, no edit count, no stale-value
-    warning. Observed live on run c436d4a8 (2026-07-18): `update_document`
-    wrote v2, the turn reported "Done.", and the user was told nothing about
-    what changed.
-
-    Fires when the response is empty, or when everything in it was written
-    BEFORE the edit landed (``preamble_only``). "Non-empty" was the original
-    test and it was too weak: this model habitually opens with its intent —
-    *"I'll fact-check the guide by searching for verified data…"* — and that
-    text is indistinguishable from a summary by length alone. Run 4e217ae0
-    turn 2 applied four edits and reported none of them, because the preamble
-    made ``full_response`` non-empty and this bailed. The user, told nothing,
-    asked again 16 seconds later and burned another turn.
-
-    A preamble is not discarded — the synthesized report is appended to it, so
-    the model keeps its voice and the user gets the facts.
-
-    Call this AFTER `strip_tool_blocks` — a response that was nothing but a
-    tool fence is empty as far as the user is concerned, whatever it looked
-    like mid-stream.
-
-    Returns:
-        (final_response: str, chunk: str | None)
-    """
-    if not doc_info:
-        return full_response, None
-    existing = full_response.strip()
-    if existing and not preamble_only:
-        # The model wrote its own report, so the action line is redundant — but
-        # the ⚠️ blocks are not. It never writes those about itself, and on run
-        # eb2d0ac1 returning here withheld a prescribed cold shock from a
-        # document the model had just titled "Fact Checked". See the docstring
-        # on `_doc_tool_summary`.
-        warnings = _doc_tool_summary(doc_info, warnings_only=True)
-        if not warnings:
-            return full_response, None
-        chunk = "\n\n" + warnings
-        return existing + chunk, 'data: ' + json.dumps({"delta": chunk}) + '\n\n'
-    summary = _doc_tool_summary(doc_info)
-    if not summary:
-        return full_response, None
-    if existing:
-        chunk = "\n\n" + summary
-        return existing + chunk, 'data: ' + json.dumps({"delta": chunk}) + '\n\n'
-    return summary, 'data: ' + json.dumps({"delta": summary}) + '\n\n'
-
-
-def _text_is_only_preamble(full_response: str, text_before_tool: Optional[str]) -> bool:
-    """True when the model wrote nothing after its last document edit landed.
-
-    Positional, not lexical — no keyword matching on "I'll" or "Let me", which
-    would be brittle and English-only. Text written before the tool ran cannot
-    be a report of what the tool did, whatever it says.
-    """
-    if text_before_tool is None:
-        return False
-    before = strip_tool_blocks(text_before_tool).strip()
-    if not before:
-        return False
-    after = strip_tool_blocks(full_response).strip()
-    if after == before:
-        return True
-    return after.startswith(before) and not after[len(before):].strip()
-
-
-def _doc_tool_summary(info: Dict[str, Any], warnings_only: bool = False) -> str:
-    """Closing line for a turn that ended on a document tool, built from the
-    tool result rather than a further LLM round.
-
-    The doc-finetune path breaks the agent loop the moment a document tool
-    succeeds, so the model never gets a round to say what it did; the turn used
-    to fall back to a bare "Done.". For an edit that is the worst case — the
-    list of what changed IS the deliverable. Deriving it from the tool result
-    is both free (no extra round, no extra latency) and more reliable than
-    asking the model to recall its own edits.
-
-    Also surfaces ``skipped``: edit_document reports success whenever at least
-    one FIND block matched, so partially-applied edits were previously silent.
-
-    ``warnings_only`` drops the *"Created/Updated …"* action line and returns
-    just the ⚠️ blocks. Both callers used to discard this whole string when the
-    model had written its own closing prose, on the reasonable-sounding ground
-    that the user had already been told what happened. **They had been told what
-    happened; they had not been told it was wrong.** Three S1 checks ride in
-    here — item 3's `stale_values`, 2a's `fidelity`, 2b's `known_facts` — and
-    none of them is something the model would ever write about itself.
-
-    Run eb2d0ac1, 2026-07-28, is the case: an 8,636-character document titled
-    *"…Growth Phases Guide - Fact Checked 2026-07-28"*, containing *"Temperature
-    drop of 5 – 10°F"* — a prescribed cold shock on a thermophilic species, the
-    exact failure that retired the 4B. 2b caught it. The model then wrote a
-    confident summary with ✅ ticks, so the warning was dropped and **the user
-    saw neither finding**. The net was withheld precisely because the model
-    sounded sure, which is the one case it exists for.
-    """
-    if not info:
-        return ""
-    tool = info.get("tool") or ""
-    title = (info.get("title") or "").strip()
-    version = info.get("version")
-    applied = info.get("applied")
-    skipped = info.get("skipped") or 0
-
-    name = f"**{title}**" if title else "the document"
-    ver = f" (v{version})" if version else ""
-
-    # These two used to `return` here. They must not: the fidelity warning
-    # below applies to every tool, and both runs that motivated it used
-    # `create_document` — so an early return made the check dead exactly where
-    # it mattered. Caught by a test, not by reading.
-    if tool == "create_document":
-        line = f"Created {name}{ver}."
-    elif tool == "suggest_document":
-        line = f"Added suggestions to {name} — nothing changed until you accept them."
-    else:
-        # update_document / edit_document
-        calls = info.get("calls") or 0
-        rounds = f" across {calls} rounds" if calls > 1 else ""
-        if applied is not None:
-            line = f"Updated {name}{ver} — {applied} edit{'s' if applied != 1 else ''} applied{rounds}"
-        else:
-            line = f"Updated {name}{ver}"
-        if skipped:
-            line += (
-                f", **{skipped} not applied** (the FIND text didn't match — "
-                f"those corrections are still missing)"
-            )
-        line += "."
-
-    # The action line and the warnings are assembled separately so a caller can
-    # take the warnings alone — see `warnings_only` in the docstring.
-    parts = [] if warnings_only else [line]
-
-    # A correction applied in one place and left standing in another is the
-    # worst outcome: the document reads as fact-checked while still
-    # contradicting itself. Say so plainly rather than reporting success.
-    stale = info.get("stale_values") or []
-    if stale:
-        shown = ", ".join(f"`{v}`" for v in stale[:6])
-        more = f" (+{len(stale) - 6} more)" if len(stale) > 6 else ""
-        parts.append(
-            f"⚠️ **Still inconsistent** — {shown}{more} "
-            f"{'was' if len(stale) == 1 else 'were'} corrected in one place but "
-            f"still appear{'s' if len(stale) == 1 else ''} elsewhere in the document. "
-            f"The document now contradicts itself; ask me to fix the remaining spots."
-        )
-
-    # Same principle one level up: the document disagrees with the data it was
-    # built from. Across two recorded runs, 239 of 240 cells were transcribed
-    # correctly and both documents were still wrong — a raw PWM register
-    # printed as a duty cycle. See notes/todo.md item 2a.
-    fidelity = info.get("fidelity") or []
-    if fidelity:
-        shown = "\n".join(f"- {f}" for f in fidelity[:4])
-        more = f"\n- (+{len(fidelity) - 4} more)" if len(fidelity) > 4 else ""
-        parts.append(
-            f"⚠️ **Doesn't match the source** — I checked the document "
-            f"against the data I fetched:\n{shown}{more}\n\n"
-            f"Worth reading before you rely on these numbers."
-        )
-
-    # And against facts that were established once and written down. Separate
-    # from `fidelity` on purpose: a document can match its source perfectly and
-    # still be wrong about the world, which is notes/todo.md item 2b. The wording
-    # is deliberately flat — the failure this catches is a document that wears
-    # the authority of a fact-check while carrying the wrong species' numbers,
-    # so the report must not sound like one either.
-    known_facts = info.get("known_facts") or []
-    if known_facts:
-        shown = "\n".join(f"- {f}" for f in known_facts[:4])
-        more = f"\n- (+{len(known_facts) - 4} more)" if len(known_facts) > 4 else ""
-        parts.append(
-            f"⚠️ **Contradicts what we already established** — checked "
-            f"against `config/known_facts.json`:\n{shown}{more}\n\n"
-            f"I have not re-verified these against sources; the file is the record."
-        )
-    return "\n\n".join(p for p in parts if p)
 
 
 def _note_list_summary_from_tool_output(raw: str, max_items: int = 20) -> str:
@@ -1895,11 +1210,11 @@ _EXPLICIT_WORKSPACE_REFERENCE_RE = re.compile(
     r"|\b(?:this|current|active)\s+(?:workspace|repo|project)\b",
     re.IGNORECASE,
 )
-# "This computer" phrasings. Named machines are matched separately, against
-# the configured Cookbook servers and SSH aliases (src/named_machines.py): a
-# third alternative here used to accept `on|from` + ANY word, which sent
-# "data from http://…", "a report on climate change" and "from wikipedia" down
-# the Terminus branch (notes/todo.md item 27, fix b).
+# "This computer" phrasings. Named machines are matched separately, against the
+# configured Cookbook servers and SSH aliases (src/named_machines.py); a
+# generic `on|from <word>` alternative sent "data from http://..." down the
+# Terminus branch (notes: "A LAN address in the prompt deletes every document
+# tool").
 _LOCAL_COMPUTER_REFERENCE_RE = re.compile(
     r"\b(?:on|from|in|using|with)\s+(?:this|my|the)\s+(?:computer|machine|pc|laptop|device|system)\b"
     r"|\b(?:local|host)\s+(?:computer|machine|files?|system)\b",
@@ -1940,34 +1255,15 @@ def _looks_like_local_computer_request(text: str, machine_names=None) -> bool:
     return mentions_named_machine(text, machine_names)
 
 
-def _format_prompt_cache(pc: Optional[Dict[str, Any]]) -> str:
-    """` prompt_tokens=… cache_n=… prompt_n=… prompt_ms=…` for the
-    round_stream_done line (notes/todo.md items 40/57/58). `?` where the
-    backend reported nothing; `cached_tokens=` only when an OpenAI-style
-    server sent it."""
-    pc = pc or {}
-    out = " prompt_tokens=%s cache_n=%s prompt_n=%s prompt_ms=%s" % tuple(
-        pc.get(k, "?") for k in ("prompt_tokens", "cache_n", "prompt_n", "prompt_ms")
-    )
-    if "cached_tokens" in pc:
-        out += " cached_tokens=%s" % pc["cached_tokens"]
-    return out
-
-
 def _terminus_toolset(intent_domains) -> set:
     """Tools for a workspace / local-machine / named-machine turn: the Odysseus
     Terminus set PLUS every domain the user's own words selected.
 
-    This used to replace the selection outright, so a LAN address in the
-    prompt deleted every document tool: "create a document with temperature
-    and humidity data from http://192.168.0.185" matched the old any-word
-    named-machine alternative (`from http`; since fix b only configured
-    machines count, see src/named_machines.py), the classifier
-    had already said domains=['documents', 'web'], and the model was left with
-    write_file — it wrote to /tmp and reported success (notes/todo.md, "A LAN
-    address in the prompt deletes every document tool"). It also dropped the
-    Cookbook tools that _local_computer_rules() tells the model to use for a
-    named machine. Retrieval noise is still dropped; only intent domains stay.
+    Replacing the selection outright left a "document from http://<LAN>" turn
+    with only write_file (notes: "A LAN address in the prompt deletes every
+    document tool"), and dropped the Cookbook tools _local_computer_rules()
+    points named-machine turns at. Retrieval noise is still dropped; only
+    intent domains stay.
     """
     tools = set(_WORKSPACE_TERMINUS_TOOLS)
     for domain in intent_domains or ():
@@ -2088,11 +1384,8 @@ _COOKBOOK_CONTEXT_RE = re.compile(
     re.IGNORECASE,
 )
 # Document and research work is the other place "try again" arrives with the
-# actionable detail one or two turns back. "why did u stop, try again" after a
-# correction turn used to classify as a fresh low-signal message, so the retry
-# lost the task entirely — the failure was worth retrying and the retry didn't
-# know what it was retrying. Same narrowness as the Cookbook set: these words
-# have to have been used recently, not just be plausible.
+# actionable detail a turn or two back; without this the retry lost the task.
+# Same narrowness as the Cookbook set: the words must have been used recently.
 _DOC_RESEARCH_CONTEXT_RE = re.compile(
     r"\b(?:document|doc|draft|article|report|write-?up|"
     r"edit|edits|edited|correct|corrections?|corrected|fact[- ]?check(?:ed|ing)?|"
@@ -2358,12 +1651,11 @@ def _vague_turn_keeps_active_document(
     """Keep document context/tools on vague turns mid-task with an open doc.
 
     A short confirmation ("yes and include sources") classifies low_signal /
-    continuation with no domains, so document-edit tools got stripped and the
-    model created a DUPLICATE document instead of updating the active one
-    (observed live 2026-07-17; notes/resolvedissues.md, "Active-doc turns losing
-    edit tools on low-signal input" — fixed 2026-07-18). With a document
-    open, a vague or continuation turn in an existing conversation almost
-    always refers to that document. Casual greetings ("hey") stay excluded.
+    continuation with no domains, so the edit tools were stripped and the model
+    created a duplicate document (resolvedissues: "Active-doc turns losing edit
+    tools on low-signal input"). With a document open, a vague or continuation
+    turn in an existing conversation almost always refers to it. Casual
+    greetings ("hey") stay excluded.
     """
     return (
         active_document is not None
@@ -3838,8 +3130,8 @@ def _append_tool_results(
     so every tool round of the current turn keeps its own reasoning. It never
     reaches a provider directly — ``_sanitize_llm_messages`` drops unknown keys —
     except through ``_map_reasoning_for_ollama_compat`` in ``src/llm_core.py``,
-    which turns it into Ollama's ``reasoning`` field. notes/todo.md, *"The model
-    finishes the job in the reasoning channel"*: Ollama's /v1 reads only
+    which turns it into Ollama's ``reasoning`` field (resolvedissues: "Finished
+    answers were delivered in the reasoning channel"): Ollama's /v1 reads only
     ``reasoning`` (never ``reasoning_content``), so without this every earlier
     round reached Qwen 3.5 as an empty ``<think></think>`` block — the
     thinking-OFF marker — and the model started drafting its answer inside the
@@ -3968,7 +3260,6 @@ def _compute_final_metrics(
     prep_timings: Optional[Dict[str, float]] = None,
     backend_gen_tps: float = 0,
     backend_prefill_tps: float = 0,
-    stream_errors: Optional[list] = None,
     finish_reasons: Optional[list] = None,
 ) -> dict:
     """Compute token counts, TPS, and build the final metrics dict."""
@@ -4023,15 +3314,8 @@ def _compute_final_metrics(
     }
     if backend_prefill_tps and backend_prefill_tps > 0:
         metrics["prefill_tps"] = round(backend_prefill_tps, 2)
-    # A turn that failed must not be readable as a turn that was slow.
-    # notes/todo.md 9b. Absence means the stream raised nothing — same
-    # convention as item 17's cache flag, where absence means live.
-    if stream_errors:
-        metrics["stream_errors"] = stream_errors
-    # [finish-reason] notes/todo.md item 41 — same convention, one row up.
-    # Absence means the provider reported nothing, NEVER "it finished cleanly".
-    # Per ROUND, because `max_tokens` is per round and a turn total cannot say
-    # which round was clipped.
+    # [finish-reason] Absence means the provider reported nothing, NEVER "it
+    # finished cleanly". Per ROUND, because max_tokens is per round.
     if finish_reasons:
         metrics["finish_reasons"] = finish_reasons
     if prep_timings:
@@ -4043,13 +3327,10 @@ def _compute_final_metrics(
         }
     if tool_events:
         metrics["tool_events"] = tool_events
-    # `round_texts` was nested under `tool_events` and so was absent from every
-    # turn that called no tools — which are exactly the turns where it is the
-    # only thing that answers the question. It is the discriminator between
-    # notes/todo.md item 6 (the save path deleted the answer) and item 8 (the
-    # model stopped writing): both produce a short, truncated-looking message,
-    # and comparing the round text against the saved content is what separates
-    # them. Run fd0f9ba0 on 2026-07-28 could not be classified for that reason.
+    # round_texts is recorded even when no tool ran: comparing the round text
+    # with the saved content is what separates "the save path deleted the
+    # answer" from "the model stopped writing" - both look like a short,
+    # truncated message.
     if round_texts:
         metrics["round_texts"] = round_texts
         metrics["round_models"] = list(round_models or [])
@@ -4114,28 +3395,6 @@ _VERIFIER_EFFECTFUL_TOOLS = {
     "bash", "python", "write_file",
 }
 _VERIFIER_MAX_ROUNDS = 2  # cap re-verify cycles per turn — never loop forever
-
-# Ceiling on the raw tool arguments persisted with a document tool event.
-# Message metadata was 566 KB across 92 rows in a 2.4 MB app.db when this was
-# sized, so 16 KB per document call is affordable and covers every real edit
-# seen so far. Truncation is marked in-band: a replay must be able to tell a
-# clipped record from a complete one, or it will "reproduce" a different call
-# than the one that ran.
-_PERSISTED_COMMAND_MAX = 16384
-_PERSISTED_COMMAND_TRUNCATION_MARKER = "\n…[truncated by agent_loop: {dropped} more chars]"
-
-
-def _cap_persisted_command(command: str) -> str:
-    """Clip tool arguments for storage, marking the clip so replay can see it."""
-    if command is None:
-        return ""
-    if len(command) <= _PERSISTED_COMMAND_MAX:
-        return command
-    marker = _PERSISTED_COMMAND_TRUNCATION_MARKER.format(
-        dropped=len(command) - _PERSISTED_COMMAND_MAX
-    )
-    return command[:_PERSISTED_COMMAND_MAX] + marker
-
 
 def _build_actions_snapshot(tool_events: list, limit: int = 8000) -> str:
     """Compact record of what the agent actually did this turn, for the
@@ -4943,12 +4202,12 @@ async def stream_agent_loop(
             _relevant_tools = set(ALWAYS_AVAILABLE)
         _relevant_tools.update(forced_set)
 
-    # Browser gate (notes/todo.md item 51). Retrieval alone does not count as
-    # browser intent — "oh hi mark" retrieved browser_hover, and expansion then
-    # sent all 31 browser tools. The browser goes out when the route forced it
-    # (its own intent check, incl. short follow-ups after a form/browser turn)
-    # or when the request itself asks for it. A caller-provided relevant_tools
-    # set is NOT intent: the task scheduler fills it from the same retrieval.
+    # Browser gate. Retrieval alone is not browser intent (a greeting once
+    # retrieved browser_hover, and expansion sent every browser tool). The
+    # browser goes out when the route forced it or the request asks for it. A
+    # caller-provided relevant_tools set is NOT intent: the task scheduler
+    # fills it from the same retrieval (resolvedissues: "The built-in browser
+    # was sent on turns that never asked for it").
     _browser_names = set() if _browser_disabled else _browser_tool_names(mcp_mgr, _mcp_disabled_map)
     _browser_allowed = bool(_browser_names) and (
         any(is_browser_tool_name(t) for t in (forced_tools or ()))
@@ -5245,8 +4504,8 @@ async def stream_agent_loop(
             disabled_tools,
             needs_admin=_needs_admin,
             relevant_tools=route_tools,
-            # Browser gate (notes/todo.md item 51): the per-route prompt gets the
-            # map with the browser server withheld unless the turn asked for it.
+            # Browser gate: the per-route prompt gets the map with the browser
+            # server withheld unless the turn asked for it.
             mcp_disabled_map=_prompt_mcp_disabled_map,
             compact=is_api or is_native_ollama or is_ollama_compat,
             owner=owner,
@@ -5339,10 +4598,8 @@ async def stream_agent_loop(
     total_start = time.time()
     time_to_first_token = None
     first_token_received = False
-    _stream_errors = []  # error events from stream_llm, persisted into metrics
-    # [finish-reason] per-round completion reasons — notes/todo.md item 41.
-    # Same convention as _stream_errors: an empty list means nothing was
-    # reported, NOT that every round finished cleanly.
+    # [finish-reason] per-round completion reasons. An empty list means nothing
+    # was reported, NOT that every round finished cleanly.
     _round_finish_reasons = []
     _round_prompt_cache: Dict[int, Dict[str, Any]] = {}  # [prompt-cache] per round, report-only
     tool_events = []   # Persist tool executions for history reload
@@ -5356,11 +4613,10 @@ async def stream_agent_loop(
     _effectful_used = False
     _verifier_rounds = 0
     _verifier_instruction = _extract_last_user_message(messages)
-    # Document-edit retry state. Counts failed edit/suggest/update_document
-    # calls this turn so the corrective directive can escalate to a full
-    # rewrite, and so the end-of-turn guard knows the document was never
-    # actually changed (run b5fe4ef5 ended on a failed edit and still saved
-    # "Done."). Reset by any document tool that succeeds.
+    # Document-edit retry state: failed edit/suggest/update_document calls this
+    # turn, so the corrective directive can escalate to a full rewrite and the
+    # end-of-turn guard knows the document never changed. Reset by any document
+    # tool that succeeds.
     _doc_edit_failures = 0
     _doc_edit_last_error = ""
     real_input_tokens = 0   # Accumulated real usage from API
@@ -5420,16 +4676,11 @@ async def stream_agent_loop(
 
     _doc_stream_create_completed = False
     _ody_doc_tool_completed = False
-    # Running total across EVERY document tool that succeeded this turn, used to
-    # synthesize a closing summary instead of the bare "Done." placeholder.
-    # Populated for every model (see the split gate below); consumed either at
-    # the finetune loop break or, for everyone else, at end of turn. Cleared if
-    # a later document tool fails, so the report can't go stale.
-    #
-    # `applied`/`skipped` ACCUMULATE — this used to be replaced wholesale by each
-    # call, so a turn that ran four edit rounds reported only the last one. Run
-    # baac5d34 applied 5+1+3+1 = 10 edits and told the user "1 edit applied",
-    # under-reporting the work tenfold and reading as near-total failure.
+    # Running report data for every document tool that succeeded this turn (see
+    # turn_report.record_doc_tool_result), consumed at the finetune loop break
+    # or at end of turn instead of a bare "Done.". Cleared when a later
+    # document tool fails, so the report cannot go stale. applied/skipped
+    # accumulate across calls.
     _ody_doc_tool_info: Dict[str, Any] = {}
     # full_response as it stood when the most recent document tool succeeded.
     # Anything the model writes AFTER that point may be a report of the edit;
@@ -5951,18 +5202,6 @@ async def stream_agent_loop(
                     time.time() - _round_start,
                     chunk[:500],
                 )
-                # Keep it, don't just log it. notes/todo.md 9b: run fd0f9ba0
-                # ended on `{"error": "Read timeout", "status": 504}` after
-                # 380 s, and `app.db` recorded a turn that merely looked slow —
-                # 29 tokens, 0.09 tok/s — with nothing to say the request had
-                # failed. Three sessions of "throughput" analysis were built on
-                # rows like that one. **The mechanism was in app.log the whole
-                # time and the database could not see it.**
-                _stream_errors.append({
-                    "round": round_num,
-                    "elapsed": round(time.time() - _round_start, 2),
-                    "detail": _stream_error_detail(chunk),
-                })
                 terminal_status = None
                 try:
                     error_line = next(
@@ -6076,15 +5315,13 @@ async def stream_agent_loop(
                             backend_gen_tps = u["gen_tps"]
                         if u.get("prefill_tps"):
                             backend_prefill_tps = u["prefill_tps"]
-                        # [prompt-cache] report-only — items 40/57/58: logged on
-                        # the round_stream_done line below.
+                        # [prompt-cache] report-only; logged on the
+                        # round_stream_done line.
                         _round_prompt_cache[round_num] = {
                             "prompt_tokens": round_input,
                             **{k: u[k] for k in ("cache_n", "prompt_n", "prompt_ms", "cached_tokens") if k in u},
                         }
-                        # [finish-reason] report-only — notes/todo.md item 41.
-                        # Recorded per round, because `max_tokens` is per round:
-                        # a turn total cannot say which round was clipped.
+                        # [finish-reason] report-only, recorded per round.
                         if u.get("finish_reason"):
                             _round_finish_reasons.append(
                                 {"round": round_num, "reason": u["finish_reason"]}
@@ -6222,9 +5459,9 @@ async def stream_agent_loop(
                 yield chunk
             # Intercept [DONE] — don't forward until all rounds finish
 
-        # [finish-reason] item 41 — on the round_stream_done line because that
-        # is the line every zero-text investigation starts from, and `?` (not
-        # absent) so a missing value is visibly missing rather than assumed.
+        # [finish-reason] on the round_stream_done line, where zero-text
+        # investigations start; "?" (not absent) so a missing value is visibly
+        # missing.
         _this_round_fr = next(
             (e["reason"] for e in reversed(_round_finish_reasons) if e["round"] == round_num),
             None,
@@ -6562,24 +5799,16 @@ async def stream_agent_loop(
                 break
             # ── Cross-round stall: REVERTED 2026-07-19, do not reinstate as-is ──
             # A nudge here told the model "finish the job NOW using the
-            # appropriate tool". It did: run 8c80cf8d answered by calling
-            # update_document with EMPTY content, wiping a 6186-character
-            # document to zero bytes, then created two more empty documents and
-            # emptied one of those twice. Five zero-length versions in four
-            # minutes; there had never been one before in 79 versions.
+            # appropriate tool"; it answered by calling update_document with
+            # EMPTY content and wiped a document. An "act now" directive aimed
+            # at a model with nothing to write produces destructive action, not
+            # the missing work.
             #
-            # Two lessons. An imperative "act now" directive aimed at a model
-            # that has nothing to write produces destructive action, not the
-            # missing work — telling it to stop being idle is not the same as
-            # telling it what to do. And the damage was only possible because
-            # update_document/create_document accepted empty content (fixed in
-            # document_tools.py; edit_document already refused it).
-            #
-            # The reporting half of item 8 is kept below at end-of-turn: it
-            # tells the user nothing happened, which is honest and cannot
-            # destroy anything. Re-attempting the *active* half needs a
-            # narrower directive and an effectful-tool guard proving the retry
-            # can only write content it actually has.
+            # The reporting half stays at end of turn (turn_report): it tells
+            # the user nothing happened and cannot destroy anything.
+            # Re-attempting the active half needs a narrower directive and a
+            # guard proving the retry can only write content it actually has
+            # (notes: "The agent gathers information, then stops").
             break  # no tools — done
 
         # ── Loop-breaker (Terminus-style stall detector) ──────────────
@@ -6676,10 +5905,10 @@ async def stream_agent_loop(
             # Document tools show a brief summary instead of dumping full content.
             is_doc_tool = block.tool_type in ("create_document", "update_document", "edit_document", "suggest_document")
             # One document tool call must produce at most ONE doc_update event.
-            # Two emitters below can both match the same block; delivering the
-            # event twice made the editor tear down its own pending AI-edit diff
-            # and PUT the pre-edit buffer back over the edit that had just
-            # landed (data loss, todo.md item 1 — v3/v6/v8 of doc 0680daa3).
+            # Two emitters below can match the same block; a duplicate made the
+            # editor drop its pending AI-edit diff and PUT the pre-edit buffer
+            # back over the edit (resolvedissues: "Autosave reverting AI
+            # edits").
             doc_update_emitted = False
             full_command = block.content.strip()
             if is_doc_tool:
@@ -7257,15 +6486,11 @@ async def stream_agent_loop(
                 "output": output_text,
                 "exit_code": result.get("exit_code"),
             }
-            # Document tools truncate `command` to the first line, which for an
-            # edit is literally "<<<FIND>>>" — enough to know a call happened
-            # and nothing about what it asked for. Keep the full arguments so a
-            # failed edit can be replayed against the stored document versions.
-            #
-            # Persist ALWAYS, not only on failure: c7da3649 SUCCEEDED with
-            # "v5, 2 edit(s)" while silently skipping a third FIND block inside
-            # the same call, and a failure-only rule would have discarded
-            # exactly that case. See notes/todo.md, "Failures aren't replayable".
+            # Document tools truncate `command` to the first line ("<<<FIND>>>"
+            # for an edit). Keep the full arguments so an edit can be replayed
+            # against the stored versions. Always, not only on failure: a call
+            # can succeed while silently skipping a FIND block (resolvedissues:
+            # "The record of a run didn't say what happened").
             if is_doc_tool:
                 tool_event["full_command"] = _cap_persisted_command(full_command)
             if result.get("image_url"):
@@ -7279,11 +6504,9 @@ async def stream_agent_loop(
             # this the diff shows live but vanishes from saved history.
             if result.get("diff"):
                 tool_event["diff"] = result["diff"]
-            # A cache hit and a live fetch were previously identical in the
-            # record — same shape, same exit_code — so a run read back from
-            # app.db could not be told apart. See notes/todo.md, "A cache hit is
-            # indistinguishable from a live fetch". Absence of the key means the
-            # fetch left the machine.
+            # Mark cache hits; absence of the key means the fetch left the
+            # machine (resolvedissues: "The record of a run didn't say what
+            # happened").
             if result.get("cached"):
                 tool_event["cached"] = True
                 for _ck in ("cached_at", "cache_age_seconds"):
@@ -7299,19 +6522,15 @@ async def stream_agent_loop(
                 _effectful_used = True
 
             formatted = format_tool_result(desc, result)
-            # A failed document edit is the one failure the model must not be
-            # allowed to shrug off: the user asked for a change and the
-            # document still says the old thing. Put the corrective syntax
-            # right here in the tool result, and escalate to a full rewrite on
-            # the second failure. A success resets the count — a turn that
-            # recovers is not a failed turn.
+            # A failed document edit must not be shrugged off: put the
+            # corrective syntax in the tool result and escalate to a full
+            # rewrite on the second failure. A success resets the count.
             if block.tool_type in DOC_EDIT_RETRY_TOOLS:
                 if result.get("error"):
                     _doc_edit_failures += 1
                     _doc_edit_last_error = str(result.get("error") or "")
-                    # Drop any earlier success report: the document's current
-                    # state is the failure, and reporting "Updated X (v2)" after
-                    # a later edit failed would be a lie by staleness.
+                    # Drop any earlier success report: "Updated X (v2)" after a
+                    # later edit failed would be stale.
                     _ody_doc_tool_info = {}
                     formatted += _doc_edit_retry_directive(block.tool_type, _doc_edit_failures)
                     logger.warning(
@@ -7338,83 +6557,11 @@ async def stream_agent_loop(
             ):
                 _doc_stream_create_completed = True
             if block.tool_type in DOC_TOOLS and not result.get("error"):
-                # SPLIT GATE. The report data is built for EVERY model; only the
-                # loop break below stays behind _ody_doc_finetune_mode.
-                #
-                # These used to be one condition, so `_doc_tool_summary()` and
-                # the stale-value warning were dead code on anything that isn't
-                # the Odysseus finetune — `qwen3.5:9b-32k` included. Widening the
-                # whole gate was the obvious fix and the wrong one: it also
-                # narrows _relevant_tools to five document tools and enables the
-                # break, which would kill the unprompted create_document →
-                # edit_document self-correction this model does (run b5fe4ef5
-                # turn 1). Reporting is safe for everyone; breaking the loop is
-                # not. See notes/todo.md, "Closing summary under-reports".
-                #
-                # ACCUMULATE, don't replace. A correction turn routinely runs
-                # several edit rounds, and the user needs the total, not the
-                # tail. `version` and `title` take the latest (they describe the
-                # document's current state); `stale_values` likewise, since it
-                # is a lint of the document as it now stands and earlier entries
-                # may since have been fixed.
-                def _sum(prev: Any, cur: Any) -> Any:
-                    if prev is None and cur is None:
-                        return None
-                    return (prev or 0) + (cur or 0)
-
-                _prev_info = _ody_doc_tool_info
-                _ody_doc_tool_info = {
-                    "tool": block.tool_type,
-                    "title": result.get("title") or _prev_info.get("title") or "",
-                    "version": result.get("version"),
-                    "applied": _sum(_prev_info.get("applied"), result.get("applied")),
-                    "skipped": _sum(_prev_info.get("skipped"), result.get("skipped")),
-                    "stale_values": result.get("stale_values") or [],
-                    "calls": (_prev_info.get("calls") or 0) + 1,
-                }
-                # Does the document match the data the model was handed?
-                # Runs HERE rather than inside the document tool, because the
-                # source arrived from a web_fetch several rounds earlier and
-                # only the loop can see both. That placement also means it
-                # covers update_document, which bypasses the tool-local
-                # stale-value lint entirely (notes/todo.md item 3).
-                #
-                # Report-only. Item 8's retry nudge destroyed a 6186-character
-                # document by telling an idle model to act, and a checker that
-                # fires on a false positive would do it again.
-                try:
-                    _fidelity = check_document(
-                        result.get("content") or "", tool_events
-                    )
-                except Exception as _fid_err:  # never break a turn over a lint
-                    _fidelity = []
-                    logger.warning("document fidelity check failed: %s", _fid_err, exc_info=True)
-                if _fidelity:
-                    _ody_doc_tool_info["fidelity"] = _fidelity
-                    logger.warning(
-                        "[agent] document does not match its source (%d finding(s)): %s",
-                        len(_fidelity), "; ".join(_fidelity[:3]),
-                    )
-                # And the level above that: does it match reality? Same
-                # placement, same report-only rule, different question — 2a asks
-                # whether the document agrees with the data it was handed, this
-                # asks whether it agrees with facts established once and written
-                # down (notes/todo.md item 2b). It exists because the model's own
-                # fact-check step made documents measurably worse: the run that
-                # was asked for verified information, and fetched four sources,
-                # produced the wrong species' temperature range and called
-                # itself "Fact Checked & Corrected".
-                try:
-                    _known = check_known_facts(result.get("content") or "")
-                except Exception as _kf_err:  # never break a turn over a lint
-                    _known = []
-                    logger.warning("known-facts check failed: %s", _kf_err, exc_info=True)
-                if _known:
-                    _ody_doc_tool_info["known_facts"] = _known
-                    logger.warning(
-                        "[agent] document contradicts recorded ground truth (%d finding(s)): %s",
-                        len(_known), "; ".join(_known[:3]),
-                    )
+                # Report data is built for every model; only the loop break
+                # stays behind _ody_doc_finetune_mode. See turn_report.
+                _ody_doc_tool_info = record_doc_tool_result(
+                    _ody_doc_tool_info, block.tool_type, result, tool_events,
+                )
                 # Mark where the model's prose stood before this edit landed, so
                 # end-of-turn can tell a report from a preamble.
                 _ody_doc_text_before_tool = full_response
@@ -7444,32 +6591,11 @@ async def stream_agent_loop(
             break
 
         if _ody_doc_tool_completed:
-            # Same three cases as the end-of-turn path below: nothing written, a
-            # bare tool fence, or prose written entirely BEFORE the edit landed.
-            # A preamble is kept and the report appended to it.
-            _fr = full_response.strip()
-            _pre_only = _text_is_only_preamble(full_response, _ody_doc_text_before_tool)
-            if not _fr or _fr.startswith("```") or _pre_only:
-                # Synthesize the closing line from the tool result. We break out
-                # of the loop here, so the model never gets a round to report what
-                # it changed — and on a *correction* turn that report is the whole
-                # point. Falls back to "Done." only if the tool told us nothing.
-                _summary = _doc_tool_summary(_ody_doc_tool_info) or "Done."
-                if _pre_only and _fr and not _fr.startswith("```"):
-                    _summary = "\n\n" + _summary
-                    full_response = _fr + _summary
-                else:
-                    full_response = _summary
-                yield 'data: ' + json.dumps({"delta": _summary}) + '\n\n'
-            else:
-                # The model reported the edit itself. Keep its words, but the
-                # ⚠️ blocks still have to reach the user — same argument as the
-                # end-of-turn path in `_closing_doc_summary`.
-                _warnings = _doc_tool_summary(_ody_doc_tool_info, warnings_only=True)
-                if _warnings:
-                    _chunk = "\n\n" + _warnings
-                    full_response = _fr + _chunk
-                    yield 'data: ' + json.dumps({"delta": _chunk}) + '\n\n'
+            full_response, _doc_break_chunk = doc_tool_break_report(
+                full_response, _ody_doc_tool_info, _ody_doc_text_before_tool,
+            )
+            if _doc_break_chunk:
+                yield 'data: ' + json.dumps({"delta": _doc_break_chunk}) + '\n\n'
             logger.info(
                 "[agent] odysseus doc tool completed after one textual tool block "
                 f"(tool={_ody_doc_tool_info.get('tool')} calls={_ody_doc_tool_info.get('calls')} "
@@ -7538,113 +6664,17 @@ async def stream_agent_loop(
         ):
             full_response = "I couldn't make that change because no matching tool action completed."
 
-    # A turn that changed a document and said nothing about it used to be saved
-    # as a bare "Done." by routes/chat_routes.py — no version, no edit count, no
-    # stale-value warning. On a correction turn that report IS the deliverable.
-    # Runs as the model-agnostic half of the split gate: the finetune path
-    # already synthesized this at its loop break (leaving full_response
-    # non-empty), so this only fires where the summary was previously dead code.
-    # Deliberately placed AFTER strip_tool_blocks — a response that was nothing
-    # but a tool fence is empty to the user, whatever it looked like mid-stream.
-    _preamble_only = _text_is_only_preamble(full_response, _ody_doc_text_before_tool)
-    full_response, _doc_summary_chunk = _closing_doc_summary(
-        full_response, _ody_doc_tool_info, preamble_only=_preamble_only,
+    # End-of-turn reports for the reader: document closing line, gathering-
+    # only / side-effect / payload-as-text / unstarted-promise notices.
+    # After strip_tool_blocks on purpose. See turn_report.end_of_turn_report.
+    full_response, _report_chunks = end_of_turn_report(
+        full_response, tool_events,
+        doc_info=_ody_doc_tool_info,
+        doc_text_before_tool=_ody_doc_text_before_tool,
+        text_before_last_tool=_text_before_last_tool,
     )
-    if _doc_summary_chunk:
-        yield _doc_summary_chunk
-        logger.info(
-            "[agent] synthesized document closing line "
-            "(tool=%s calls=%s applied=%s skipped=%s stale=%s appended_to_preamble=%s)",
-            _ody_doc_tool_info.get("tool"), _ody_doc_tool_info.get("calls"),
-            _ody_doc_tool_info.get("applied"), _ody_doc_tool_info.get("skipped"),
-            _ody_doc_tool_info.get("stale_values"), _preamble_only,
-        )
-
-    # Same shape, non-document tools: the turn looked things up and then said
-    # nothing, so "Done." would report success for work that never happened.
-    # Also after strip_tool_blocks, for the same reason — the raw response
-    # still holds the tool fence the model emitted.
-    # Fires on an empty response, or on one where every word predates the tools
-    # — a dangling promise. "Non-empty" was the original test and it let run
-    # 4e217ae0 turn 3 through: 162 seconds, three research tools, nothing
-    # produced, and the user was shown only "I'll fact-check this document by
-    # searching…". The notice is appended so the model keeps its own opening.
-    _gather_preamble_only = _text_is_only_preamble(full_response, _text_before_last_tool)
-    if not full_response or _gather_preamble_only:
-        _gathering_notice = _gathering_only_notice(tool_events)
-        if _gathering_notice:
-            if full_response.strip():
-                _chunk_text = "\n\n" + _gathering_notice
-                full_response = full_response.strip() + _chunk_text
-            else:
-                _chunk_text = _gathering_notice
-                full_response = _gathering_notice
-            yield 'data: ' + json.dumps({"delta": _chunk_text}) + '\n\n'
-            logger.info(
-                "[agent] turn gathered information but produced no answer "
-                "(tools=%s preamble_only=%s)",
-                [ev.get("tool") for ev in tool_events], _gather_preamble_only,
-            )
-
-    # And the third shape: the turn ran a tool that CHANGED something outside a
-    # document, and said nothing about it — notes/todo.md item 11. Session
-    # 57dcd968 wrote nothing to disk because `write_file` was refused, and the
-    # user saw only the preamble. `_gathering_only_notice` above cannot reach
-    # it (a mutating tool ran), `_doc_tool_summary` cannot (no document tool).
-    #
-    # Successes report only when the model stayed silent or never got past its
-    # preamble; failures report either way, because a confident summary must
-    # not be able to bury them (item 21, same argument, document path).
-    # Snapshot the gate BEFORE the append — every branch below mutates
-    # `full_response`, and recomputing this afterwards would read the notice
-    # we just added as if the model had written it.
-    _model_reported = bool(full_response) and not _gather_preamble_only
-    _side_effect_summary = _side_effect_tool_summary(
-        tool_events, failures_only=_model_reported,
-    )
-    if _side_effect_summary:
-        _chunk_text = ("\n\n" if full_response.strip() else "") + _side_effect_summary
-        full_response = full_response.rstrip() + _chunk_text
-        yield 'data: ' + json.dumps({"delta": _chunk_text}) + '\n\n'
-        logger.info(
-            "[agent] synthesized non-document tool report "
-            "(tools=%s failures_only=%s)",
-            [_resolved_tool_event_name(ev) for ev in tool_events], _model_reported,
-        )
-
-    # A failed stream outranks every guard below: they all explain a turn that
-    # *ended*, and this one was cut off. Reported first so the reader knows the
-    # rest is partial before reading it.
-    _failure_notice = _stream_failure_notice(_stream_errors, tool_events)
-    if _failure_notice:
-        _chunk_text = ("\n\n" if full_response.strip() else "") + _failure_notice
-        full_response = full_response.rstrip() + _chunk_text
-        yield 'data: ' + json.dumps({"delta": _chunk_text}) + '\n\n'
-        logger.warning("[agent] turn ended on a stream error: %s", _stream_errors)
-
-    # The zero-tool case, which neither guard above can reach: the turn ran
-    # nothing at all and stopped on a lead-in. Outside the `if` above on
-    # purpose — that branch is gated on emptiness or a tool boundary, and this
-    # turn has neither. See `_unstarted_promise_notice`.
-    # Skipped when the stream failed: the model didn't choose to stop, it was
-    # cut off, and "ask me again and I'll do it" would misdescribe that.
-    # The model WROTE a tool call instead of MAKING one — a fenced payload with
-    # a non-tool tag, so nothing dispatched. Checked before the promise notice
-    # and suppresses it: both require zero tools, but this one knows *why* the
-    # turn produced nothing, and the promise notice would describe it wrongly
-    # (the text does not trail off; it often claims success).
-    _payload_notice = "" if _stream_errors else _tool_payload_as_text_notice(full_response, tool_events)
-    if _payload_notice:
-        full_response = full_response.rstrip() + _payload_notice
-        yield 'data: ' + json.dumps({"delta": _payload_notice}) + '\n\n'
-        logger.info("[agent] turn emitted a tool payload as display text; no tool ran")
-
-    _unstarted_notice = "" if (_stream_errors or _payload_notice) else _unstarted_promise_notice(full_response, tool_events)
-    if _unstarted_notice:
-        _chunk_text = " " + _unstarted_notice
-        full_response = full_response.rstrip() + _chunk_text
-        yield 'data: ' + json.dumps({"delta": _chunk_text}) + '\n\n'
-        logger.info("[agent] turn announced work, called no tools, and stopped")
+    for _report_chunk in _report_chunks:
+        yield _report_chunk
 
     _response_before_tool_summary = full_response
     if tool_events:
@@ -7709,7 +6739,6 @@ async def stream_agent_loop(
         prep_timings=prep_timings,
         backend_gen_tps=backend_gen_tps,
         backend_prefill_tps=backend_prefill_tps,
-        stream_errors=_stream_errors,
         finish_reasons=_round_finish_reasons,
     )
     metrics["requested_model"] = requested_model

@@ -19,10 +19,13 @@ import pathlib
 
 import pytest
 
-from src.agent_loop import _doc_tool_summary
+from src.turn_report import _doc_tool_summary
 
 AGENT_LOOP = pathlib.Path(__file__).parents[1] / "src" / "agent_loop.py"
-SRC = AGENT_LOOP.read_text()
+# The call site moved to src/turn_report.py (record_doc_tool_result); the
+# properties below hold across the whole agent-loop path, so scan both.
+TURN_REPORT = AGENT_LOOP.with_name("turn_report.py")
+SRC = AGENT_LOOP.read_text() + "\n" + TURN_REPORT.read_text()
 
 
 def test_findings_appear_in_the_closing_summary():
@@ -99,4 +102,4 @@ def test_fidelity_is_only_ever_read_for_reporting():
              if '"fidelity"' in l or "get(\"fidelity\")" in l]
     assert reads, "nothing reads fidelity — the wiring is dead"
     for line in reads:
-        assert any(tok in line for tok in ("_ody_doc_tool_info", "info.get")), line
+        assert any(tok in line for tok in ("_ody_doc_tool_info", "info.get", 'info["fidelity"] = ')), line

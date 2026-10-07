@@ -1,22 +1,16 @@
 """Hide routine uvicorn access-log lines from the terminal, by status code.
 
-notes/todo.md item 13: every request prints, so real errors scroll away —
-worst while the UI polls (`/api/research/status/<id>`,
-`/api/chat/stream_status/<id>`). `--no-access-log` would also drop the 4xx/5xx
-lines, which are the point, so this filters by status instead.
+Every request prints, so real errors scroll away while the UI polls.
+--no-access-log would also drop the 4xx/5xx lines, which are the point.
 
-The ``access_log_hide_statuses`` setting lists what to hide. An entry is a
-status (``200`` or ``"200"``, any method) or ``"METHOD STATUS"`` (``"GET 200"``
-— keeps PUT/POST/DELETE 200s visible, e.g. while confirming editor saves).
-The default is ``[200, "GET 304"]``. 304s were visible at first, as the sign
-of a stale-cache bug; live on 2026-10-04 they were ~150 lines on every page
-load, because every JS module is served ``no-cache`` and revalidates (a 304 is
-the normal answer). A stale-cache bug would show as a *missing* request, which
-no access log can show. ``[]`` shows everything. Read through ``get_setting`` (2 s cache), so a change
-applies without a restart.
+The access_log_hide_statuses setting lists what to hide: a status (200 or
+"200", any method) or "METHOD STATUS" ("GET 200" keeps PUT/POST/DELETE 200s
+visible). Default [200, "GET 304"] - 304s are the normal answer for every
+no-cache JS module on page load. [] shows everything. Read through get_setting
+(2 s cache), so a change applies without a restart.
 
-Access lines do not reach ``data/logs/app.log`` (uvicorn's ``uvicorn.access``
-logger does not propagate), so this changes the terminal only.
+Access lines do not reach data/logs/app.log (uvicorn.access does not
+propagate), so this changes the terminal only.
 """
 import logging
 

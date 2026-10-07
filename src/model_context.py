@@ -317,15 +317,12 @@ def _lookup_known(model: str) -> Optional[int]:
     return best_ctx
 
 
-# Local model variants created with an explicit num_ctx are conventionally
-# named with the window as a suffix ("qwen3.5:4b-16k", created via
-# `PARAMETER num_ctx 16384`). Ollama reports neither /slots nor a context
-# field on /v1/models, so without this the known-models table wins and the
-# app budgets against the architecture max (131k+) while the server actually
-# truncates at the modelfile's num_ctx — silently eating the prompt TOP
-# (system prompt + skills) on long agent turns. Verified 2026-07-16:
-# `ollama show qwen3.5:4b-16k` → num_ctx 16384, server log n_ctx_slot=16384,
-# UI showed 131,072.
+# Local variants created with an explicit num_ctx are conventionally named with
+# the window as a suffix ("qwen3.5:4b-16k" via `PARAMETER num_ctx 16384`).
+# Ollama reports neither /slots nor a context field on /v1/models, so without
+# this the known-models table wins and the app budgets against the architecture
+# max while the server truncates at num_ctx - silently eating the prompt top
+# (system prompt + skills) on long agent turns.
 _NAME_CTX_SUFFIX_RE = re.compile(r"[-_](\d+)k$")
 
 
@@ -335,30 +332,27 @@ def _ctx_from_name_suffix(model: str) -> Optional[int]:
     return int(m.group(1)) * 1024 if m else None
 
 
-# LM Studio serves a model at the context length it was LOADED with — neither
-# the architecture max (the known table, LM Studio's own max_context_length) nor
-# anything its OpenAI-compatible /v1/models reports. Its native /api/v1/models
-# does report it, per loaded instance (`loaded_instances[].config.context_length`,
-# the shape model_capability_readers/lmstudio.py also reads). Observed
-# 2026-10-04: qwen/qwen3.5-9b was loaded at 32768 while this module returned
-# the table's 131072 for "qwen3", so nothing was trimmed against the real window
-# and LM Studio's "Truncate Middle" overflow policy cut 22-27k tokens out of the
-# last three rounds of a 14-round turn (notes/todo.md, "LM Studio's loaded
-# context is invisible to Odysseus").
+# LM Studio serves a model at the context length it was LOADED with - neither
+# the architecture max nor anything /v1/models reports. Its native
+# /api/v1/models reports it per loaded instance
+# (loaded_instances[].config.context_length, as
+# model_capability_readers/lmstudio.py also reads). Without this nothing was
+# trimmed against the real window and LM Studio's "Truncate Middle" cut tokens
+# out of long turns (todo: "LM Studio's loaded context is invisible to
+# Odysseus").
 _LMSTUDIO_NOT_LOADED = 0
 
 
 def _lmstudio_loaded_context(base: str, model: str) -> Optional[int]:
     """Loaded context window of ``model`` on an LM Studio server at ``base``.
 
-    Returns the ``context_length`` of the loaded instance whose identifier IS
+    Returns the context_length of the loaded instance whose identifier IS
     ``model`` (LM Studio routes a request to it by that name); otherwise the
-    smallest loaded instance of the matching key (no instance carries the name,
-    so the request may land on any of them); or ``_LMSTUDIO_NOT_LOADED`` when
-    LM Studio lists the model with no instance
-    loaded — a just-in-time load will use the model's saved default, which the
-    API does not expose. Returns None when ``base`` is not LM Studio, is
-    unreachable, or does not list the model, so the caller falls through.
+    smallest loaded instance of the matching key (the request may land on any
+    of them); or ``_LMSTUDIO_NOT_LOADED`` when the model is listed with no
+    instance loaded (a just-in-time load uses a saved default the API does not
+    expose). None when ``base`` is not LM Studio, is unreachable, or does not
+    list the model, so the caller falls through.
     """
     want = (model or "").strip().lower()
     if not want:

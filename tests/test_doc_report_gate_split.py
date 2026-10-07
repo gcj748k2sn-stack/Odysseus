@@ -29,7 +29,8 @@ import json
 import textwrap
 from pathlib import Path
 
-from src.agent_loop import DOC_TOOLS, _closing_doc_summary
+from src.agent_loop import DOC_TOOLS
+from src.turn_report import _closing_doc_summary
 
 AGENT_LOOP = Path(__file__).resolve().parent.parent / "src" / "agent_loop.py"
 
@@ -145,7 +146,9 @@ def test_report_data_is_built_for_every_model():
     tree = ast.parse(AGENT_LOOP.read_text())
     populating = [
         a for a in _assignments_to(tree, "_ody_doc_tool_info")
-        if isinstance(a.value, ast.Dict) and a.value.keys
+        if (isinstance(a.value, ast.Dict) and a.value.keys)
+        or (isinstance(a.value, ast.Call)
+            and getattr(a.value.func, "id", None) == "record_doc_tool_result")
     ]
     assert populating, "no populating assignment to _ody_doc_tool_info found"
     for assign in populating:

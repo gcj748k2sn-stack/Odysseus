@@ -10,7 +10,7 @@ These pin the synthesized summary, which is derived from the tool result
 instead of an extra LLM round.
 """
 
-from src.agent_loop import _doc_tool_summary
+from src.turn_report import _doc_tool_summary
 
 
 def test_create_reports_title_and_version():

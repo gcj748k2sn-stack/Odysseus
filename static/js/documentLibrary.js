@@ -1117,18 +1117,15 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
   /**
    * Open a document in a BRAND-NEW chat.
    *
-   * "Open" (`libraryOpenInSession`) switches to the session that created the
-   * document — deliberately, and it is the right default for "take me back to
-   * where I was working". But it means a document cannot be opened against a
-   * clean conversation at all: switching sessions clears the editor selection,
-   * so there is no carry-across either. Sessions accumulated eleven prompts on
-   * 2026-07-28 partly this way, and same-prompt comparisons are impossible
-   * when every run inherits the previous run's history (notes/todo.md item 20,
-   * the step-0 protocol).
+   * "Open" (libraryOpenInSession) switches to the session that created the
+   * document - the right default for "take me back to where I was". But then a
+   * document can never be opened against a clean conversation, and same-prompt
+   * comparisons are impossible when every run inherits the previous run's
+   * history.
    *
-   * The two existing calls in the right order are the whole implementation:
-   * create the chat first, then clone into it. Order matters — cloning first
-   * would copy into the old session, which is the behaviour being avoided.
+   * The implementation is the two existing calls in the right order: create
+   * the chat first, then clone into it (cloning first would copy into the old
+   * session).
    */
   async function libraryOpenInNewChat(doc) {
     const sm = sessionModule;
@@ -1209,10 +1206,10 @@ let _libraryArchivedView = false;   // Documents tab showing archived docs?
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           session_id: sessionId,
-          // `baseTitle` is computed above (including the (2)/(3) dedup) and was
-          // then never sent — `DocumentCreate.title` defaults to "Untitled", so
-          // every cloned document was called Untitled regardless of its source.
-          // Fixed 2026-07-29; see notes/todo.md item 23.
+          // `baseTitle` (including the (2)/(3) dedup) used to be computed and
+          // never sent; DocumentCreate.title defaults to "Untitled", so every
+          // clone was called Untitled (resolvedissues: "Every cloned document
+          // was named Untitled").
           title: baseTitle,
           // Preserve the source's type; default to markdown when unknown
           // (the backend also sniffs, but this keeps the tab label correct).

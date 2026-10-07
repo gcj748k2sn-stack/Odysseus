@@ -31,12 +31,10 @@ class DocumentUpdate(BaseModel):
     summary: Optional[str] = None
     force_version: bool = False
     # Optimistic-concurrency guard: the version_count the client's content is
-    # based on. If the server has moved past it (e.g. an AI tool wrote a new
-    # version), the PUT is rejected with 409 instead of silently overwriting
-    # the newer content. See notes/resolvedissues.md, "Autosave reverting AI
-    # edits" — where this guard is also shown NOT to have been the cause of
-    # that data loss (a duplicated doc_update event was); it passed the CAS
-    # legitimately. Keep it anyway: it is the only lost-update guard here.
+    # based on. If the server has moved past it (e.g. an AI edit), the PUT gets
+    # a 409 instead of overwriting newer content. It was not the cause of the
+    # autosave data loss (resolvedissues: "Autosave reverting AI edits"), but
+    # it is the only lost-update guard here - keep it.
     base_version: Optional[int] = None
 
 class DocumentPatch(BaseModel):
@@ -185,15 +183,12 @@ def _locate_upload(
 ):
     """Find an upload by its filename ID via UploadHandler.resolve_upload.
 
-    Deliberately a thin delegate over :func:`_resolve_user_upload_path` rather
-    than a parallel implementation, and deliberately has no production callers
-    — the live path is ``_resolve_user_upload_path`` itself (see
-    ``routes/document_routes.py`` ``_locate_current_user_upload``). Tests assert
-    against this wrapper, so if it ever grows a body of its own those
-    assertions stop covering the live guard while staying green. That is
-    exactly how ``_public_http_url`` stranded its own SSRF tests; see
-    notes/resolvedissues.md, *"Tests asserting a security property nothing
-    enforced"*.
+    A thin delegate over :func:`_resolve_user_upload_path` with no production
+    callers on purpose: the live path is ``_resolve_user_upload_path`` itself
+    (see ``_locate_current_user_upload``). Tests assert against this wrapper,
+    so if it grows a body of its own they stop covering the live guard while
+    staying green (resolvedissues: "Tests asserting a security property nothing
+    enforced").
     """
     if upload_handler is None:
         from src.upload_handler import UploadHandler

@@ -1360,12 +1360,9 @@ def _maybe_json(value):
 def _coerce_edit_items(args: dict, list_key: str) -> tuple:
     """Normalize the shapes models actually emit for edit/suggest_document.
 
-    Run b5fe4ef5 (2026-07-18) turned a document correction into a silent no-op
-    because this conversion accepted exactly ONE shape — a well-formed `edits`
-    list — and coerced everything else to `[]`, producing an empty content
-    string that was then dispatched. The tool reported "No valid <<<FIND>>>
-    blocks found", which reads like a syntax error from the model but was in
-    fact an argument the converter threw away. The document was never touched.
+    Accepting only the canonical shape once turned a correction into a silent
+    no-op: everything else was coerced to [] and the tool reported a "syntax
+    error" for an argument the converter had thrown away.
 
     Accepted here:
       - `{list_key: [{find, replace}, ...]}`          — the canonical shape
@@ -1554,13 +1551,10 @@ def function_call_to_tool_block(name: str, arguments: str) -> Optional[ToolBlock
                 blocks.append(f'<<<FIND>>>\n{find}\n<<<REPLACE>>>\n{replace}\n<<<END>>>')
             content = "\n".join(blocks)
         if not content.strip():
-            # Deliberately NOT `return None`. Returning None drops the block,
-            # and a dropped block is invisible: the round ends with no tool
-            # event and no text, which is exactly how run b5fe4ef5 turned a
-            # correction request into a silent "Done." Let it dispatch — the
-            # empty-content branch in EditDocumentTool reports what actually
-            # went wrong, and the failure lands in tool_events where both the
-            # model and the log can see it.
+            # Deliberately NOT `return None`: a dropped block is invisible (no
+            # tool event, no text) and ends as a silent "Done.". Let it
+            # dispatch - the empty-content branch in EditDocumentTool reports
+            # what went wrong, where both the model and the log can see it.
             logger.warning(f"edit_document call carried no usable edits: {args!r}")
     elif tool_type == "suggest_document":
         suggestions, raw_markup = _coerce_edit_items(args, "suggestions")

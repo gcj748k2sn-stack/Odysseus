@@ -409,12 +409,10 @@ class ResearchHandler:
         stopped, or `timeout` seconds have gone by.
 
         Returns ``{"state": "started"}``, ``{"state": "failed", "error": str}``
-        or ``{"state": "pending"}`` (still probing at the deadline). Exists so
-        trigger_research can tell the model the truth: the probe runs in the
-        background task, so the job used to be reported as started even when
-        the research model was down and the run died milliseconds later
-        (notes/todo.md, "trigger_research reports success when the research
-        model is down").
+        or ``{"state": "pending"}`` (still probing at the deadline). Lets
+        trigger_research tell the model the truth: the probe runs in the
+        background, so a job used to be reported as started even when the
+        research model was down.
         """
         loop = asyncio.get_running_loop()
         deadline = loop.time() + max(0.0, float(timeout))

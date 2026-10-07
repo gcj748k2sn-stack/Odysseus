@@ -1,43 +1,27 @@
-"""Check a generated document against facts that were established once and written down.
+"""Check a generated document against facts established once and written down.
 
-notes/todo.md item 2b, and the second half of the split described in item 2a.
-``document_fidelity`` asks whether a document matches *the data it was handed*;
-this module asks whether it matches *reality* — for the narrow set of facts
-someone has already paid to establish.
+document_fidelity asks whether a document matches the data it was handed; this
+module asks whether it matches reality, for the facts recorded in
+config/known_facts.json (notes: "The document contradicted what we had already
+established").
 
-**The motivating measurement, because it shapes the design.** Six same-task
-runs were scored against cultivation sources (``notes/resolvedissues.md``, "4B
-retired"). The plain "create a document" run came out closest to correct. The
-run that was asked for "fact checked infos", and fetched four sources to get
-them, came out worst — fruiting at 14–21 °C on a tropical species, which is the
-*P. ostreatus* cold-shock rule, and 26 °C flagged as too warm when it is
-squarely optimal. Both bad documents titled themselves "Fact Checked &
-Corrected". **Retrieval is not neutral here; it drags the answer toward the
-wrong species, and the fact-check step wears the authority of verification while
-doing it.** So the check cannot live in the model's loop of self-verification.
-It has to compare against something fixed.
+Why a fixed record: in recorded runs the model's own "fact-check" step made
+documents worse - retrieval dragged the answer toward the wrong species while
+the document called itself verified. So the check cannot live in the model's
+loop; it compares against something fixed.
 
-Two halves, and — as in ``document_fidelity`` — the smaller one carries the
-weight:
+check_ranges
+    Numbers against numbers, per growth phase, unit-aware (°F converted).
+check_contradictions
+    Claims that are wrong whatever the number, e.g. a prescribed temperature
+    drop. A range check cannot see these ("cool down by 3-5 °F" contains no
+    absolute temperature).
 
-``check_ranges``
-    Numbers against numbers, per growth phase, unit-aware (°F is converted).
-    Catches "fruiting 14–21 °C" where the truth is 20–30 °C.
+Report-only: findings go to the closing summary beside stale_values and
+fidelity and nowhere else.
 
-``check_contradictions``
-    Claims that are wrong regardless of the number attached: a prescribed
-    temperature *drop*, or the assertion that this species prefers cooler
-    conditions than the rest of its genus. **A range check cannot see these** —
-    "cool down by 3–5 °F from spawn temp" contains no absolute temperature at
-    all, and it is the instruction that reaches the chamber.
-
-**Report-only.** Findings go to the closing summary beside ``stale_values`` and
-``fidelity`` and nowhere else. Item 8's retry nudge destroyed a 6186-character
-document by telling an idle model to act on a finding.
-
-**Silence is the normal outcome.** A document is checked only if it identifies
-itself as being about a subject in ``config/known_facts.json``; unknown subjects
-produce nothing. A checker that guesses trains people to ignore it.
+Silence is the normal outcome: only documents about a subject in the fixture
+are checked. A checker that guesses trains people to ignore it.
 """
 from __future__ import annotations
 
@@ -89,12 +73,9 @@ _PPM_WARNING_RE = re.compile(
 _RH_CONTEXT_RE = re.compile(r"humidit|\brh\b|moisture", re.IGNORECASE)
 
 # ── what a number on a line actually is ──────────────────────────────────────
-# Three ways to write a temperature that is NOT a setpoint, all of them common
-# in these documents, and all of them nonsense to compare against a range. The
-# first corpus run reported `3-5°C is outside the fruiting range 20-30 °C` for
-# the sentence "Temperature drop: slight reduction of 3-5°C" — a difference
-# judged as an absolute. That is the confidently-wrong shape this whole file
-# exists to prevent, so it must not be the checker's own output.
+# Changes ("drop by 3-5 °C") and limits are common in these documents and must
+# not be compared against a setpoint range; doing so is exactly the
+# confidently-wrong output this module exists to prevent.
 _DELTA_CONTEXT_RE = re.compile(
     r"(?:drop|reduc\w+|decreas\w+|lower\w*|cool\w*|differential|shock|shift|"
     r"increase\s+of|raise\s+by|swing|delta|fluctuat\w+)",
@@ -110,28 +91,22 @@ _THRESHOLD_CONTEXT_RE = re.compile(
 
 _TABLE_ROW_RE = re.compile(r"^\s*\|(?P<first>[^|]*)\|")
 
-# An explicit attribution — "14–21 °C **for fruiting**" — is the one case where
-# a phase named mid-line may be trusted, because the preposition says the number
-# belongs to it. A *comparison* — "20-25 °C, cooler **than colonization**" — says
-# the opposite, and reading it as an attribution is what made the checker report
-# the best document in the corpus as wrong. `than` is deliberately absent here.
+# An explicit attribution ("14-21 °C for fruiting") is the one case where a
+# phase named mid-line may be trusted. A comparison ("cooler than
+# colonization") says the opposite, so "than" is deliberately absent.
 _ATTRIBUTED_PHASE_RE = re.compile(
     r"(?:\bfor\b|\bduring\b|\bin\b|\bat\b)\s+(?:the\s+)?(\w+(?:\s+\w+)?)\s*(?:phase|stage)?",
     re.IGNORECASE,
 )
 
-# How far from a number a qualifying word has to be to change what the number
-# means. Whole-line matching was too blunt: it silenced `14–21°C ... for
-# fruiting` because the word "cooler" appeared 30 characters later in a
-# different clause, which hid the single worst claim in the corpus.
+# How far from a number a qualifying word may be to change its meaning.
+# Whole-line matching was too blunt: a qualifier in a different clause hid a
+# real error.
 _QUALIFIER_BEFORE = 25
 _QUALIFIER_AFTER = 15
 
-# Naming a hazard is not prescribing it. The best of the twenty recorded
-# documents lists "Temperature shock or inconsistent conditions" in a
-# troubleshooting table as the *cause* of dark caps — correct advice, and the
-# cold-shock rule fired on it. A document that warns against the thing this
-# checker warns against must not be reported for agreeing.
+# Naming a hazard is not prescribing it: a troubleshooting row listing
+# "temperature shock" as a cause is correct advice and must not be reported.
 _DIAGNOSTIC_CONTEXT_RE = re.compile(
     r"(?:troubleshoot\w*|symptom|problem|issue|cause|avoid|prevent|do\s+not|don't|"
     r"never|stabili[sz]e|fix|remedy|solution|wrong|too\s+(?:much|great|sudden))",
@@ -151,17 +126,10 @@ def load_facts(path: Optional[str] = None) -> dict:
 def subject_for(document: str, facts: dict) -> Optional[dict]:
     """The subject this document is *about*, or None.
 
-    A mention is not a subject. The DHT22 datasheet in the corpus ends with the
-    line "Document created for environmental monitoring project reference - Pink
-    Oyster mushroom climate chamber 'martha'", and a substring test made a
-    sensor datasheet eligible for mushroom cultivation facts — which then
-    reported its "±2 °C accuracy" as a prescribed temperature drop. **A false
-    positive on an unrelated document is the most expensive kind**, because it
-    is the one that makes a reader dismiss the whole warning.
-
-    So the marker has to appear in a heading, or appear more than once. All
-    twenty recorded cultivation documents carry it in their title; the datasheet
-    carries it once, in a footer.
+    A mention is not a subject: a sensor datasheet with a one-line footer about
+    the grow chamber must not get cultivation checks (a false positive on an
+    unrelated document is the most expensive kind). So the marker has to appear
+    in a heading, or more than once.
     """
     text = document or ""
     low = text.lower()
@@ -188,17 +156,11 @@ def _phases_in(text: str) -> set:
 def _line_phases(lines: List[str]) -> List[set]:
     """Phase context per line: the nearest heading, or a table row's own label.
 
-    **Naming a phase is not the same as being about it**, and reading it that
-    way broke the negative control on the first corpus run. The best of the
-    twenty recorded documents contains, inside its *Fruiting* section, the row
-    ``| Temperature | 20-25°C (68-77°F) — cooler than colonization |``. Scanning
-    the whole line for phase words found "colonization", judged a correct
-    fruiting temperature against the colonization range, and reported the one
-    document that got it right as wrong.
-
-    So only two things establish phase: the heading a line sits under, and — for
-    a table row — its **first cell**, which is where these documents put the row
-    label (``| Colonization | 24-30°C | ... |``). Everything else inherits.
+    Naming a phase is not being about it: a Fruiting-section row reading "20-25
+    °C
+    - cooler than colonization" is a fruiting value. Only two things establish
+      phase: the heading a line sits under and, for a table row, its first
+      cell. Everything else inherits.
     """
     out: List[set] = []
     heading_phases: set = set()
@@ -277,14 +239,10 @@ def check_ranges(document: str, subject: dict) -> List[str]:
         applicable = [temp_rules[p] for p in ctx if p in temp_rules]
         if applicable:
             for lo, hi, raw in _temperatures_celsius(line):
-                # Judge the MIDPOINT, not the endpoints. A document that says
-                # "24-30 °C" against a recorded 24-29 is not making a false
-                # claim, it is stating a slightly wider tolerance; firing on one
-                # degree of overhang produced more noise than signal across the
-                # corpus and would teach the reader to skim past the real ones.
-                # An ambiguous line — a heading naming two phases, e.g.
-                # "Colonization/Pinning Initiation" — must fail against BOTH
-                # before it is reported.
+                # Judge the MIDPOINT, not the endpoints: a slightly wider
+                # stated tolerance is not a false claim, and firing on one
+                # degree of overhang is noise. A line naming two phases must
+                # fail against BOTH before it is reported.
                 mid = (lo + hi) / 2.0
                 bad = [r for r in applicable if mid < r["low"] or mid > r["high"]]
                 if len(bad) == len(applicable):
@@ -345,10 +303,9 @@ def check_contradictions(document: str, subject: dict) -> List[str]:
             m = pattern.search(line)
             if not m:
                 continue
-            # Opt-in, per rule. `optimal_temperature_called_too_warm` is
-            # *inherently* a warning — it only ever appears in the framing this
-            # filter excludes — so applying the filter to it silenced the single
-            # worst claim in the corpus on the first attempt.
+            # Opt-in, per rule: optimal_temperature_called_too_warm only ever
+            # appears in the framing this filter excludes, so filtering it
+            # would silence it entirely.
             if rule.get("diagnostic_framing_excluded", True) and _DIAGNOSTIC_CONTEXT_RE.search(line):
                 continue
             quote = " ".join(m.group(0).split())[:80]

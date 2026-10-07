@@ -1008,11 +1008,10 @@ def _save_settings(settings):
     atomic_write_json(str(SETTINGS_FILE), settings, indent=2)
 
 
-# "SMTP/IMAP not configured" is logged once per (protocol, account) per process,
-# not on every config read: the email poller reads the config every minute, so
-# an instance without email filled the terminal and app.log with two warnings a
-# minute (notes/todo.md item 13). A key is forgotten once that protocol is
-# configured, so breaking it again warns again.
+# "SMTP/IMAP not configured" is logged once per (protocol, account) per
+# process: the poller reads the config every minute, and an instance without
+# email logged two warnings a minute. The key is forgotten once that protocol
+# is configured, so breaking it again warns again.
 _NOT_CONFIGURED_WARNED: set[tuple[str, str]] = set()
 
 

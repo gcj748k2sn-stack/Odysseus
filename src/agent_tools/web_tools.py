@@ -137,14 +137,10 @@ class WebFetchTool:
 
         if not text:
             if err:
-                # A suppressed re-fetch must be visible in BOTH directions or
-                # the negative cache is unfalsifiable: the model cannot tell it
-                # is being handed a memory rather than a fresh 403, and
-                # `app.db` cannot tell a request that was skipped from one that
-                # left the machine and failed again. The success path has
-                # carried these labels since the frozen-device incident; the
-                # failure path never had them because failures were never
-                # cached. See services/search/content.py, negative cache.
+                # A suppressed re-fetch must be labelled in BOTH directions:
+                # the model must know it is handed a memory, not a fresh 403,
+                # and app.db must tell a skipped request from one that failed
+                # again. See the negative cache in services/search/content.py.
                 failed = {
                     "error": f"web_fetch: {url}: {err}",
                     "exit_code": 1,
@@ -181,12 +177,9 @@ class WebFetchTool:
                 f"{WEB_FETCH_HARD_MAX_BYTES:,} bytes.]\n\n"
             )
 
-        # Say so when the body came from the 2h cache rather than the network.
-        # Without this the model presents a stale reading as a current one: two
-        # turns 4.5 minutes apart both reported `uptime: 91 s` from a device
-        # whose counter was running, because only the first fetch was real.
-        # Anything time-sensitive — a sensor, a status page, a queue depth —
-        # needs the age stated, and the model cannot infer it.
+        # Say so when the body came from the 2 h cache: otherwise the model
+        # presents a stale reading (a sensor, a status page) as current, and it
+        # cannot infer the age itself.
         cache_note = ""
         if result.get("cached"):
             age = result.get("cache_age_seconds")
@@ -207,10 +200,8 @@ class WebFetchTool:
         if len(output) > MAX_OUTPUT_CHARS:
             output = output[:MAX_OUTPUT_CHARS] + "\n\n[...truncated]"
         out = {"output": output, "exit_code": 0}
-        # Carried onto the persisted tool_event so `app.db` distinguishes a
-        # cache hit from a live fetch. Previously identical in shape and
-        # exit_code, which is why reading a run back from the database produced
-        # a wrong conclusion about a device being frozen.
+        # Carried onto the persisted tool_event so app.db distinguishes a cache
+        # hit from a live fetch.
         if result.get("cached"):
             out["cached"] = True
             out["cached_at"] = result.get("cached_at")

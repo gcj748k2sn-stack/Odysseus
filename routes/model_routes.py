@@ -2701,7 +2701,7 @@ def setup_model_routes(model_discovery):
         for tag in sorted(TOOL_TAGS):
             tools.append({"id": tag, "enabled": tag not in disabled})
         # The built-in browser is an MCP server, not a TOOL_TAG; this one row
-        # switches all of its tools (the agent loop expands the token, item 51).
+        # switches all of its tools (the agent loop expands the token).
         from src.tool_policy import BROWSER_SERVER_ID
         tools.append({"id": BROWSER_SERVER_ID, "enabled": BROWSER_SERVER_ID not in disabled})
         return {"tools": tools}

@@ -284,17 +284,12 @@ def _normalize_value(raw: str) -> str:
 def find_stale_values(applied_pairs: List[tuple], final_content: str) -> List[str]:
     """Values that an edit changed away from but which still survive elsewhere.
 
-    The failure this exists to catch (observed 2026-07-18, run 127d32b0): the
-    model corrected the CO2 figure in one table cell to "500-800 ppm" and left
-    the cell immediately beside it reading "below 0.4%" — the document ended up
-    carrying four different CO2 thresholds and reading as freshly fact-checked.
-    A half-corrected document is worse than an uncorrected one, because the
-    surviving errors now look verified.
-
-    Exact-FIND rescanning cannot catch that: the two cells are different
-    strings. So instead compare at the level of *measured values* — pull the
-    number+unit tokens out of FIND, drop any the REPLACE kept, and report those
-    that are still somewhere in the finished document.
+    A model corrects one table cell and leaves the neighbouring cell with the
+    old threshold: the document now reads as fact-checked while contradicting
+    itself, which is worse than uncorrected. Exact-FIND rescanning cannot catch
+    that (the cells are different strings), so compare measured values: take
+    the number+unit tokens out of FIND, drop any the REPLACE kept, and report
+    those still present in the finished document.
     """
     if not applied_pairs:
         return []
@@ -482,10 +477,9 @@ class CreateDocumentTool:
                 return {"error": "Cannot create document in another user's session"}
             _owner = _sess.owner if _sess else None
 
-            # An empty create leaves a phantom "Untitled" document in the
-            # library that the user then has to find and delete. Run 8c80cf8d
-            # produced two of them in twelve seconds while the model was
-            # thrashing. Cheap to refuse, and the error tells it what to do.
+            # An empty create leaves a phantom "Untitled" document the user has
+            # to find and delete. Cheap to refuse, and the error tells the
+            # model what to do.
             if not (content or "").strip():
                 logger.warning("create_document: refused an empty document")
                 return {
@@ -575,14 +569,11 @@ class UpdateDocumentTool:
             if not doc:
                 return {"error": "No documents exist to update"}
 
-            # An empty update is never a legitimate instruction — it can only
-            # destroy. Run 8c80cf8d: the model called update_document with no
-            # content and a 6186-character document became zero bytes, with the
-            # old text recoverable only from document_versions. edit_document
-            # has refused empty content since 2026-07-18; this path never did.
-            #
-            # Deliberately checked BEFORE the email coercion, which would
-            # otherwise rebuild an empty body into a valid-looking header block.
+            # An empty update is never a legitimate instruction - it can only
+            # destroy (it once emptied a document; the text survived only in
+            # document_versions). Checked BEFORE the email coercion, which
+            # would otherwise rebuild an empty body into a valid-looking header
+            # block.
             if not (content or "").strip():
                 logger.warning(
                     "update_document: refused an empty write to %s (%d chars would have been lost)",
@@ -663,11 +654,9 @@ class EditDocumentTool:
         edits = parse_edit_blocks(content)
         if not edits:
             # Empty content and unparseable content are different failures and
-            # need different messages. Run b5fe4ef5 (2026-07-18) hit the empty
-            # case via a structured call whose `edits` argument the converter
-            # discarded; the shared "no valid blocks" text read as a syntax
-            # error the model never made, so its retry reproduced the same
-            # broken call and the document was never touched.
+            # need different messages: a shared "no valid blocks" text read as
+            # a syntax error the model never made, so its retry reproduced the
+            # same broken call.
             if not (content or "").strip():
                 return {
                     "error": (

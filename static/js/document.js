@@ -26,30 +26,24 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   let _autoTitleDebounce = null;
   let _autoSaveDebounce = null;
 
-  // Rolling trace of every editor/document binding transition — notes/todo.md
-  // item 30. The console only shows what was open at the time, and this bug
-  // fires on a sequence of UI actions nobody is watching a console during.
-  // Dump it after the fact with:  copy(JSON.stringify(window.__docTrace))
+  // Rolling trace of every editor/document binding transition. Binding bugs
+  // fire on sequences of UI actions nobody watches a console during, so record
+  // them and dump afterwards with: copy(JSON.stringify(window.__docTrace))
   const _docTrace = (window.__docTrace = []);
   function _trace(ev, data) {
     _docTrace.push(Object.assign({ t: new Date().toISOString().slice(11, 23), ev }, data || {}));
     if (_docTrace.length > 400) _docTrace.shift();
   }
 
-  /** Caller frames for a trace entry — TEMPORARY, notes/todo.md item 31.
+  /**
+   * Caller frames for a trace entry — TEMPORARY.
    *
-   * Measured 2026-07-31 in ~30 minutes of ordinary use: **14 saves, 2 with no
-   * stamp, 0 mismatched**, plus four FOREIGN-buffer copies blocked in
-   * saveCurrentToMap, all distinct document pairs, chained
-   * (fb071567 → 68647d12 → d53e717b → 3d072af4). So `activeDocId` routinely
-   * moves while the buffer still belongs to the previous document, on paths
-   * nobody has identified — the guard converts that into a blocked copy
-   * instead of corruption, which is why nothing visibly breaks.
-   *
-   * A warning without a caller cannot name the path that produced it. This
-   * attaches one to exactly the two branches that fire in that situation.
-   * **Remove once the paths are named** — it runs only on the blocked branches,
-   * but it is diagnosis, not product. Disable at runtime with
+   * activeDocId was seen moving while the buffer still belonged to the
+   * previous document, on paths not yet identified; the stamp guard turns that
+   * into a blocked copy instead of corruption. A warning without a caller
+   * cannot name the path, so this attaches one to exactly the blocked branches
+   * (and to unstamped saves). Remove once the paths are named - it is
+   * diagnosis, not product. Disable at runtime:
    * `window.__docStacks = false`.
    */
   function _stackFrames(skip = 2, keep = 6) {
@@ -76,13 +70,11 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   const _EMAIL_LOCAL_DRAFT_PREFIX = 'odysseus.email.replyDraft.v1:';
 
   // Id of the document the user has actually typed into since its last
-  // successful sync. Set ONLY from real DOM `input` events, which the browser
-  // does not fire for programmatic `textarea.value = ...` assignments — so this
-  // distinguishes "the user edited this" from "some code path put content in
-  // the editor". saveDocument's 409 handler needs that distinction: its
-  // "newest user intent wins" retry deliberately overwrites the server, and
-  // must not be reachable by content the user never typed (notes/todo.md item 1,
-  // where a diff-restored pre-edit buffer took that branch and clobbered v7).
+  // successful sync. Set ONLY from real DOM `input` events (not fired for
+  // programmatic `textarea.value = ...`), so it tells "the user edited this"
+  // from "code put content in the editor". saveDocument's 409 retry overwrites
+  // the server and must not be reachable by content the user never typed
+  // (resolvedissues: "Autosave reverting AI edits").
   let _userDirtyDocId = null;
   function _markUserDirty() { if (activeDocId) _userDirtyDocId = activeDocId; }
 
@@ -4552,45 +4544,29 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
     // Save current doc state before switching.
     //
-    // `flush: false` is for callers that have just REBUILT the pane, where the
-    // textarea is a fresh empty node that never held anything: the chip
-    // restore does openPanel() (which removes and recreates
-    // #doc-editor-pane) and then calls this. Flushing there copies an empty
-    // buffer over a full map entry — notes/todo.md item 30, observed emptying
-    // a 17,085-character entry on 2026-07-30.
-    //
-    // Nothing is lost by skipping it, for two independent reasons: the
-    // minimize path (`closePanel('down')`) already flushed while the pane was
-    // intact and correctly stamped, so the map is authoritative; and by the
-    // time this runs the buffer is gone anyway, so the flush could not
-    // recover unsaved text even in principle. The stamp guard inside
-    // saveCurrentToMap already BLOCKS this call, so skipping it is
-    // outcome-identical — it removes the attempt, not a write.
+    // `flush: false` is for callers that have just REBUILT the pane (e.g. the
+    // chip restore: openPanel() recreates #doc-editor-pane, then calls this).
+    // The fresh textarea never held anything, and flushing it would copy an
+    // empty buffer over a full map entry (resolvedissues: "Switching chats
+    // wrote the editor buffer into the other chat's document"). Nothing is
+    // lost by skipping: the minimize path already flushed while the pane was
+    // intact, and the stamp guard in saveCurrentToMap would block this call
+    // anyway.
     if (flush) saveCurrentToMap();
 
     // Auto-delete the doc we're leaving if it's completely empty.
     //
-    // ⚠️ This is a third map-derived DELETE, the same class as item 31(b) and
-    // in a different function. It runs three lines after the flush above, so
-    // before item 30's guard the sequence was: flush zeroes the map entry for
-    // the document being left → this reads that entry as empty (title too,
-    // because the rebuilt pane's title input is blank) → DELETE. The guard is
-    // what stopped it, and the guard was not written for this.
-    //
-    // So do not infer emptiness from the map alone: `lastSyncedContent` is the
-    // last content the SERVER acknowledged, and a document that has ever held
-    // content is not an empty scratch document. notes/todo.md item 33.
+    // Do not infer emptiness from the map alone: a flush can zero a map entry
+    // while the server copy is intact. lastSyncedContent is the last content
+    // the SERVER acknowledged, and a document that ever held content is not an
+    // empty scratch document (resolvedissues: "switchToDoc deleted the
+    // document you were leaving").
     const prevId = activeDocId;
-    // [switchAway] report-only — notes/todo.md item 33. Recorded UNCONDITIONALLY,
-    // including when the branch below is skipped, because item 33's three
-    // silent-failure modes are indistinguishable without it: the branch not
-    // being reached at all (prevId === docId, which is what item 35's
-    // early `activeDocId = target.id` does on every loadSessionDocs path), the
-    // flush being blocked so `prev.content` was never zeroed, and the autosave
-    // having landed so `everHadContent` is false. Four verification attempts on
-    // 2026-07-31 produced silence, and silence meant all three at once.
-    // `detachDoc` has carried exactly these fields since 07-30, which is the
-    // only reason item 31(b) could be verified. Remove when 33 closes.
+    // [switchAway] report-only. Recorded unconditionally, including when the
+    // branch below is skipped: without it, "branch not reached", "flush
+    // blocked" and "autosave already landed" all look like silence. Remove when
+    // the document-switching cluster is closed; todo: "An aborted document
+    // stream orphans its placeholder as activeDocId" is still open.
     try {
       const _p = prevId ? docs.get(prevId) : null;
       _trace('switchAway', {
@@ -4633,7 +4609,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     // For email docs, _showEmailFields will set textarea to body only (not raw header)
     if (textarea && doc.language !== 'email') textarea.value = doc.content || '';
     // Which document this buffer was rendered from. saveDocument refuses to
-    // write a buffer whose stamp doesn't match its target — notes/todo.md item 30.
+    // write a buffer whose stamp doesn't match its target.
     if (textarea) textarea.dataset.docId = docId;
     _trace('switchToDoc', { id: docId, len: (doc.content || '').length });
     if (langSelect) langSelect.value = doc.language || 'markdown';
@@ -4753,31 +4729,22 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   function _detachDocFromSession(docId, { toast = false } = {}) {
     const doc = docs.get(docId);
 
-    // (a) Only the ACTIVE document has a buffer worth flushing.
-    //
-    // saveDocument() takes no target — it writes activeDocId. So closing tab X
-    // while Y was active issued a PUT for Y carrying Y's buffer: a no-op when
-    // the pairing was right, and a second write of already-corrupt content when
-    // it wasn't. c4da7609 took exactly two of those, 2026-07-30 14:24:08 and
-    // 14:26:51, over an `ai` version, with item 30's map guard already live.
-    // Nothing is lost for X by not saving here: X has no buffer, and the write
-    // that used to happen was never X's anyway. notes/todo.md item 31(a).
+    // (a) Only the ACTIVE document has a buffer worth flushing. saveDocument()
+    // writes activeDocId, so closing tab X while Y was active used to PUT Y's
+    // buffer for Y - at best a no-op, at worst a second write of corrupt
+    // content. X has no buffer, so nothing is lost for X (resolvedissues:
+    // "Closing a document tab overwrote a different document").
     const isActive = docId === activeDocId;
 
-    // (b) Emptiness must not be inferred from the map alone.
-    //
-    // item 30 empties map entries (restoreFn → openPanel → switchToDoc →
-    // saveCurrentToMap), so `doc.content` can read as empty while the server
-    // copy is intact. `lastSyncedContent` is the last content the SERVER
-    // acknowledged, so a document that has ever held content is never junk to
-    // delete from here. A doc missing from the map entirely is UNKNOWN, not
-    // empty — it is never deleted.
+    // (b) Emptiness must not be inferred from the map alone: a map entry can
+    // read empty while the server copy is intact. lastSyncedContent is what
+    // the SERVER acknowledged, so a document that ever held content is never
+    // deleted from here; a doc missing from the map is UNKNOWN, not empty, and
+    // is never deleted.
     //
     // The asymmetry is deliberate: a false negative leaves a stray empty
-    // document behind, while a false positive is a soft delete (is_active=0)
-    // that the Documents Tidy action later makes PERMANENT — it hard-deletes
-    // is_active=0 rows with empty content, and versions cascade. See
-    // notes/todo.md item 32.
+    // document; a false positive is a soft delete that a later tidy could make
+    // permanent.
     const mapLen    = (doc && typeof doc.content === 'string') ? doc.content.trim().length : 0;
     const syncedLen = (doc && typeof doc.lastSyncedContent === 'string') ? doc.lastSyncedContent.trim().length : 0;
     const known     = !!doc;
@@ -4882,27 +4849,19 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     const textarea = document.getElementById('doc-editor-textarea');
     // Never copy a buffer into a document it was not rendered from.
     //
-    // This is the hole the saveDocument guard could not close. closePanel()
-    // (including the minimize path) and switchToDoc() both call this while the
-    // pairing may already be wrong, so the foreign text lands in the MAP entry
-    // for activeDocId. A later switchToDoc then renders that entry and stamps
-    // it with its own id — stamp and content now agree, and saveDocument's
-    // guard is satisfied by laundered corruption. Observed 2026-07-30 14:24:
-    // one chat's buffer written to c4da7609 in a session from the day before,
-    // over an `ai` version. notes/todo.md item 30.
-    // A MISSING stamp is not permission. restoreFn does openPanel() — which
-    // builds a fresh, empty, unstamped textarea — and then switchToDoc(), whose
-    // first act is to call this function while activeDocId still points at the
-    // minimized document. So an empty buffer was copied over a 17,085-character
-    // map entry, switchToDoc then rendered the emptied entry, and the chip
-    // "opened an empty untitled document". Observed 2026-07-30 12:48:03.016Z:
-    //   saveCurrentToMap active=aa87b1ce stamp=null len=0  →  switchToDoc len=0
-    // The same call with activeDocId already moved to another chat's document
-    // copies the FOREIGN text instead — that is the cross-chat write.
+    // closePanel() and switchToDoc() call this while the buffer/document
+    // pairing may already be wrong. Foreign text copied into the map entry for
+    // activeDocId would later be rendered and stamped with that id - stamp and
+    // content agree, and saveDocument's guard is satisfied by laundered
+    // corruption.
     //
-    // So: only an explicitly matching stamp may write. The one exception is a
-    // genuinely new document, where buffer and map entry are both empty and
-    // there is nothing to lose either way.
+    // A MISSING stamp is not permission either: restoreFn builds a fresh,
+    // empty, unstamped textarea and then calls this, which once copied an
+    // empty buffer over a full map entry (resolvedissues: "Switching chats
+    // wrote the editor buffer into the other chat's document").
+    //
+    // So only an explicitly matching stamp may write. The one exception is a
+    // genuinely new document, where buffer and map entry are both empty.
     const _stamp = textarea ? (textarea.dataset.docId || null) : null;
     const _bufLen = textarea ? textarea.value.length : 0;
     const _mapLen = (doc.content || '').length;
@@ -7107,9 +7066,8 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         // `flush: false` because openPanel() has just REBUILT the pane: the
         // textarea is a fresh empty node, and flushing it would copy nothing
         // over the map entry we are about to render. The buffer was already
-        // saved by closePanel('down') at minimize time. notes/todo.md item 30 —
-        // this ordering is the root cause; the stamp guard made it harmless,
-        // this makes it correct.
+        // saved by closePanel('down') at minimize time. This ordering was the
+        // root cause; the stamp guard made it harmless, this makes it correct.
         openPanel();
         if (id && docs.has(id)) {
           try { switchToDoc(id, { flush: false }); } catch (e) { console.error('Restore doc failed:', e); }
@@ -7446,11 +7404,11 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       _showEmailFields(doc, { applyLocalDraft: false });
     }
     clearTimeout(_autoSaveDebounce);
-    // Labelled like every other silent save: an unlabelled one writes an
-    // anonymous "Manual edit" row into document_versions, and telling a real
+    // Labelled like every other silent save: an unlabelled save writes an
+    // anonymous "Manual edit" row into document_versions, and telling a
     // keystroke from a machine-written envelope merge is what made the
-    // autosave data loss diagnosable at all. This call site arrived from
-    // upstream after the labelling pass, and the guard test caught it.
+    // autosave data loss diagnosable. Upstream added this call site after the
+    // labelling pass; the guard test caught it.
     _autoSaveDebounce = setTimeout(() => {
       saveDocument({ silent: true, reason: 'Autosave (email envelope)' });
     }, 800);
@@ -7461,14 +7419,13 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   // pane was torn down by another full-screen view (e.g. opening a doc from the
   // email modal): in that case openPanel() early-returns and nothing mounts, so
   // the doc silently never appears. Reset the stale flag and re-open for real.
-  /** Mount the pane if it isn't there. Returns TRUE when it had to REBUILD it.
+  /**
+   * Mount the pane if it isn't there. Returns TRUE when it had to REBUILD it.
    *
-   * The return value matters: a rebuilt pane has a fresh, empty, unstamped
-   * textarea, so a following `switchToDoc` must not flush it into the map —
-   * same defect as the chip restore, notes/todo.md item 30. When the pane was
-   * already mounted the buffer is real and the flush is legitimate, so the
-   * caller cannot simply hard-code `flush: false`; it has to know which
-   * happened. Callers: `switchToDoc(id, { flush: !rebuilt })`.
+   * A rebuilt pane has a fresh, empty, unstamped textarea, so a following
+   * switchToDoc must not flush it into the map; an already-mounted pane holds
+   * a real buffer and may be flushed. Callers: `switchToDoc(id, { flush:
+   * !rebuilt })`.
    */
   function _ensureDocPaneMounted() {
     if (!isOpen || !document.getElementById('doc-editor-pane')) {
@@ -7612,15 +7569,12 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         _markDocVisibleState(sessionId, 'minimized');
         _ensureDocChipRegistered();
         if (isOpen) {
-          // flush:false — activeDocId was reassigned to target.id two lines
-          // above, so saveCurrentToMap() would aim the flush at the document
-          // being arrived at while the buffer still holds the one being left.
-          // That mispairing is structural, not a race: it fired on 3 of 6
-          // switches in 40 seconds of ordinary use (2026-07-31), and item 30's
-          // stamp guard blocked every one. This removes the attempt, not a
-          // write — nothing legitimate can be flushed here, because :7557 may
-          // already have deleted the previous document's map entry.
-          // notes/todo.md item 35.
+          // flush:false - activeDocId was reassigned to target.id above, so
+          // saveCurrentToMap() would aim the flush at the document being
+          // arrived at while the buffer still holds the one being left
+          // (structural, not a race). This removes the attempt, not a write
+          // (resolvedissues: "The editor buffer was flushed into the document
+          // being switched TO").
           try { switchToDoc(target.id, { flush: false }); } catch (e) { console.error('Minimize restored doc failed:', e); }
           closePanel('down');
         } else {
@@ -7673,7 +7627,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
     if (titleInput) titleInput.value = doc.title || '';
     if (textarea) textarea.value = doc.current_content || doc.content || '';
-    // Stamp the buffer with its source document — notes/todo.md item 30.
+    // Stamp the buffer with its source document.
     if (textarea && doc.id) textarea.dataset.docId = doc.id;
     if (langSelect) langSelect.value = doc.language || 'markdown';
     if (badge) { const _v = doc.version_count || doc.version || 1; badge.textContent = `v${_v}`; badge.style.display = _v > 1 ? '' : 'none'; }
@@ -9057,21 +9011,14 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
     _updateDiffStatus();
 
-    // Update the editor buffer only — do NOT write to the server mid-review.
+    // Update the editor buffer only - do NOT write to the server mid-review.
     //
-    // This previously saved on every click, "to persist partial progress so
-    // refresh doesn't lose individually-resolved chunks". The cost was far
-    // higher than the benefit: because an un-reviewed chunk rendered as its OLD
-    // side, one Accept click PUT a document in which every change the user had
-    // not yet looked at was rolled back. Observed in production — doc 92f3b2a0
-    // v3, a single accept click that resurrected twelve pre-edit sections and
-    // left the document asserting both versions of each (notes/todo.md item 3's
-    // "documents contradict themselves", manufactured by the editor).
-    //
-    // A review is a transaction: it commits when it completes, below. Mirrors
-    // VS Code's merge editor, which updates the buffer and deliberately leaves
-    // the file on disk untouched until the merge is completed. Losing an
-    // in-progress review to a refresh is the correct trade.
+    // Saving on every click meant one Accept PUT a document in which every
+    // chunk the user had not looked at yet was rolled back, leaving both
+    // versions of each section (resolvedissues: "Diff review corrupted
+    // documents"). A review is a transaction that commits when it completes,
+    // below - like VS Code's merge editor. Losing an in-progress review to a
+    // refresh is the correct trade.
     _applyResolvedChunksToTextarea();
 
     if (_diffUnresolvedCount === 0) {
@@ -9082,18 +9029,16 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     }
   }
 
-  /** Compute current content from the chunk decisions taken so far.
+  /**
+   * Compute current content from the chunk decisions taken so far.
    *
-   *  Only an EXPLICIT rejection reverts a chunk. An un-reviewed chunk keeps the
-   *  new (AI) side, because that is what the server already holds — so the
-   *  preview matches reality and "I haven't looked at this yet" can never be
-   *  silently recorded as "I rejected this".
-   *
-   *  The previous default was the opposite, and it is what corrupted documents:
-   *  line-level LCS splits a rewritten block into separate delete and insert
-   *  chunks, so leaving the delete un-reviewed restored the old text while the
-   *  neighbouring insert supplied the new — leaving BOTH in the document. Doc
-   *  92f3b2a0 v3 shows twelve such regions from a single Accept click. */
+   * Only an EXPLICIT rejection reverts a chunk. An un-reviewed chunk keeps the
+   * new (AI) side, because that is what the server already holds, so "not
+   * looked at yet" can never be recorded as "rejected". The opposite default
+   * left BOTH versions in the document: line-level LCS splits a rewritten
+   * block into a delete and an insert chunk, and an un-reviewed delete
+   * restored the old text beside the new.
+   */
   function _applyResolvedChunksToTextarea() {
     const textarea = document.getElementById('doc-editor-textarea');
     if (!textarea) return;
@@ -9137,26 +9082,20 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
   }
 
   /** Exit diff mode and apply resolved changes */
-  /** Tear down diff mode.
+  /**
+   * Tear down diff mode.
    *
-   *  `discard` = reject-all (restore `_diffOldContent`) vs. apply the resolved
-   *  chunks. `persist` controls whether the result is written back to the
-   *  server — it MUST be false whenever the teardown is driven by the AI rather
-   *  than by the user.
+   * `discard` = reject-all (restore `_diffOldContent`) vs. apply the resolved
+   * chunks. `persist` controls whether the result is written back to the
+   * server - it MUST be false whenever the teardown is driven by the AI rather
+   * than the user.
    *
-   *  Why: enterDiffMode leaves the textarea holding the PRE-edit content while
-   *  the docs map and the server have already moved to the post-edit version.
-   *  A discard therefore restores content that is strictly older than the
-   *  server's, and persisting it is a lost update — it passes the compare-and-
-   *  swap legitimately, because the base_version is the fresh one. That is
-   *  exactly how three sets of AI edits were destroyed (notes/todo.md item 1): a
-   *  duplicated doc_update re-entered handleDocUpdate, the guard at the top
-   *  fired exitDiffMode(true), and the pre-edit buffer was PUT back ~80ms after
-   *  the edit landed, recorded as source="user" / "Manual edit".
-   *
-   *  A user pressing Reject-All still persists — that is a real intent to undo
-   *  the AI's edit. An AI-driven teardown persists nothing; the pending review
-   *  is simply abandoned and the server keeps the newer content.
+   * Why: enterDiffMode leaves the textarea holding the PRE-edit content while
+   * the docs map and the server already hold the post-edit version. Persisting
+   * a discard is then a lost update that passes the compare-and-swap
+   * legitimately (resolvedissues: "Autosave reverting AI edits"). A user
+   * pressing Reject-All still persists; an AI-driven teardown persists nothing
+   * and the server keeps the newer content.
    */
   function exitDiffMode(discard, { persist = true } = {}) {
     if (!_diffModeActive) return;
@@ -9721,15 +9660,14 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
   /** Save manual edits */
   let _conflictRetry = false;
-  /** Persist the editor's current content.
+  /**
+   * Persist the editor's current content.
    *
-   *  `reason` labels WHICH client path produced the write. Every client write
-   *  lands as source="user" / "Manual edit", so typing, a queued autosave, a
-   *  diff-review click and a diff teardown were indistinguishable in
-   *  `document_versions` — which is why diagnosing the revert (notes/todo.md item 1)
-   *  and the blend rows took a replay harness instead of one SQL query. The
-   *  label is carried in `summary`, so it also shows up in the version history
-   *  panel. Keep the strings short and human-readable; users read them.
+   * `reason` labels WHICH client path produced the write. Every client write
+   * lands as source="user" / "Manual edit", so without it typing, an autosave,
+   * a review click and a diff teardown are indistinguishable in
+   * document_versions. Carried in `summary`, so it shows in the version
+   * history panel - keep it short and readable.
    */
   export async function saveDocument({ silent = false, forceVersion = false, reason = null } = {}) {
     if (!activeDocId) return false;
@@ -9739,27 +9677,20 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
 
     // The buffer must belong to the document we are about to write.
     //
-    // When the panel is minimized to the composer chip across a chat switch,
-    // openPanel() rebuilds #doc-editor-pane while it still holds the PREVIOUS
-    // chat's text, and loadSessionDocs() has already repointed activeDocId at
-    // the new chat's document. A single keystroke — or chat.js's save-before-
-    // send — then persists one chat's document into another's, as source="user",
-    // with a base_version the CAS accepts legitimately.
+    // A minimized panel restored across a chat switch can still hold the
+    // PREVIOUS chat's text while loadSessionDocs() has repointed activeDocId;
+    // one keystroke (or chat.js's save-before-send) would then write one
+    // chat's document into another's with a base_version the CAS accepts
+    // (resolvedissues: "Switching chats wrote the editor buffer into the other
+    // chat's document").
     //
-    // Reproduced 2026-07-30 13:32:45: 16,293 characters of session 1bcd57dc's
-    // AI document written into session 5bc3c70f's 8,578-char clone, byte-
-    // identical apart from the one character typed. See notes/todo.md item 30.
-    //
-    // Re-render rather than save: the stale text is another document's, that
-    // document still holds it, and nothing here is the user's to lose.
+    // Re-render rather than save: the stale text belongs to another document,
+    // which still holds it.
     const stampedDocId = textarea.dataset.docId;
     // Unconditional, so a save that slips past the guard is still explained:
-    // an absent stamp and a matching stamp are different failures.
-    // A MISSING stamp is measured, not blocked. 2 of 14 saves had none in
-    // ordinary use (2026-07-31), and in both the buffer matched the map
-    // exactly — so the content was right and only the label was absent.
-    // Failing closed here would have refused 14% of legitimate saves, which
-    // is why this records the caller instead of acting on it. notes/todo.md 31.
+    // an absent stamp and a matching stamp are different failures. A MISSING
+    // stamp is measured, not blocked - in observed unstamped saves the buffer
+    // matched the map, and failing closed would refuse legitimate saves.
     const _saveVia = stampedDocId ? undefined : _stackFrames();
     console.log('[doc-save] target=%s stamp=%s len=%d%s',
                 savingDocId, stampedDocId || '(none)', textarea.value.length,
@@ -9820,12 +9751,11 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
           return false;
         }
         const d = docs.get(savingDocId);
-        // Diverging from lastSyncedContent is necessary but NOT sufficient to
-        // call this a user edit: any code path that writes the textarea
-        // programmatically diverges too. Require a real `input` event on this
-        // document as well, or the retry below becomes a way to resurrect
-        // content the user never typed — which is how a diff-restored pre-edit
-        // buffer overwrote a newer AI edit (notes/todo.md item 1, v8).
+        // Diverging from lastSyncedContent is necessary but NOT sufficient for
+        // a user edit: any programmatic write diverges too. Require a real
+        // `input` event on this document as well, or the retry below could
+        // resurrect content the user never typed (resolvedissues: "Autosave
+        // reverting AI edits").
         const contentDiverged = !d || typeof d.lastSyncedContent !== 'string'
           ? true
           : contentToSave !== d.lastSyncedContent;
@@ -10762,7 +10692,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     //
     // persist:false — this teardown is AI-driven, not a user reject-all. The
     // previous doc's textarea still holds ITS pre-edit buffer; saving that back
-    // is the lost update in notes/todo.md item 1.
+    // is the lost update of "Autosave reverting AI edits" (resolvedissues).
     if (_diffModeActive) exitDiffMode(true, { persist: false });
     // If already streaming a doc, reuse it (don't create a second temp doc)
     if (_streamDocId && docs.has(_streamDocId)) {
@@ -11043,7 +10973,7 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     // enterDiffMode().
     //
     // persist:false is load-bearing. With persist:true this line WAS the data
-    // loss in notes/todo.md item 1: a duplicated doc_update re-entered this function,
+    // loss of "Autosave reverting AI edits": a duplicated doc_update re-entered this function,
     // the guard restored the pre-edit buffer and PUT it back under the fresh
     // base_version, destroying the edit that had landed ~80ms earlier. The
     // duplicate emission is fixed in agent_loop.py; this makes the guard safe
@@ -11589,15 +11519,16 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
     _syncDocIndicator();
   }
 
-  // Leaving a chat must also leave its document (notes/todo.md item 62).
-  // closePanel() only hides the panel, so activeDocId stayed set: the first
-  // message in a New Chat — or in an existing chat with no documents — sent
-  // the previous chat's document as active_doc_id, and the server moved the
-  // document into that chat (seen 2026-10-05 23:31 and 23:38).
-  // Order matters: copy the buffer into its own map entry, start a silent
-  // save (saveDocument captures the id AND the content before its first
-  // await), then empty the editor — an editor still holding the old text
-  // with no active document turns the next keystroke into a copy of it.
+  // Leaving a chat must also leave its document. closePanel() only hides the
+  // panel, so activeDocId stayed set and the next message (New Chat, or a chat
+  // with no documents) sent the previous chat's document as active_doc_id
+  // (todo: "A document open in one chat moves into whichever chat you send
+  // from next").
+  //
+  // Order matters: copy the buffer into its own map entry, start a silent save
+  // (saveDocument captures the id AND the content before its first await),
+  // then empty the editor - an editor still holding the old text with no
+  // active document turns the next keystroke into a copy of it.
   export function releaseCurrentDoc(reason = '') {
     if (!activeDocId) return;
     _trace('releaseCurrentDoc', { reason, active: activeDocId, open: isOpen });

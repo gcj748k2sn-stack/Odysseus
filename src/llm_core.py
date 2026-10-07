@@ -1447,12 +1447,9 @@ _THINKING_MODEL_PATTERNS = (
     "qwen3", "qwq", "deepseek-r1", "deepseek-reasoner", "deepseek-v4",
     "minimax", "m2-reap", "gemma", "stepfun", "step-3", "step3",
     "magistral", "mistral-small", "mistral-medium",
-    # "nemotron" added 2026-08-01 — notes/todo.md item 44. Its absence meant no
-    # thinking suppression was ATTEMPTED for the utility model, and the
-    # measurement says that cost ~220 tokens of a 200-token budget:
-    # `/api/documents/ai-tidy` returned `finish_reason=length chars=0` every
-    # run, while the same call at 700 finished cleanly after ~300 generated
-    # tokens for an 80-token answer.
+    # "nemotron" (the utility model): without it no thinking suppression was
+    # even attempted, and thinking ate the whole utility token budget
+    # (resolvedissues: "/api/documents/ai-tidy failed every logged call").
     "nemotron",
 )
 
@@ -1464,12 +1461,10 @@ def _supports_thinking(model: str) -> bool:
     return any(p in m for p in _THINKING_MODEL_PATTERNS)
 
 
-# Qwen hybrid-reasoning models (Qwen3 family, QwQ). Deliberately narrower than
-# _THINKING_MODEL_PATTERNS: Ollama rejects `reasoning_effort` for models
-# without the thinking capability, so only send it where we know it is
-# supported. (This comment said "a `think` param" until 2026-08-01; the gate
-# below has only ever controlled `reasoning_effort` — `think` is sent outside
-# it. Corrected, not changed.)
+# Qwen hybrid-reasoning models (Qwen3 family, QwQ). Narrower than
+# _THINKING_MODEL_PATTERNS on purpose: Ollama rejects `reasoning_effort` for
+# models without the thinking capability. This gate controls only
+# `reasoning_effort`; `think` is sent outside it.
 _QWEN_THINKING_PATTERNS = ("qwen3", "qwq")
 
 
@@ -1480,11 +1475,10 @@ def _is_qwen_thinking_model(model: str) -> bool:
     return any(p in m for p in _QWEN_THINKING_PATTERNS)
 
 
-# Models known to accept `reasoning_effort` on Ollama's /v1 endpoint.
-# notes/todo.md item 44. Deliberately a SUPERSET of the Qwen list rather than a
-# rename: `_is_qwen_thinking_model` also gates the agent/streaming path, where
-# widening the set would change chat behaviour, and this fault is on the
-# utility path only. Keep the two separate until something measures the other.
+# Models known to accept `reasoning_effort` on Ollama's /v1 endpoint. A
+# SUPERSET of the Qwen list rather than a rename: `_is_qwen_thinking_model`
+# also gates the agent/streaming path, where widening would change chat
+# behaviour. Keep the two separate until something measures the other.
 _REASONING_EFFORT_PATTERNS = _QWEN_THINKING_PATTERNS + ("nemotron",)
 
 
@@ -1498,12 +1492,10 @@ def _accepts_reasoning_effort(model: str) -> bool:
 def _agent_thinking_disabled() -> bool:
     """Setting gate for suppressing Qwen thinking in agent/tool rounds.
 
-    Configurable via Settings / data/settings.json ("agent_disable_thinking",
-    default True). When on, agent rounds on Ollama's native /api/chat send
-    `think: false` for Qwen thinking models plus the `/no_think` soft switch
-    as a fallback for pre-0.9 Ollama, so the round budget (num_predict) goes
-    to tool calls and visible output instead of a <think> block (#9
-    empty-round failure). Does not affect the /v1 compat path, which
+    "agent_disable_thinking" (default True). When on, agent rounds on Ollama's
+    native /api/chat send think=false for Qwen thinking models plus the
+    /no_think soft switch (pre-0.9 Ollama), so the round budget goes to tool
+    calls and visible output instead of a think block. The /v1 compat path
     suppresses thinking unconditionally for tool-call parsing reasons.
     """
     try:
@@ -1736,23 +1728,17 @@ _REFERENCE_CONTEXT_BOUNDARY = "Reference context received."
 def _map_reasoning_for_ollama_compat(messages: List[Dict], url: str, model: str) -> List[Dict]:
     """Hand prior-round reasoning back to Ollama's /v1 under the field it reads.
 
-    Ollama's OpenAI-compatible ``Message`` has ``reasoning`` (mapped to
-    ``api.Message.Thinking``) and silently ignores ``reasoning_content``, the
-    DeepSeek name the agent loop uses. With thinking on, Ollama's Qwen 3.5
-    renderer wraps every assistant message after the last user query in
-    ``<think>\n{Thinking}\n</think>`` — so a dropped field renders as
-    ``<think>\n\n</think>``, byte-identical to Qwen's *thinking disabled*
-    marker, once per tool round. Measured 2026-10-02 on Ollama 0.31.1 with
-    ``_debug_render_only``: 3 empty blocks before, 0 after. Replaying the same
-    turn, the model drafted its user-facing answer inside the still-open think
-    block in 11 of 12 runs with empty blocks and 0 of 12 with real reasoning;
-    every lost answer (3 of 12) came from a drafted-in-thinking run.
+    Ollama's OpenAI-compatible Message reads `reasoning` and silently ignores
+    `reasoning_content` (the name the agent loop uses). With thinking on, Qwen
+    3.5's renderer then emits an empty think block per tool round - the same
+    bytes as "thinking disabled" - and the model drifted into drafting its
+    answer inside thinking (resolvedissues: "Finished answers were delivered in
+    the reasoning channel").
 
-    Uses ``_turn_reasoning`` (kept on every round of the turn by
-    ``_append_tool_results``) and falls back to ``reasoning_content``. Gated to
-    Ollama /v1 + Qwen thinking models because that is the renderer that was
-    measured; every other provider gets the messages back unchanged, and
-    ``_sanitize_llm_messages`` then drops ``_turn_reasoning`` as an unknown key.
+    Uses `_turn_reasoning` (kept on every round by `_append_tool_results`),
+    falling back to `reasoning_content`. Gated to Ollama /v1 + Qwen thinking
+    models, the renderer that was measured; other providers get the messages
+    unchanged and `_sanitize_llm_messages` drops `_turn_reasoning`.
     """
     if not (_is_ollama_openai_compat_url(url) and _is_qwen_thinking_model(model)):
         return messages
@@ -2045,11 +2031,11 @@ def list_model_ids(
         return []
 
 def _prompt_cache_fields(chunk: Dict) -> Dict[str, Any]:
-    """Prompt-cache figures from a final stream chunk, where the server
-    reports them: llama.cpp's `timings` (`cache_n` reused from the KV cache,
-    `prompt_n` processed now, `prompt_ms` spent on it) and the OpenAI-style
-    `usage.prompt_tokens_details.cached_tokens`. Absent fields stay absent —
-    "not reported" is not "zero"."""
+    """Prompt-cache figures from a final stream chunk, where the server reports
+    them: llama.cpp `timings` (cache_n reused, prompt_n processed now,
+    prompt_ms) and OpenAI-style usage.prompt_tokens_details.cached_tokens.
+    Absent fields stay absent - "not reported" is not "zero".
+    """
     out: Dict[str, Any] = {}
 
     def _num(v):
@@ -2516,22 +2502,17 @@ async def llm_call_async(
         if max_tokens and max_tokens > 0:
             tok_key = "max_completion_tokens" if _uses_max_completion_tokens(model) else "max_tokens"
             payload[tok_key] = max_tokens
-        # Suppress thinking for thinking models on Ollama /v1 — same as
+        # Suppress thinking for thinking models on Ollama /v1 - same as
         # stream_llm. `think` is ignored by stock Ollama /v1 (kept for compat
-        # forks); the working control is reasoning_effort:"none", sent for
-        # Qwen thinking models only (narrow gate — Ollama may reject it on
-        # non-thinking models). These non-stream calls are internal utility
-        # requests (naming, summaries), so no setting gate: thinking is pure
-        # token waste here.
+        # forks); the working control is reasoning_effort:"none". These
+        # non-stream calls are internal utility requests (naming, summaries),
+        # so no setting gate.
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
-            # `_accepts_reasoning_effort`, not `_is_qwen_thinking_model`:
-            # notes/todo.md item 44. This is the UTILITY path (naming, summaries,
-            # tidy verdicts) where thinking is pure token waste, and the
-            # utility model was excluded from suppression purely because
-            # "nemotron" was in neither pattern list. The agent/streaming gates
-            # still use the Qwen predicate — widening those would change chat
-            # behaviour and nothing has measured that.
+            # `_accepts_reasoning_effort`, not `_is_qwen_thinking_model`: this
+            # is the utility path, where thinking is pure waste. The
+            # agent/streaming gates keep the Qwen predicate - widening those
+            # would change chat behaviour unmeasured.
             if _accepts_reasoning_effort(model):
                 payload["reasoning_effort"] = "none"
         if provider == "mistral" and _supports_thinking(model):
@@ -2599,22 +2580,17 @@ async def llm_call_async(
                             response = text_part or msg.get("reasoning_content") or ""
                     else:
                         response = content or msg.get("reasoning_content") or ""
-                    # [finish-reason] report-only — notes/todo.md item 41.
-                    # `llm_call_async` returns the text (plus the model id only
-                    # with `return_model_metadata`), so the only channel for this
-                    # is the log; changing the return type would touch every
-                    # caller. Quiet when the caller got usable text, loud
-                    # otherwise — `length` is a silently truncated utility
-                    # result, and an empty body with `stop` is the model saying
-                    # nothing. Those two are what item 44 could not separate.
+                    # [finish-reason] report-only. llm_call_async returns text,
+                    # so the log is the only channel (changing the return type
+                    # would touch every caller). Quiet when the caller got
+                    # usable text; loud otherwise - `length` is a silently
+                    # truncated result, and an empty body with `stop` is the
+                    # model saying nothing.
                     #
-                    # The `elif not response` deliberately fires even for
-                    # `tool_calls`: this path sends no `tools` key, so it cannot
-                    # legitimately produce one, and the caller gets `""` either
-                    # way. The reason EXPLAINS the empty body, it does not
-                    # excuse it. A negative control was filed asserting the
-                    # opposite and caught this on its first run —
-                    # tests/test_finish_reason_recorded.py.
+                    # The `elif not response` fires even for `tool_calls`: this
+                    # path sends no tools, so the caller gets "" either way;
+                    # the reason explains the empty body, it does not excuse it
+                    # (pinned by tests/test_finish_reason_recorded.py).
                     _fr = _choice0.get("finish_reason")
                     if _fr and _fr not in ("stop", "tool_calls"):
                         logger.warning(
@@ -2653,10 +2629,8 @@ async def llm_call_async(
             await asyncio.sleep(LLMConfig.RETRY_DELAY)
         except httpx.ReadTimeout as e:
             duration = time.time() - start
-            # `str(httpx.ReadTimeout())` is EMPTY, so these lines read
-            # "... after 30.02s: " with no reason at all — indistinguishable
-            # from a failure whose message got lost. Name the type.
-            # notes/todo.md item 44.
+            # str(httpx.ReadTimeout()) is EMPTY, so name the exception type -
+            # otherwise the line looks like a failure whose message got lost.
             logger.warning(f"LLM async read timed out after {duration:.2f}s: {type(e).__name__}: {e or '(no message)'}")
             if attempt >= max_retries:
                 raise HTTPException(504, f"POST {target_url} timed out after {max_retries} attempts")
@@ -2790,10 +2764,10 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         if headers:
             h.update(headers)
         # Agent/tool rounds (tools passed) on Qwen thinking models: suppress
-        # the <think> block so the round budget goes to tool calls and visible
-        # output instead of reasoning that can eat the whole num_predict
-        # (empty-round failure #9). Chat rounds (no tools) keep thinking.
-        # Gated by the "agent_disable_thinking" setting (default on).
+        # the think block so the round budget goes to tool calls and visible
+        # output instead of reasoning that can eat the whole num_predict. Chat
+        # rounds (no tools) keep thinking. Gated by "agent_disable_thinking"
+        # (default on).
         _no_think = bool(tools) and _is_qwen_thinking_model(model) and _agent_thinking_disabled()
         if _no_think:
             # Fallback for Ollama <0.9, which silently ignores `think`:
@@ -2839,13 +2813,12 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
         # (high / medium / low / none); default "high".
         if provider == "mistral" and _supports_thinking(model):
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
-        # For Ollama's OpenAI-compat /v1 endpoint with thinking models,
-        # suppress thinking so tool calls aren't swallowed inside <think>
-        # blocks. NOTE: /v1 does NOT accept the native `think` param — it is
-        # silently ignored (the earlier comment claiming otherwise was wrong;
-        # confirmed against docs.ollama.com/api/openai-compatibility). The
-        # supported control is `reasoning_effort: "none"`. `think` is kept for
-        # any compat forks that do honour it; it's a no-op on stock Ollama.
+        # Ollama /v1 with thinking models: suppress thinking so tool calls
+        # aren't swallowed inside think blocks. /v1 does NOT accept the native
+        # `think` param (silently ignored, per
+        # docs.ollama.com/api/openai-compatibility); the supported control is
+        # reasoning_effort:"none". `think` is kept for compat forks that honour
+        # it.
         if _is_ollama_openai_compat_url(url) and _supports_thinking(model):
             payload["think"] = False
             # Only for Qwen thinking models (narrow gate: Ollama may reject
@@ -3258,11 +3231,10 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
     _harmony_active = False       # sticky: gpt-oss harmony <|channel|> stream detected
     _actual_model = ""
     _actual_model_announced = False
-    # [finish-reason] report-only — notes/todo.md item 41. Without this a
-    # generation that stopped at the token cap is indistinguishable from one
-    # that finished, and every claim about output length is unfalsifiable.
-    # Carried on the `usage` event rather than a new SSE type so nothing new
-    # reaches the browser; `None` means the provider did not report one.
+    # [finish-reason] report-only. Without it a generation stopped at the token
+    # cap is indistinguishable from one that finished. Carried on the `usage`
+    # event, so nothing new reaches the browser; None means the provider did
+    # not report one.
     _finish_reason = None
 
     def _emit_tool_calls():
@@ -3338,12 +3310,11 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                         yield f'data: {json.dumps({"type": "model_actual", "requested_model": model, "model": _actual_model})}\n\n'
                                 # Usage chunk (from stream_options)
                                 _choices = j.get("choices") or []
-                                # [finish-reason] item 41. The FINAL content
-                                # chunk carries it; with include_usage the usage
+                                # [finish-reason] The FINAL content chunk
+                                # carries it; with include_usage the usage
                                 # chunk arrives after, so capturing here and
-                                # attaching below is ordered correctly. Kept out
-                                # of the gating below on purpose — that logic has
-                                # been debugged twice and is not to be disturbed.
+                                # attaching below is ordered correctly. Kept
+                                # out of the gating below on purpose.
                                 if _choices and isinstance(_choices[0], dict):
                                     _fr = _choices[0].get("finish_reason")
                                     if _fr:
@@ -3388,15 +3359,16 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                                             _usage_data["gen_tps"] = round(_tm["predicted_per_second"], 2)
                                         if _tm.get("prompt_per_second"):
                                             _usage_data["prefill_tps"] = round(_tm["prompt_per_second"], 2)
-                                    # [prompt-cache] report-only — notes/todo.md items 40/57/58.
-                                    # How much of this request's prompt the server reused from
-                                    # its KV cache, and how much it had to process now.
+                                    # [prompt-cache] report-only: how much of
+                                    # this request's prompt the server reused
+                                    # from its KV cache, and how much it
+                                    # processed now.
                                     _usage_data.update(_prompt_cache_fields(j))
                                     if _actual_model:
                                         _usage_data["model"] = _actual_model
                                         if not _same_model_identity(_actual_model, model):
                                             _usage_data["requested_model"] = model
-                                    # [finish-reason] item 41 — absence means the
+                                    # [finish-reason] absence means the
                                     # provider did not report one, never "it
                                     # finished cleanly".
                                     if _finish_reason:

@@ -33,12 +33,11 @@ def _is_private_address(addr):
     return _outbound_fetch._is_private_address(addr)
 
 
-# The SSRF policy — including the two-tier LAN opt-in (WEB_FETCH_BLOCK_PRIVATE_IPS,
-# notes/resolvedissues.md "web_fetch could not reach the LAN") — lives in
-# src/outbound_fetch.py since upstream moved the transport there (#5953). These
-# wrappers keep this module's names, and resolve through this module's
-# ``_resolve_hostname_ips`` / ``_resolve_public_ips`` so tests that monkeypatch
-# them here still steer the real fetch path.
+# The SSRF policy, including the two-tier LAN opt-in
+# (WEB_FETCH_BLOCK_PRIVATE_IPS), lives in src/outbound_fetch.py since upstream
+# moved the transport there. These wrappers keep this module's names and
+# resolve through this module's _resolve_hostname_ips / _resolve_public_ips, so
+# tests that monkeypatch them here still steer the real fetch path.
 _is_hard_blocked_address = _outbound_fetch._is_hard_blocked_address
 _is_gated_private_address = _outbound_fetch._is_gated_private_address
 
@@ -227,48 +226,33 @@ def _empty_result(url: str, error: str = "") -> dict:
 # ----------------------------------------------------------------------
 # Negative cache — URLs whose failure is not worth re-discovering
 # ----------------------------------------------------------------------
-# A SUCCESSFUL fetch is cached for 2 h. A FAILED one was not cached at all, so
-# a URL that fails the same way every time was re-requested every time it
-# appeared. Measured 2026-07-31 in session 93c1c383: one ResearchGate URL
-# returning 403 was fetched FOUR times inside a single agent turn — three
-# because ``web_search`` fetches its own top results (services/search/core.py)
-# and that URL ranked top-3 for all three queries, plus one explicit
-# ``web_fetch``. Requests 2, 3 and 4 could not have returned anything the
-# first did not, and the turn ended having gathered nothing.
+# A successful fetch is cached for 2 h; a failed one was not cached at all, so
+# a permanently failing URL was re-requested every time it appeared - several
+# times in one turn, since web_search fetches its own top results.
 #
-# ⚠️ ONLY non-transient statuses are stored. A 429 is a rate limit, a 5xx is
-# the server having a bad minute, and a network error is a network error —
-# caching any of those converts a blip into a self-inflicted outage for that
-# URL. That is the failure mode this cache could introduce, so the status set
-# is a closed allowlist rather than "anything that raised".
+# ONLY non-transient statuses are stored. A 429, a 5xx or a network error is a
+# blip; caching it would turn the blip into a self-inflicted outage for that
+# URL. So the status set is a closed allowlist, not "anything that raised".
 _PERMANENT_HTTP_STATUSES = frozenset({401, 403, 404, 410, 451})
 _NEGATIVE_CACHE_TTL = timedelta(minutes=30)
 _NEGATIVE_CACHE_MAX_ENTRIES = 512
 
-# url -> (status, error_text, stored_at). Ordered so the eviction below is
-# oldest-first. In memory rather than on disk: it clears on restart, it cannot
-# be poisoned by a stray script the way data/cache/content/ once was (see
-# notes/qwensetup.md, "never call fetch_webpage_content() against the live
-# tree"), and there is nothing to clean up.
+# url -> (status, error_text, stored_at), ordered so eviction is oldest-first.
+# In memory, not on disk: it clears on restart, cannot be poisoned by a stray
+# script, and needs no cleanup.
 _negative_cache: "OrderedDict[str, tuple]" = OrderedDict()
 
-# ⚠️ This IS touched concurrently. `comprehensive_web_search` fetches its top
-# results through a ThreadPoolExecutor (services/search/core.py), which is the
-# very path that produced the repeated 403s — so the parallel case is the
-# normal case here, not an edge one. Individual dict operations are atomic
-# under the GIL, but the read-then-evict sequence below is not, and neither is
-# lookup's expire-then-pop. Guard the whole sequence rather than relying on
-# the GIL for a compound operation.
+# This IS touched concurrently: comprehensive_web_search fetches its top
+# results through a ThreadPoolExecutor. Single dict operations are atomic under
+# the GIL, but read-then-evict and expire-then-pop are not, so the whole
+# sequence is locked.
 _negative_cache_lock = threading.Lock()
 
-# Hosts that are being actively worked on must not be remembered as broken.
-# A LAN device answering 403 today is the exact case where the user changes
-# something and immediately retries — an ESP32, a NAS, a dev server behind
-# auth. Deliberately DNS-free: only IP literals and local-sounding suffixes
-# count, so this can never cost a resolution on the hot path. Getting it wrong
-# in the "not local" direction is harmless (the URL is simply cached, which is
-# the point); getting it wrong the other way only means no caching, i.e. the
-# behaviour that shipped before this block existed.
+# Hosts being actively worked on (an ESP32, a NAS, a dev server behind auth)
+# must not be remembered as broken - the user fixes something and retries at
+# once. DNS-free on purpose: only IP literals and local-sounding suffixes
+# count. A miss in the "not local" direction just caches the URL; the other
+# direction just means no caching.
 _LOCAL_HOST_SUFFIXES = (".local", ".lan", ".internal", ".home", ".localdomain")
 
 
@@ -291,14 +275,12 @@ def _is_local_target(url: str) -> bool:
 
 
 def _negative_cache_lookup(url: str) -> "dict | None":
-    """A remembered permanent failure for ``url``, or None to go to the network.
+    """A remembered permanent failure for url, or None to go to the network.
 
-    The returned dict carries the SAME ``error`` string a live failure would,
-    so nothing downstream has to learn a second shape, plus the ``cached`` /
-    ``cached_at`` / ``cache_age_seconds`` labels the positive cache already
-    uses. **The labels are the point.** An unlabelled cache hit is
-    indistinguishable from a live call in ``app.db`` — that mistake has already
-    been made once here and produced a wrong conclusion about a frozen device.
+    The returned dict carries the SAME error string a live failure would, plus
+    the cached / cached_at / cache_age_seconds labels the positive cache uses.
+    The labels are the point: an unlabelled cache hit is indistinguishable from
+    a live call in app.db.
     """
     with _negative_cache_lock:
         entry = _negative_cache.get(url)
@@ -330,12 +312,11 @@ def _negative_cache_store(url: str, status: int, error_text: str) -> bool:
 
 
 def clear_negative_cache() -> None:
-    """Drop every remembered failure — the manual retry path.
+    """Drop every remembered failure - the manual retry path.
 
-    Exported from ``services.search`` so a user or caller who has just fixed
-    whatever was returning 401/403 can force the next fetch to leave the
-    machine, instead of waiting out the TTL. Without an export this docstring
-    would be describing a path that does not exist.
+    Exported from services.search so a caller who just fixed whatever returned
+    401/403 can force the next fetch to leave the machine instead of waiting
+    out the TTL.
     """
     with _negative_cache_lock:
         _negative_cache.clear()
@@ -367,18 +348,11 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
             timestamp = datetime.fromisoformat(cached_data["timestamp"])
             if datetime.now() - timestamp < timedelta(hours=2):
                 logger.debug(f"Content cache hit for URL: {url}")
-                # A cache hit used to be indistinguishable from a live fetch:
-                # same shape, same exit_code, no flag. That has already
-                # produced a wrong conclusion — two turns 4.5 minutes apart
-                # both reported `uptime: 91 s` from a device whose counter was
-                # running, and only the first had left the machine. Read back
-                # from app.db, the second looked like a fresh reading of a
-                # frozen device. Label the hit and say how old it is.
-                #
-                # Copied, not mutated in place: `cached_data["data"]` is the
-                # dict just parsed from the cache file, and callers are free to
-                # keep it. See notes/todo.md, "A cache hit is indistinguishable
-                # from a live fetch".
+                # Label the hit and say how old it is: an unlabelled cache hit
+                # read back from app.db looks like a fresh reading
+                # (resolvedissues: "The record of a run didn't say what
+                # happened"). Copied, not mutated in place: callers may keep
+                # cached_data["data"].
                 served = dict(cached_data["data"])
                 served["cached"] = True
                 served["cached_at"] = cached_data["timestamp"]
@@ -396,9 +370,8 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
 
     # A URL that already failed permanently is not worth another round trip.
     # Checked AFTER the positive cache (a good body always wins) and before the
-    # network. Keyed on the URL alone, not on the byte budget the positive
-    # cache keys on: a 403 does not become a 200 because the caller raised
-    # `full`, and a size failure is not stored here at all.
+    # network. Keyed on the URL alone: a 403 does not become a 200 because the
+    # caller raised `full`, and a size failure is not stored here at all.
     remembered_failure = _negative_cache_lookup(url)
     if remembered_failure is not None:
         return remembered_failure
@@ -537,12 +510,10 @@ def fetch_webpage_content(url: str, timeout: int = 5, retry_attempt: int = 0,
     js_message = "Page appears to be rendered by a JavaScript framework; content may be incomplete." if js_rendered else ""
 
     # Main textual content. Prefer the element the page marks as its main
-    # content (<main>, role="main", a lone <article>) and only guess from class
-    # names without one. The guess takes the first three class matches in
-    # document order; on English Wikipedia (Vector 2022) those are all
-    # containers of the header's "Main menu", so every article came back as
-    # the menu three times (627 chars, just above the thin-content fallback
-    # below). See tests/test_search_content_main_landmark.py.
+    # content (<main>, role="main", a lone <article>); only without one guess
+    # from class names. The class guess alone returned Wikipedia articles as
+    # three copies of the site menu
+    # (tests/test_search_content_main_landmark.py).
     main_content = ""
     primary = _primary_content_element(soup)
     if primary is not None:

@@ -46,7 +46,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.agent_loop import (  # noqa: E402
+from src.turn_report import (  # noqa: E402
     _gathering_only_notice,
     _text_is_only_preamble,
 )

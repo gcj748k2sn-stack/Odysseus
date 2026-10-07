@@ -1,35 +1,23 @@
 """Check a generated document against the data the model was actually handed.
 
-notes/todo.md item 2a. Two runs turned one small JSON payload into a table.
-Across both, **239 of 240 table cells were transcribed correctly** — and both
-documents were still wrong, because the model picked the wrong *field*:
-``duty: 252`` is a PWM register after a BC547 inversion, so 255 is off and 252
-is about 1 % power, while the document invites reading it as near-full. Every
-digit of that number is faithfully copied from the source.
+Recorded runs copied almost every cell correctly and were still wrong because
+the model picked the wrong *field* (a raw PWM register printed as a duty
+cycle). So of the two halves, the smaller one carries most of the weight:
 
-So this module has two independent halves, and the smaller one carries most of
-the weight:
+check_field_semantics
+    Compares the document against written-down facts about the fields
+    (config/field_semantics.json): correct values, wrong meaning - the class
+    a diff cannot see.
+check_transcription
+    Row and cell comparison against the source records: dropped columns,
+    rows and fields. Real but incidental.
 
-``check_field_semantics``
-    The load-bearing half. Compares the document against written-down facts
-    about the fields (``config/field_semantics.json``). Catches the class a
-    diff structurally cannot: correct values, wrong meaning.
+Report-only: findings go into the closing summary next to stale_values and
+never back to the model (notes: "The document didn't match its source").
 
-``check_transcription``
-    Row and cell comparison against the source records. Catches dropped
-    columns, dropped rows and missing fields. Real defects — a dropped
-    temperature column and two entirely absent sensors were observed — but
-    *incidental*: one wrong cell in 240, in one run of two.
-
-**Report-only, by design.** Findings go into the closing summary next to
-``stale_values``. Nothing here tells the model to act: item 8's retry nudge
-destroyed a 6186-character document by telling an idle model to "finish the job
-NOW", and a checker that fires on a false positive would do it again.
-
-**Silence is a supported outcome.** Most document turns have no structured
-source; ``check_document`` returns nothing at all unless it finds a JSON payload
-in the turn's tool output. A checker that guesses produces warnings on ordinary
-prose, which is how people learn to ignore it.
+Silence is a supported outcome: check_document returns nothing unless the turn
+has a JSON payload in its tool output. A checker that guesses on ordinary prose
+teaches people to ignore it.
 """
 from __future__ import annotations
 
@@ -129,13 +117,9 @@ def _records(payload: Any) -> List[dict]:
 def _identifier_key(records: List[dict], rows: List[str]) -> Optional[str]:
     """Which field the table's first column is keyed on.
 
-    Chosen by matching against the rendered rows, **not** by taking the first
-    key of the first record. JSON object order is an accident of whoever
-    serialised it: the first version of this function assumed insertion order,
-    and a fixture written with ``sort_keys=True`` silently made every row
-    lookup miss, so the checker reported the ragged table and none of the cells
-    inside it. It failed *quietly*, which is the failure mode this whole module
-    exists to prevent.
+    Matched against the rendered rows, NOT taken from the first key of the
+    first record: JSON key order is an accident of serialisation, and assuming
+    it made every row lookup miss silently.
     """
     best, best_hits = None, 0
     for key in (records[0] if records else {}):

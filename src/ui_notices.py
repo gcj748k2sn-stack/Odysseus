@@ -1,44 +1,31 @@
-"""Odysseus-written notices inside assistant replies — shown to the user, kept
-out of what the model reads back.
+"""Odysseus-written notices inside assistant replies: shown to the user, kept out
+of what the model reads back.
 
-Several end-of-turn guards in ``src/agent_loop.py`` append a notice to the
-saved reply when a turn fails or stops early (empty response, stream error,
-"gathered but never answered", a dangling lead-in, an edit written as text).
-They are written for the person reading the transcript: they speak in the
-model's voice ("I ran `web_search` and then stopped…"), point at tool cards
-the UI renders ("the tool results above are real"), and invite a follow-up
-("Ask me to continue…").
+End-of-turn guards (src/turn_report.py, src/agent_loop.py) append notices to
+the saved reply when a turn fails or stops early. They are written for the
+person reading the transcript - in the model's voice, pointing at tool cards,
+inviting a follow-up. Replayed to the model they mislead it: it is told about
+tool results it cannot see, inherits promises it cannot keep, and reasons about
+failures as conversation (notes: "Odysseus's own notices are replayed to the
+model as its words").
 
-Replayed to the model as part of the history they do three kinds of damage
-(measured 2026-10-04 over 268 recorded replies, see notes/todo.md *"Odysseus's
-own notices are replayed to the model as its words"*):
+strip_ui_notices removes them from the model's view only; the raw history the
+UI renders is untouched (same split as slash-command replies in
+core.models.Session.get_context_messages).
 
-- the model is told about tool results it cannot see — only reply text is
-  kept for it, never the tool output;
-- it inherits a promise it cannot keep: after a notice, "continue" carried the
-  work on in 0 of 6 recorded cases;
-- it reasons about the failures as conversation turns (session 0829a3d2:
-  *"Then there's a failure message about model connection"*).
-
-``strip_ui_notices`` removes them from the model's view only. The raw history,
-which the UI renders, is untouched — same split as slash-command replies in
-``core.models.Session.get_context_messages``.
-
-Each pattern mirrors one template in ``src/agent_loop.py``.
-``tests/test_ui_notices_context.py`` builds every notice through the real
-function and asserts it strips completely, so a wording change there fails a
-test instead of leaking silently. Matching is lexical on purpose (CLAUDE.md
-§3): these are fixed templates, not model output.
+Each pattern mirrors one template; tests/test_ui_notices_context.py builds
+every live notice through the real function, so a wording change fails a test
+instead of leaking. Lexical on purpose: these are fixed templates, not model
+output.
 """
 
 import re
 
-# What the model sees where notices were removed: one neutral, factual line,
-# with no instructions, no promises and nothing that points at UI it cannot
-# see. Kept rather than dropped because the fact itself matters — without it
-# a reply that stopped on "I'll search for…" reads as if the search happened.
-# A reply that was nothing but notices becomes just this line (dropping it
-# would leave two user turns in a row, which some chat templates reject).
+# What the model sees where notices were removed: one neutral line with no
+# instructions or promises. Kept rather than dropped, so a reply that stopped
+# on "I'll search for..." does not read as if the search happened; a reply that
+# was only notices becomes just this line (two user turns in a row break some
+# chat templates).
 INCOMPLETE_TURN_MARKER = "(This turn ended without a complete answer.)"
 
 # `_gathering_only_notice` tails — the old one stays matchable because it is
@@ -56,7 +43,9 @@ _NOTICE_PATTERNS = [
             "switch to a different model."
         )
     ),
-    # `_stream_failure_notice` — head plus one of its two tails.
+    # The fork's stream-failure notice (removed after the 2026-10-06 merge,
+    # when upstream's `[Agent stopped: …]` took over) — head plus one of its
+    # two tails. Kept because chats saved before the merge still carry it.
     re.compile(
         r"⚠️ \*\*The request to the model failed(?: after \d+s)? — `.*?`"
         r"(?: \(\+\d+ more\))?\.\*\* (?:"
@@ -92,12 +81,10 @@ _NOTICE_PATTERNS = [
             "not the work. Ask me again and I'll do it."
         )
     ),
-    # Upstream's terminal-failure note (merged 2026-10-06): since upstream
-    # #5953-era agent_loop changes, a provider/stream failure ends the turn
-    # with `[Agent stopped: <reason>]` (agent_loop.py and chat_routes.py,
-    # grep "Agent stopped:") instead of reaching `_stream_failure_notice`.
-    # Same class of Odysseus-written text, so the model gets the same neutral
-    # marker instead of the bracketed note.
+    # Upstream's terminal-failure note: since the 2026-10-06 merge a
+    # provider/stream failure ends the turn with "[Agent stopped: <reason>]"
+    # (grep "Agent stopped:" in agent_loop.py and chat_routes.py). Same class
+    # of Odysseus-written text, so it gets the same neutral marker.
     re.compile(r"\[Agent stopped: [^\]\n]{1,300}\]"),
     # `_tool_payload_as_text_notice`.
     re.compile(

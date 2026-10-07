@@ -1511,10 +1511,10 @@ import { loadPanel } from './panels.js';
     let spinner = null;
     let timedOut = false;
     // Assigned inside the try below but read by the catch/finally and by the
-    // first-token wait timers, so they must live in this scope. A `const`
-    // inside the try is invisible there: the error handler threw
-    // `ReferenceError: streamingTTS is not defined` before showing the error
-    // (notes/todo.md, "A failed send throws inside its own error handler").
+    // first-token wait timers, so they must live in this scope: a `const`
+    // inside the try is invisible there, and the error handler threw a
+    // ReferenceError before showing the error (todo: "A failed send throws
+    // inside its own error handler").
     let abortCtrl = null;
     let _isAgent = false;
     let streamingTTS = false;

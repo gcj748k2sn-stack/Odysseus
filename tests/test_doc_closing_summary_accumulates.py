@@ -29,7 +29,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from src.agent_loop import (  # noqa: E402
+from src.turn_report import (  # noqa: E402
     _closing_doc_summary,
     _doc_tool_summary,
     _text_is_only_preamble,

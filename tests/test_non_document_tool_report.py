@@ -24,7 +24,7 @@ emptied, reported as success, in the run range item 8's reverted nudge covers.
 
 import pytest
 
-from src.agent_loop import (
+from src.turn_report import (
     _first_line,
     _gathering_only_notice,
     _side_effect_tool_summary,
