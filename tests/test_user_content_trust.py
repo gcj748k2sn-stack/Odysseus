@@ -225,6 +225,34 @@ def test_imported_or_copied_document_is_untrusted(db):
     assert not uct.document_is_user_trusted(_doc(db, [("user", "pasted from somewhere")]))
 
 
+def test_library_copy_of_a_trusted_document_is_trusted(db):
+    """Opening a document from the Library copies it: same text, new non-empty user v1."""
+    original = _doc(db, [("ai", "32-36 °C, 60-75 % humidity")])
+    uct.record_ai_document_write({"doc_id": original.id, "version": 1}, clean=True)
+    copy = _doc(db, [("user", "32-36 °C, 60-75 % humidity")])
+    assert uct.document_is_user_trusted(copy)
+    copy_of_copy = _doc(db, [("user", "32-36 °C, 60-75 % humidity")])
+    assert uct.document_is_user_trusted(copy_of_copy)
+
+
+def test_copy_of_an_untrusted_document_is_untrusted(db):
+    _doc(db, [("ai", "text from a web page")])  # no clean record
+    assert not uct.document_is_user_trusted(_doc(db, [("user", "text from a web page")]))
+
+
+def test_copy_with_changed_text_is_untrusted(db):
+    original = _doc(db, [("ai", "32-36 °C")])
+    uct.record_ai_document_write({"doc_id": original.id, "version": 1}, clean=True)
+    assert not uct.document_is_user_trusted(_doc(db, [("user", "32-36 °C plus injected line")]))
+
+
+def test_copies_of_each_other_without_a_trusted_root_are_untrusted(db):
+    a = _doc(db, [("user", "same text")])
+    b = _doc(db, [("user", "same text")])
+    assert not uct.document_is_user_trusted(a)
+    assert not uct.document_is_user_trusted(b)
+
+
 @pytest.mark.parametrize("source", ["upload", "ocr"])
 def test_uploaded_file_is_untrusted(db, source):
     assert not uct.document_is_user_trusted(_doc(db, [("user", ""), (source, "pdf text")]))

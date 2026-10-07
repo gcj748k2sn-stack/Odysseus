@@ -15,7 +15,9 @@ This module decides, fail-closed, when a block is the user's own:
 - **Document:** not email-derived, and every version in its history is either a
   user edit after v1, an empty v1 (a blank new document), or an AI write this
   module recorded as made in a clean run. A non-empty v1 from the browser is an
-  import, a copy or an opened file; ``upload``/``ocr`` versions are files from
+  import, a copy or an opened file, and is trusted only when its text is
+  identical to a version of another document that is itself trusted (opening a
+  document from the Library copies it into the chat); ``upload``/``ocr`` versions are files from
   elsewhere; AI writes without a record (other loops, older history, a run that
   had seen untrusted context or ran under an approval) all count as untrusted.
 
@@ -84,6 +86,9 @@ def record_ai_document_write(result: Any, *, clean: bool) -> None:
         logger.warning("could not record AI document write %s v%s: %s", doc_id, version, exc)
 
 
+_COPY_DEPTH = 3  # a copy of a copy of …; bounded so a cycle cannot loop
+
+
 def document_is_user_trusted(document: Any) -> bool:
     """True only when every version of the document is the user's own (see module doc)."""
     doc_id = getattr(document, "id", None)
@@ -97,32 +102,61 @@ def document_is_user_trusted(document: Any) -> bool:
     try:
         db, text = _session()
         try:
-            versions = db.execute(
-                text("SELECT version_number, source, content FROM document_versions"
-                     " WHERE document_id = :d"),
-                {"d": str(doc_id)},
-            ).fetchall()
-            clean_ai = {
-                row[0] for row in db.execute(
-                    text("SELECT version_number FROM ai_document_writes"
-                         " WHERE document_id = :d AND clean"),
-                    {"d": str(doc_id)},
-                ).fetchall()
-            }
+            return _trusted(db, text, str(doc_id), _COPY_DEPTH, {str(doc_id)})
         finally:
             db.close()
     except Exception as exc:
         logger.warning("document trust check failed for %s: %s", doc_id, exc)
         return False
+
+
+def _trusted(db, text, doc_id: str, depth: int, seen: set) -> bool:
+    row = db.execute(
+        text("SELECT language, source_email_uid, source_email_message_id,"
+             " source_email_account_id FROM documents WHERE id = :d"),
+        {"d": doc_id},
+    ).fetchone()
+    if row is None or (row[0] or "").lower() == "email" or any(row[1:]):
+        return False
+    versions = db.execute(
+        text("SELECT version_number, source, content FROM document_versions"
+             " WHERE document_id = :d"),
+        {"d": doc_id},
+    ).fetchall()
+    clean_ai = {
+        r[0] for r in db.execute(
+            text("SELECT version_number FROM ai_document_writes"
+                 " WHERE document_id = :d AND clean"),
+            {"d": doc_id},
+        ).fetchall()
+    }
     if not versions:
         return False
     for number, source, content in versions:
         if source == "user":
             if number == 1 and (content or "").strip():
-                return False
+                if not _is_copy_of_trusted(db, text, doc_id, content, depth, seen):
+                    return False
         elif source == "ai":
             if number not in clean_ai:
                 return False
         else:
             return False
     return True
+
+
+def _is_copy_of_trusted(db, text, doc_id: str, content: str, depth: int, seen: set) -> bool:
+    """Identical text to a trusted document cannot carry anything new."""
+    if depth <= 0:
+        return False
+    for (other,) in db.execute(
+        text("SELECT DISTINCT document_id FROM document_versions"
+             " WHERE content = :c AND document_id != :d"),
+        {"c": content, "d": doc_id},
+    ).fetchall():
+        if other in seen:
+            continue
+        seen.add(other)
+        if _trusted(db, text, other, depth - 1, seen):
+            return True
+    return False
