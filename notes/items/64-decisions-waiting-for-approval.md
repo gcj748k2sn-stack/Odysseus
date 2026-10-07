@@ -52,6 +52,7 @@ Not yet: **46, 48, 56** each still owe a manual UI check; **60** has the bash ho
 - **What:** since the 2026-10-06 merge, the skills index enters the prompt through `untrusted_context_message("skills", …)`, so any saved skill makes every write, edit or bash call need an approval click (notes/merge-upstream-2026-10-06.md). `data/skills/` is empty on this machine today, so it does not bite yet.
 - **Options:** keep upstream's policy · pass `arm_tool_gate=False` for the skills message and accept that a poisoned skill could steer tools unprompted.
 - **Recommendation:** keep upstream's policy; decide again only when skills are back in use.
+- **Related, decided 2026-10-07 22:48 (maintainer: "do two"):** the user's own **memories** and **documents** no longer arm the gate — `src/user_content_trust.py`; record in [session-log.md](../session-log.md), 2026-10-07 21:20 entry. Skills are untouched by that change.
 
 ## 8. Test fast lane on the M1
 
