@@ -662,6 +662,8 @@ async def action_consolidate_memory(owner: str, **kwargs) -> Tuple[str, bool]:
                                     cleaned.pop("text", None)
                                 if cleaned.get("text") and cleaned["text"] != mem.get("text"):
                                     mem["text"] = cleaned["text"]
+                                    # AI-written text is no longer the user's own (user_content_trust).
+                                    mem["source"] = "ai_tidy"
                                     changed_text += 1
                                 if cleaned.get("category"):
                                     mem["category"] = cleaned["category"]

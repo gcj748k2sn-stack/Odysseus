@@ -433,6 +433,8 @@ async def do_manage_memory(content: str, session_id: Optional[str] = None, owner
                 if owner and m.get("owner") != owner:
                     return {"error": f"Memory '{memory_id}' not found"}
                 m["text"] = new_text
+                # AI-written text is no longer the user's own (user_content_trust).
+                m["source"] = "ai_agent"
                 m["timestamp"] = int(time.time())
                 found = True
                 full_id = m["id"]

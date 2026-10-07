@@ -49,6 +49,7 @@ from src.turn_report import (
     record_doc_tool_result,
 )
 from src.prompt_security import untrusted_context_message
+from src.user_content_trust import document_is_user_trusted, record_ai_document_write
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -1681,6 +1682,7 @@ def _is_email_document_obj(active_document) -> bool:
 def _minimal_saved_memory_message(messages: List[Dict]) -> Optional[Dict]:
     facts: List[str] = []
     seen = set()
+    arm_tool_gate = False  # inherited from the memory blocks read below
     for message in messages:
         if not isinstance(message, dict):
             continue
@@ -1688,6 +1690,8 @@ def _minimal_saved_memory_message(messages: List[Dict]) -> Optional[Dict]:
         source = str((metadata or {}).get("source") or "")
         if not source.startswith("saved memory:"):
             continue
+        if (metadata or {}).get("tool_gate_untrusted") is not False:
+            arm_tool_gate = True
         content = str(message.get("content") or "")
         content = re.sub(r"(?m)^\s*Source:\s*saved memory:[^\n]*\n?", "", content)
         content = content.replace("Core facts about the user:", "")
@@ -1721,6 +1725,7 @@ def _minimal_saved_memory_message(messages: List[Dict]) -> Optional[Dict]:
             "preferences, or anything about \"me\" or \"my\":\n"
             + "\n".join(f"- {fact}" for fact in facts)
         ),
+        arm_tool_gate=arm_tool_gate,
     )
 
 
@@ -1948,6 +1953,7 @@ def _minimal_odysseus_doc_messages(messages: List[Dict], active_document, stream
                 f"{content_note}"
                 f"{content_for_prompt}"
             ),
+            arm_tool_gate=not document_is_user_trusted(active_document),
         )
         active_document_message["_agent_injected"] = "context"
         out.append(active_document_message)
@@ -2551,6 +2557,7 @@ def _build_system_prompt(
         _doc_message = untrusted_context_message(
             "active editor document",
             doc_ctx,
+            arm_tool_gate=not document_is_user_trusted(active_document),
         )
         _doc_message["_protected"] = True
 
@@ -6564,6 +6571,11 @@ async def stream_agent_loop(
             ):
                 _doc_stream_create_completed = True
             if block.tool_type in DOC_TOOLS and doc_tool_result_landed(result):
+                # Ran without a card, so the run was clean unless an earlier
+                # approval had lifted the gate (see user_content_trust).
+                record_ai_document_write(
+                    result, clean=not run_security.approval_gate_bypassed,
+                )
                 # Report data is built for every model; only the loop break
                 # stays behind _ody_doc_finetune_mode. See turn_report.
                 _ody_doc_tool_info = record_doc_tool_result(

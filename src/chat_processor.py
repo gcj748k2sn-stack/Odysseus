@@ -9,6 +9,7 @@ from src.chat_helpers import extract_urls
 from src.youtube_handler import is_youtube_url
 from src.search import comprehensive_web_search, fetch_webpage_content
 from src.prompt_security import UNTRUSTED_CONTEXT_POLICY, untrusted_context_message
+from src.user_content_trust import memories_are_user_authored
 
 logger = logging.getLogger(__name__)
 
@@ -325,6 +326,7 @@ class ChatProcessor:
                         "Pinned memory context. Some pinned memories are only "
                         f"included when relevant:\n- {pinned_text}"
                     ),
+                    arm_tool_gate=not memories_are_user_authored(selected_pinned),
                 ))
                 for m in selected_pinned:
                     self._last_used_memories.append({"text": m["text"], "category": m.get("category", "fact"), "type": "pinned"})
@@ -342,6 +344,7 @@ class ChatProcessor:
                             "Memory context. Do not reference unless the user asks "
                             f"about these topics.\n{ext_text}"
                         ),
+                        arm_tool_gate=not memories_are_user_authored(relevant),
                     ))
                     for m in relevant:
                         self._last_used_memories.append({"text": m["text"], "category": m.get("category", "fact"), "type": "recalled"})
