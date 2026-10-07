@@ -14,6 +14,15 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-07 (21:20–) — approval-flow fixes built: items 65, 66, 67 and the `409` log line — uncommitted
+
+- 🔧 **65:** `doc_tool_result_landed` (`src/turn_report.py`) — a document tool waiting on a card is no longer reported as done, the non-document report skips it too, and an approved document action replayed at the start of a turn now gets its closing line (it never did). **66:** `_eventInsideElement` (`static/js/document.js`) ignores scripted events and 0×0 elements. **67:** `static/js/chat.js` skips the pre-approval save when no editor buffer exists. **`409`:** `routes/chat_routes.py` logs which check rejected an approval. Details in each item.
+- 🧪 Linux clone, Python 3.13, deps from `requirements.txt` (not the M1 venv): new `tests/test_approval_pending_not_reported.py` 13 passed, 4 mutations each caught; `test_dangling_promise_turn.py` updated (it pinned the old gate's text); the approval/gate/report files 339 passed; **full suite `-n 4`: 7,445 passed, 11 skipped, 1 failed** — `test_integrations_url_join.py::test_api_call_root_path_has_no_trailing_slash`, the sandbox has no DNS (`host does not resolve`). **M1 run owed.** **JS: `node --check` only.**
+- ➡️ **Live check (owed, in this order, Odysseus restarted first):** (1) agent turn that edits a document after untrusted context → card, and **no** *"Updated"* line; (2) **Allow** with the panel open → `POST /api/chat_stream` in `app.log`, document version up, closing line names the new version; (3) same again, then reload the page, panel closed, **Allow** → succeeds; (4) an expired or retired card (send any message first, then Allow the old card) → `Tool approval …… rejected (409): not pending …` in `app.log`; (5) *Resend* on a message with a document open → it sends. Watch for the empty-buffer / stale `v1` badge after (2).
+- **Edited:** `src/turn_report.py`, `src/agent_loop.py` (2 call sites), `routes/chat_routes.py`, `static/js/document.js`, `static/js/chat.js`, `tests/test_approval_pending_not_reported.py` (new), `tests/test_dangling_promise_turn.py`, `notes/todo.md`, this file.
+
+---
+
 ## 2026-10-07 (19:15–20:45) — cleanup committed and checked live; items 63–68 filed
 
 - ✅ **Cleanup on the M1:** suite 7,441 passed, 3 skipped, 0 failed (the previous 7,451 minus the 10 removed tests); committed as `37cbbb10` (code) and `c46cf8b2` (notes), not pushed. The two benchmark runs of the day (Bonsai 17:15, Qwen 17:54) ran on code from before it — Odysseus had started at 16:06, the cleanup landed at 16:10 — so **Qwen's 34/36 is the "before" number**.
