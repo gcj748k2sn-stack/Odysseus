@@ -520,8 +520,19 @@ export async function loadPresets(showError) {
       }
     }
 
-    // Auto-activate custom preset if enabled and has content
-    if (custom && custom.enabled !== false && (custom.character_name || custom.system_prompt)) {
+    // Auto-activate custom preset if enabled and has content. "Content"
+    // includes tuning and inject text, as in the save path (_hasTuning /
+    // _hasInject): a preset that only sets temperature or max tokens was
+    // otherwise dropped on every reload, so requests carried no preset_id and
+    // ran at the server defaults (notes: "max_tokens=0, temp=1.0 arrives
+    // whenever a request carries no preset").
+    const _customHasTuning = !!custom && (
+      (custom.temperature !== undefined && Number(custom.temperature) !== 1.0)
+      || (custom.max_tokens !== undefined && Number(custom.max_tokens) !== 0)
+    );
+    const _customHasInject = !!custom && !!(custom.inject_prefix || custom.inject_suffix);
+    if (custom && custom.enabled !== false
+        && (custom.character_name || custom.system_prompt || _customHasTuning || _customHasInject)) {
       selectedPreset = 'custom';
       const miniBtn = document.getElementById('overflow-preset-btn');
       if (miniBtn) miniBtn.classList.add('active');

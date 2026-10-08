@@ -2177,8 +2177,13 @@ export function displayMetrics(messageElement, metrics) {
 
       // Same basis as ctxPct: the size of the LAST request of the turn.
       // input_tokens is the SUM across every round of an agent turn, so it
-      // overstated what is used.
-      const usedTokens = metrics.request_context_tokens || inputTokens || 0;
+      // overstated what is used. When the provider reported usage, the
+      // server's context_percent is the last round's real input count, while
+      // request_context_tokens is Odysseus's own estimate - show the former so
+      // "used / total" matches the percentage beside it.
+      const _buckets = Array.isArray(metrics.usage_buckets) ? metrics.usage_buckets : [];
+      const _lastRealInput = _buckets.length ? Number(_buckets[_buckets.length - 1].input_tokens) || 0 : 0;
+      const usedTokens = _lastRealInput || metrics.request_context_tokens || inputTokens || 0;
       const totalCtx = ctxLen || 0;
       const modelShort = model.split('/').pop();
       const fmtNum = n => n ? n.toLocaleString() : '?';
