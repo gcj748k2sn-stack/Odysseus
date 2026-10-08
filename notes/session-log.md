@@ -14,6 +14,25 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-08 (09:25–10:20) — owed checks all done: 69 and 9b closed, item 7 fixed (uncommitted), 2a and 21 verified live
+
+- ✅ **69 closed:** approved edit with the panel closed after a reload (09:34, session `791d372a`) → editor v4, new text, stamped. Row and body moved to resolvedissues.md.
+- 🐞🔧 **7 — the d16f7a83 shape was a false report, and current code still produced it:** four edits, v2 and v3 landed, two rejected, and the reply said *"the document is unchanged … rejected 1 attempt"*. Fixed in `src/turn_report.py` (`doc_edit_failed_notice`) and `src/agent_loop.py` (`_doc_edit_landed`); `tests/test_doc_edit_partial_failure_report.py` (4, real loop, 4 mutations caught). Sandbox (Python 3.10 venv, `-n 4`): 7,494 passed, 2 failed — the no-DNS test and `test_mcp_reconnect_args`, which passes alone (test order under xdist). **Needs a restart to go live; not seen live. M1 suite and commit owed.**
+- ✅ **2a fired live for the first time** (09:38, session `1a92b5d3`): `read_file` of `data/agent_workspace/grow_log.json` (test fixture, delete when done), a table of 4 of 6 records → *"Doesn't match the source — source has 6 records, the table has 4 rows"*. It was a requested subset, so this is a known false positive; report-only.
+- ✅ **21 re-verified live** for 2a (09:38) and 2b (09:42): each warning kept after the model's own summary. A one-line test document gives no 2b finding (no heading, so no subject) — by design.
+- ✅ **9b closed:** three same-prompt long runs on LM Studio succeeded — round 1 took 507, 461 and 432 s; the browser saw silent stretches of 447 and 417 s; documents of 43–55 k chars; no 504. Scope note: LM Studio, not Ollama. Item file moved to `archive/items/`.
+- 🔧 **48 — the 10-04 fix was half right:** the popup's *used* figure was Odysseus's estimate, while the percentage is the provider's real count (live: 28,629 shown beside 34.1 %). Now prints the last usage bucket; 56/56 rows with buckets match. `static/js/chatRenderer.js`, uncommitted, live via reload.
+- ✅ **56 closed** — failed send to a down Ollama rendered the error and no `ReferenceError`. **`_send_email_sync`** checked: dead code; scheduled delivery is owner-scoped; `agent_draft` rows have no writer.
+- ✅ **46 closed** — the Admin *Tools* selector verified live (auto → `null`, on → `true`, survives a reload).
+- 📉 **20 re-measured:** duplicate rule 3 of 5 (07-30: 6 of 6), titles and item 12's rule 3 of 3. Confounded — see the next bullet.
+- 🔎 **43:** since 10-04 **every** request runs `Preset None: temp=1.0, max_tokens=0`. The custom preset in `data/presets.json` was disabled at 10-04 19:43, and `loadPresets` never selects a tuning-only preset on page load (upstream). No fix made; the maintainer decides.
+- 🔧 **43 fixed (uncommitted):** preset re-enabled at 0.6/8192, and `static/js/presets.js` `loadPresets` now selects a tuning-only preset on load; every request since 10:56 is `Preset custom`. **20 second batch at 0.6: 4 of 5** — temperature does not explain the drop from 6/6.
+- 🧹 Item 20 left ten chats and ten clone documents (sessions `812725ec`, `9a1b66f1`, `f99a8f81`, `3969c1f6`, `54422491`, `7365035a`, `00e6291b`, `6d2027eb`, `b2d6cb29`, `dc502fe0`), plus 7 created documents.
+- 🧹 Test documents: *"Grow log A/B"*, *"Pink oyster fruiting"* (1 and 2), *"9b long run"* ×3, *"Yellow Oyster check 4"* (now v4).
+- **Edited:** `src/turn_report.py`, `src/agent_loop.py`, `tests/test_doc_edit_partial_failure_report.py` (new), `notes/todo.md`, `notes/resolvedissues.md`, this file.
+
+---
+
 ## 2026-10-08 (08:40–09:00) — approval-flow live check finished; item 69 found and fixed (uncommitted)
 
 - ✅ **Live, session `791d372a`, Qwen on LM Studio**, done from the agent's browser pane: (3) reload, panel closed, **Allow** → `edit_document` ran, v1 → v2 (verifies 67); (4) a card retired by a later message, re-posted → `Tool approval Dr069acB… rejected (409): not pending …` at 08:53:09; (5) *Resend* with the document panel open → `POST /api/chat_stream` 08:53:38 and no email error (verifies 66, together with Allow at 08:49). Every card was saved with no *"Updated"* line (65).

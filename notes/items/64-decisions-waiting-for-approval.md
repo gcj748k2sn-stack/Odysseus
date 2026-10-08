@@ -71,3 +71,8 @@ Not yet: **46, 48, 56** each still owe a manual UI check; **60** has the bash ho
 - **`.env.bak.before-lmstudio`** (2026-08-07) in the repo root: a copy of secrets, gitignored but readable by the agent's bash, which runs from the repo root. Move it out of the repo.
 - **`scripts/bench_agent_tasks.py`** keeps a hand-copied `WEB_INTENT_RE`; a five-line test comparing it with `routes/chat_routes.py` would catch drift.
 - **`tests/test_static_js_block_scope.py`** is a 576-line hand-written JS scanner; ESLint `no-undef` would do the same with a real parser, at the cost of an npm devDependency and a globals list. Optional.
+
+## 11. Live test of the AI document tidy's archive branch (item 44) — parked 2026-10-08
+
+**Maintainer: not relevant for now; keep for later.** It blocks nothing: the AI tidy (`POST /api/documents/ai-tidy`) runs **only** when someone clicks *Tidy* in the Library (`static/js/documentLibrary.js`, phase 2 after the regex tidy). The scheduled *Documents Tidy* task (`action_tidy_documents` → `src/document_actions.run_document_tidy`) makes no model call. What stays unverified: the branch that archives a document on a `junk` verdict has never run live, and verdict quality is unmeasured (one run: all `keep`; an earlier unsuppressed run: mostly `junk`). **Until then, the Library's *Tidy* button runs that unobserved branch on real documents** — archiving is reversible, but worth knowing. When picked up: a batch of throwaway junk documents (empty, `asdf`, three identical copies) next to real ones, then check that only the junk is archived; or test the parser and the archive step against a copy of `app.db` first. Record in resolvedissues.md under item 44.
+
