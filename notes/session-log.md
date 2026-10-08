@@ -14,6 +14,15 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-08 (13:30–16:30) — benchmark day: Qwen at 1.0 and 0.6, Bonsai quick; three harness fixes
+
+- 📊 **Results** (detail in [benchmark.md](benchmark.md); report `data/bench/agent/report.md`): Qwen full at 1.0 **35/36** after the rescore (33/36 counting two loops); Qwen at 0.6, quick **16/16** and full **34/36** (one loop, one title slip); Bonsai 2 quick **16/16**, no loops. **Temperature 0.6 vs 1.0 makes no difference at this n.** Qwen's weak spots: `calendar_create` title copying (3/6) and repetition loops (3 in 108 task runs).
+- 🔧 **Harness fixes, uncommitted:** (1) `--preset` option, run named `TARGET+PRESET` (committed `31d2948d`); (2) a repetition loop is a model result. It needed a second fix at 15:45, because Odysseus repeats the failure in an `agent_terminal` summary without the text, so the run stopped three times (13:37, 14:07, 15:17); (3) `split_turn_report` recognises the bulleted closing report (`- ⚠️ …`), which had failed `json_output` r2 for prose that was Odysseus's own.
+- ⏳ **Owed:** the Qwen 0.6 full run is missing `json_output` r2. Resume with LM Studio back up: `--resume data/bench/agent/20261008-144530-qwen35+custom`. The Bonsai full suite (10 tasks never run) is still owed.
+- **Edited:** `scripts/bench_agent.py`, `scripts/bench_agent_tasks.py`, `notes/benchmark.md`, this file.
+
+---
+
 ## 2026-10-08 (09:25–10:20) — owed checks all done: 69 and 9b closed, item 7 fixed (uncommitted), 2a and 21 verified live
 
 - ✅ **69 closed:** approved edit with the panel closed after a reload (09:34, session `791d372a`) → editor v4, new text, stamped. Row and body moved to resolvedissues.md.
@@ -27,6 +36,7 @@ Keep roughly the last working day here; older entries move verbatim to
 - 📉 **20 re-measured:** duplicate rule 3 of 5 (07-30: 6 of 6), titles and item 12's rule 3 of 3. Confounded — see the next bullet.
 - 🔎 **43:** since 10-04 **every** request runs `Preset None: temp=1.0, max_tokens=0`. The custom preset in `data/presets.json` was disabled at 10-04 19:43, and `loadPresets` never selects a tuning-only preset on page load (upstream). No fix made; the maintainer decides.
 - 🔧 **43 fixed (uncommitted):** preset re-enabled at 0.6/8192, and `static/js/presets.js` `loadPresets` now selects a tuning-only preset on load; every request since 10:56 is `Preset custom`. **20 second batch at 0.6: 4 of 5** — temperature does not explain the drop from 6/6.
+- ⚠️ **M1 suite 13:52 (committed as `a100ee61`…`d2d7a3b0`): 7,496 passed, 1 failed** — `test_tool_path_odysseus_state.py::test_grep_never_prints_state_files[python-fallback]`. It passes alone (sandbox, 37/37) and passed in the 09:23 M1 run. It ran during a benchmark run on the same Mac. Suspect the spawn-worker fallback in `src/agent_tools/filesystem_tools.py` (upstream): it waits 50 ms for the final queue record after the worker exits, and under load that can read as *"fallback worker exited 0"* with no output. **Re-run alone on the M1 at 14:25: passed.** So it's a load-dependent flake, not a regression; worth a longer wait in the fallback if it recurs.
 - 🧹 Item 20 left ten chats and ten clone documents (sessions `812725ec`, `9a1b66f1`, `f99a8f81`, `3969c1f6`, `54422491`, `7365035a`, `00e6291b`, `6d2027eb`, `b2d6cb29`, `dc502fe0`), plus 7 created documents.
 - 🧹 Test documents: *"Grow log A/B"*, *"Pink oyster fruiting"* (1 and 2), *"9b long run"* ×3, *"Yellow Oyster check 4"* (now v4).
 - **Edited:** `src/turn_report.py`, `src/agent_loop.py`, `tests/test_doc_edit_partial_failure_report.py` (new), `notes/todo.md`, `notes/resolvedissues.md`, this file.
