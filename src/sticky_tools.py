@@ -46,12 +46,22 @@ def is_local_endpoint(url: str) -> bool:
 
 
 def stabilize(session_id: Optional[str], endpoint_url: str, model: str,
-              tools: Optional[Set[str]]) -> Optional[Set[str]]:
-    """Return the tool set to use for this message (possibly widened)."""
+              tools: Optional[Set[str]], follow_up: bool = False) -> Optional[Set[str]]:
+    """Return the tool set to use for this message (possibly widened).
+
+    ``follow_up``: a low-signal message in an existing chat ("and times 4?").
+    Retrieval on such text returns near-random tools (calendar, notes,
+    endpoints - live 2026-10-08), so the union would grow on every message and
+    never repeat. A follow-up reuses the chat's previous set exactly.
+    """
     if not tools or not session_id or not is_local_endpoint(endpoint_url):
         return tools
     key = (str(session_id), str(model or ""))
     prev = _sets.pop(key, set())
+    if follow_up and prev:
+        _sets[key] = set(prev)
+        logger.info("[sticky-tools] session=%s follow-up: reusing the previous %d tools", key[0][:8], len(prev))
+        return set(prev)
     union = set(prev) | set(tools)
     if len(union) > MAX_TOOLS:
         union = set(tools)

@@ -4127,7 +4127,10 @@ async def stream_agent_loop(
     # Local servers: keep this chat's retrieved set stable across messages so
     # the cached prompt prefix survives (fork module, see its docstring).
     if not guide_only and not relevant_tools and _relevant_tools is not None:
-        _relevant_tools = stabilize_tool_set(session_id, endpoint_url, model, set(_relevant_tools))
+        _relevant_tools = stabilize_tool_set(
+            session_id, endpoint_url, model, set(_relevant_tools),
+            follow_up=bool(_low_signal_turn and _existing_conversation),
+        )
 
     # If deterministic domain detection fired, seed the corresponding domain
     # tools into the selected tool set. This is not direct prompt-pack

@@ -56,9 +56,23 @@ def test_union_past_the_cap_resets_to_the_current_set():
     assert S.stabilize("c1", LOCAL, "m", {"new"}) == {"new"}
 
 
+def test_low_signal_follow_up_reuses_the_previous_set_exactly():
+    """Live 2026-10-08: retrieval on "and this times 4?" added calendar/notes tools."""
+    S.stabilize("c1", LOCAL, "m", {"python", "ask_user"})
+    assert S.stabilize("c1", LOCAL, "m", {"manage_calendar", "manage_notes"}, follow_up=True) == {"python", "ask_user"}
+    assert S.stabilize("c1", LOCAL, "m", {"serve_model"}, follow_up=True) == {"python", "ask_user"}
+    # a real new request still widens the set
+    assert S.stabilize("c1", LOCAL, "m", {"web_search"}) == {"python", "ask_user", "web_search"}
+
+
+def test_follow_up_without_history_uses_the_current_set():
+    assert S.stabilize("c1", LOCAL, "m", {"a"}, follow_up=True) == {"a"}
+
+
 def test_wired_after_retrieval_and_before_every_filter():
     src = Path(S.__file__).with_name("agent_loop.py").read_text(encoding="utf-8")
-    call = src.index("stabilize_tool_set(session_id, endpoint_url, model, set(_relevant_tools))")
+    call = src.index("_relevant_tools = stabilize_tool_set(")
+    assert "follow_up=bool(_low_signal_turn and _existing_conversation)" in src[call:call + 300]
     assert src.rindex("Keyword fallback selected", 0, call) < call
     guard = src.rindex("if not guide_only and not relevant_tools and _relevant_tools is not None:", 0, call)
     assert call - guard < 200, "skipped when the caller provides its own tool set"
