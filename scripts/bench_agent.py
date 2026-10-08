@@ -92,9 +92,10 @@ PRESETS = {
 # LM Studio's broken-copy "Compute error" (2026-10-06 11:25), any HTTP 5xx.
 # An HTTP 400 such as "exceeds the available context size" stays a result.
 SERVER_FAULT_RE = re.compile(r"Cannot reach|Compute error|['\"]status['\"]: ?5\d\d|HTTP 5\d\d")
-# ...except Odysseus's own 502 for a model that produced nothing: that one is
-# the model's result (2026-10-06 21:5x, Bonsai 2 on `german`).
-MODEL_EMPTY_RE = re.compile(r"empty response", re.I)
+# ...except Odysseus's own 502s for what the model did: it produced nothing
+# (2026-10-06 21:5x, Bonsai 2 on `german`), or it looped and Odysseus's
+# degenerate-stream guard stopped it (2026-10-08 13:37, Qwen on `recover_typo`).
+MODEL_EMPTY_RE = re.compile(r"empty response|started repeating tokens", re.I)
 
 
 def is_server_fault(err):
@@ -200,6 +201,8 @@ def run_one(api, task, target, rep, run_dir, args):
             "allow_bash": "true" if task["bash"] else "false",
             "allow_web_search": "true" if task["web"] else "false",
             "workspace": ctx["ws"]}
+    if getattr(args, "preset", None):
+        form["preset_id"] = args.preset   # as the browser sends it (static/js/chat.js)
 
     state = {"event": None, "t0": time.time(), "first_text": None, "stream_rounds": 0, "approval": None}
     final_parts, all_parts = [], []
@@ -304,6 +307,8 @@ def run_one(api, task, target, rep, run_dir, args):
                 rec["flags"].append("approval_denied")
             form = {"message": "", "session": sid, "incognito": "true", "mode": "agent",
                     "tool_approval_id": card.get("approval_id"), "tool_approval_decision": args.approval}
+            if getattr(args, "preset", None):
+                form["preset_id"] = args.preset
             if args.approval == "deny":
                 api.stream("/api/chat_stream", form, on_line)
                 break
@@ -513,8 +518,19 @@ def cmd_run(args):
     tasks = select_tasks(args)
     lint_prompts(tasks)
     target = parse_target(args.target)
+    if args.preset:
+        # A separate name, so the report never pools preset and no-preset runs.
+        target = (f"{target[0]}+{args.preset}", target[1])
     api = Api(args.url, args.user, os.environ.get("ODYSSEUS_PASSWORD", ""))
     api.login()
+    if args.preset:
+        presets = api.get("/api/presets") or {}
+        p = presets.get(args.preset)
+        if p is None:
+            sys.exit(f"error: preset {args.preset!r} not in Odysseus ({', '.join(presets)})")
+        if p.get("enabled") is False:
+            sys.exit(f"error: preset {args.preset!r} is disabled; Odysseus would use the defaults (temp 1.0)")
+        print(f"preset {args.preset}: temperature={p.get('temperature')} max_tokens={p.get('max_tokens')}")
     env, warn = preflight(api, target, tasks)
     print(f"preflight for {target[0]}:")
     show_preflight(env, warn)
@@ -904,8 +920,8 @@ def cmd_report(args):
     L.append("- Approval cards (Odysseus's untrusted-context gate since the 2026-10-06 merge) were answered "
              "automatically with *Allow for this task*; they cost a round trip, not points. The count shows how "
              "often a model's tool sequence hits the gate.")
-    L.append("- Sampling settings are whatever each endpoint gets with no preset (Bonsai 2 relies on the "
-             "no-preset `temp=1.0`, see notes/todo.md).")
+    L.append("- Sampling: a model named `TARGET+PRESET` ran with that Odysseus preset (`--preset`); any other "
+             "ran with no preset, i.e. Odysseus's defaults (temp 1.0, no max_tokens).")
 
     text = "\n".join(L) + "\n"
     if args.out:
@@ -928,6 +944,8 @@ def main():
     r.add_argument("--tasks", help="comma-separated task ids")
     r.add_argument("--runs", type=int, default=1)
     r.add_argument("--resume", help="continue this run directory")
+    r.add_argument("--preset", help="send this Odysseus preset_id with every turn (e.g. custom); "
+                                    "the run is named TARGET+PRESET. Default: no preset, i.e. temp 1.0")
     r.add_argument("--keep", action="store_true", help="keep sessions/notes/events/documents")
     r.add_argument("--no-warmup", action="store_true")
     r.add_argument("--approval", choices=["approve_task", "deny"], default="approve_task",
