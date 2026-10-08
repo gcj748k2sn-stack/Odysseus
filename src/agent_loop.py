@@ -51,6 +51,7 @@ from src.turn_report import (
 )
 from src.prompt_security import untrusted_context_message
 from src.user_content_trust import document_is_user_trusted, record_ai_document_write
+from src.prefix_probe import log_request as log_prefix_probe
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -5165,6 +5166,7 @@ async def stream_agent_loop(
                 output_tokens=round_output_tokens,
                 usage_source=usage_source,
             ))
+        log_prefix_probe(session_id, round_num, messages, _tool_names_sent)
         logger.info(
             "[agent-timing] round_start round=%s model=%s endpoint=%s prompt_tokens=%s tools=%s native_tools=%s timeout=%s",
             round_num,
