@@ -216,3 +216,10 @@ Policy: [`tests/TESTING_STANDARD.md`](tests/TESTING_STANDARD.md). Helpers:
 - **Say which directory a command assumes**, or use absolute paths.
 - **macOS, not Linux:** `shasum -a 256`, not `sha256sum`; BSD `sed -i ''`, not
   GNU `sed -i`.
+- **No `#` comments in pasted commands.** Interactive zsh passes `# …` on as
+  arguments (2026-10-08: an `export` with a trailing comment failed and kept the
+  placeholder value).
+- **A chain of commands stops on a failing suite only through a file:**
+  `pytest … | tee FILE | tail -3 && ! grep -q failed FILE && git add …` —
+  `| tail` alone always succeeds. Save the output under `data/logs/` (gitignored)
+  so an agent can read the traceback.

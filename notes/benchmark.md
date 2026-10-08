@@ -1,6 +1,6 @@
 # Agent benchmark (`scripts/bench_agent.py`)
 
-Compares models **inside Odysseus**: the same 18 tasks go through the real
+Compares models **inside Odysseus**: the same 18 tasks (17 while `manage_calendar` is switched off) go through the real
 `/api/chat_stream` in agent mode, exactly as the browser sends them, and each is
 checked on its outcome — the answer text, files on disk, notes/events/documents
 through the API. Tasks: `scripts/bench_agent_tasks.py` (`bench_agent.py tasks`
@@ -13,13 +13,7 @@ One model per run, with only that model's server up. Bonsai 2 and Qwen loaded
 together do not fit in 16 GB, and LM Studio loading Qwen while Bonsai runs gave
 the *Compute error* of 2026-10-06 ([qwensetup.md](qwensetup.md)).
 
-```
-cd /Users/cedrik/odysseus
-python3 scripts/bench_agent.py cleanup                       # leftovers from earlier runs
-python3 scripts/bench_agent.py preflight --target bonsai2    # must end with "ok"
-caffeinate -i python3 scripts/bench_agent.py run --target bonsai2 --runs 2 --yes
-python3 scripts/bench_agent.py report data/bench/agent/2026100[7-9]* --out data/bench/agent/report.md
-```
+The steps, in order: `cleanup` removes leftovers from earlier runs, `preflight` must end with *ok*, `run` runs, `report` writes the comparison. Ready-to-paste commands for each kind of run are under [Commands](#commands).
 
 - `--preset custom` sends that Odysseus preset with every turn, as the browser does, and names the run `qwen35+custom`, so the report keeps it apart. Without it, every turn runs at Odysseus's defaults (temp 1.0, no max_tokens). Added 2026-10-08.
 - A 502 from Odysseus's repetition guard (*"started repeating tokens"*) is scored as the model's result, like the empty-response 502. A turn counts as a server fault only if none of its errors says it was the model's own result: the `agent_terminal` summary repeats the same failure without the text. Until 2026-10-08 15:45 a loop stopped the run (three times that day).
@@ -27,6 +21,83 @@ python3 scripts/bench_agent.py report data/bench/agent/2026100[7-9]* --out data/
 - Targets: `bonsai2` (endpoint `ed1cd41c`, llama.cpp :8090) and `qwen35` (`a5179555`, LM Studio :1234), or `NAME=ENDPOINT_ID:MODEL_ID`.
 - An interrupted run continues with `--resume <run dir>`. Results go to `data/bench/agent/<run-id>/` (gitignored); task fixtures go to `~/odysseus-bench/<run-id>/` (`BENCH_WS_ROOT` overrides) and can be deleted any time.
 - Time: Qwen ~40 s per task, Bonsai 2 ~140 s; full suite ×2 ≈ 30 min vs ≈ 3 h.
+- **Switched-off tools (since 2026-10-08):** a task whose every usable tool is switched off in Settings → Agent Tools is skipped, not failed (`calendar_create` while `manage_calendar` is off). Preflight prints `⏭ skipping …`; the report shows *⏭ tool off*. Earlier runs include it, so their full-suite totals are out of 18 per run (36 at `--runs 2`) and new ones out of 17 (34); compare per task, or on the report's *only tasks every model ran* row.
+
+## Commands
+
+Paste each block as it is into the Mac terminal (zsh). They carry no `#` comments on purpose: interactive zsh does not treat `#` as a comment and passes it on as arguments. Every block starts in the repo. **Only one model server up per run.** `run` does its own preflight (what is loaded, SearXNG, n_ctx) and prints it before the first task.
+
+**Once per terminal** — asks for the Odysseus password without echoing it or saving it in the shell history, so the commands below don't each ask again:
+```
+read -s "ODYSSEUS_PASSWORD?Odysseus password: " && export ODYSSEUS_PASSWORD && echo
+```
+
+**Before a Qwen run** — Bonsai's llama-server stopped (Ctrl-C in its terminal), then LM Studio's server up with only Qwen loaded:
+```
+lms server start && lms unload --all && lms load qwen/qwen3.5-9b
+```
+
+**Before a Bonsai run** — LM Studio emptied and its server stopped (as `start_bonsai2.sh` asks; also quit Ollama if it runs), then Bonsai's server started in its own terminal and left running:
+```
+lms unload --all && lms server stop
+```
+```
+~/BonsaiDemo/start_bonsai2.sh
+```
+
+**Quick check, Qwen** — 8 tasks once, ~6 min:
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --quick --yes
+```
+
+**Short run, Qwen** — 8 tasks ×2, ~12 min:
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --quick --runs 2 --yes
+```
+
+**Full run, Qwen** — 17 tasks ×2, ~30 min:
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --runs 2 --yes
+```
+
+**Short run, Bonsai 2** — 8 tasks ×2, ~55 min:
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target bonsai2 --quick --runs 2 --yes
+```
+
+**Full run, Bonsai 2** — 17 tasks ×2, roughly 1.5–3 h (never run yet):
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target bonsai2 --runs 2 --yes
+```
+
+**With the custom preset** (temp 0.6 / 8192) — add `--preset custom` to any `run`; the run is named `qwen35+custom` / `bonsai2+custom`. It stops at once if the preset is disabled (the chip's × disables it):
+```
+cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --quick --runs 2 --preset custom --yes
+```
+
+**A few tasks only** — task ids from `python3 scripts/bench_agent.py tasks`:
+```
+cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --tasks calendar_create,json_output --runs 2 --yes
+```
+
+**Continue an interrupted run** — same target (and preset) as the original:
+```
+cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --preset custom --resume data/bench/agent/20261008-144530-qwen35+custom --yes
+```
+
+**Preflight only** — what would distort a run, without running anything:
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py preflight --target bonsai2
+```
+
+**Report** — one run, or every valid run since 2026-10-07:
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py report data/bench/agent/RUN_DIR
+```
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py report data/bench/agent/2026100[7-9]* --out data/bench/agent/report.md
+```
+Replace `RUN_DIR` with the folder the run printed at its start (`run dir: …`).
 
 ## Why it is built this way
 
@@ -69,6 +140,3 @@ Valid runs only (after the 2026-10-06 merge and the workspace fix). Pass counts 
 
 - Should Odysseus's turn report still list a tool failure the model recovered from later in the same turn? It is the fork's deliberate *failures always* rule; it made a JSON-only answer non-JSON.
 - With n = 16–36 per model, pass-rate gaps under ~15 points are noise. Speed is the only firm difference so far.
-
-### 2026-10-08: switched-off tools
-From now on a task whose every usable tool is switched off in Settings → Agent Tools is skipped, not failed (`calendar_create` while `manage_calendar` is off). Earlier runs include it, so their full-suite totals are out of 18 tasks per run (36 at `--runs 2`) and new ones out of 17 (34); compare per task, or on the report's *only tasks every model ran* row when two models differ.

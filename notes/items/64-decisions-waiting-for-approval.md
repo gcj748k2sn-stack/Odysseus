@@ -76,3 +76,13 @@ Not yet: **46, 48, 56** each still owe a manual UI check; **60** has the bash ho
 
 **Maintainer: not relevant for now; keep for later.** It blocks nothing: the AI tidy (`POST /api/documents/ai-tidy`) runs **only** when someone clicks *Tidy* in the Library (`static/js/documentLibrary.js`, phase 2 after the regex tidy). The scheduled *Documents Tidy* task (`action_tidy_documents` → `src/document_actions.run_document_tidy`) makes no model call. What stays unverified: the branch that archives a document on a `junk` verdict has never run live, and verdict quality is unmeasured (one run: all `keep`; an earlier unsuppressed run: mostly `junk`). **Until then, the Library's *Tidy* button runs that unobserved branch on real documents** — archiving is reversible, but worth knowing. When picked up: a batch of throwaway junk documents (empty, `asdf`, three identical copies) next to real ones, then check that only the junk is archived; or test the parser and the archive step against a copy of `app.db` first. Record in resolvedissues.md under item 44.
 
+
+## 12. Shorter tool descriptions for local models — parked 2026-10-08
+
+**Reviewed and judged not worth the code yet.** Bonsai's template puts every tool schema as JSON at the start of the prompt (read from the GGUF's `tokenizer.chat_template`), so descriptions are read in full on every uncached round. Measured in chat `01492028`: real prompt 3,711–4,745 tokens (Odysseus's own `prompt_tokens` estimate, ~2,000, leaves out the schemas), prefill ~62 tok/s.
+
+- **Gain:** `ask_user` + `update_plan` trimmed ≈ 830 chars ≈ 240 tokens ≈ **4 s per uncached round** (first message of a chat, or a message that widens the sticky tool set). `ui_control` ≈ 2,140 chars ≈ 10 s, only when it is selected.
+- **Cost:** a fork module holding a second copy of these descriptions that has to follow upstream changes; behaviour of `ui_control`/`update_plan` is not covered by the benchmark (0 calls in ~170 task runs), so it needs a manual three-prompt check (open notes panel, create a theme, tick a plan step).
+- **Cheaper first:** switch off tools that are never used by chat (Settings → Agent Tools). `manage_mcp` rode along on every message of the test chat (retrieval noise kept by sticky tools) and alone is ~850 chars.
+- **Rejected variant:** send `update_plan` only while a plan is active — the app sends `approved_plan` only with the first message after approval (`static/js/chat.js`), so later "change the plan" requests would lose the tool.
+- **If revived:** draft at the maintainer's request in the 2026-10-08 session; wire at the per-candidate send site (`agent_loop.py` ~5100, `candidate_url`) so remote fallbacks keep the full text; keep `ask_user`'s "only when you cannot proceed well without the answer".
