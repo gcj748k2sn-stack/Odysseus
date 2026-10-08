@@ -326,6 +326,32 @@ DOC_EDIT_FAILED_NOTICE = (
     "I'll rewrite the document in full instead of patching individual passages."
 )
 
+DOC_EDIT_PARTIAL_NOTICE = (
+    "⚠️ Only part of this turn's edits landed — **{title}** is now at "
+    "**v{version}**, but the last {count} attempt{plural} {verb} rejected "
+    "({reason}), so those changes are missing. Ask me to apply the rest."
+)
+
+
+def doc_edit_failed_notice(count: int, reason: str, landed: Optional[Dict[str, Any]] = None) -> str:
+    """End-of-turn notice when the turn's last document edit failed.
+
+    "The document is unchanged" is only true when no document tool succeeded
+    earlier in the turn; when one did, the notice names the version that did
+    land (notes: "Closing summary under-reports / stays silent").
+    """
+    plural = "s" if count != 1 else ""
+    if landed and landed.get("version"):
+        return DOC_EDIT_PARTIAL_NOTICE.format(
+            title=landed.get("title") or "the document",
+            version=landed.get("version"),
+            count=count,
+            plural=plural,
+            verb="were" if count != 1 else "was",
+            reason=reason,
+        )
+    return DOC_EDIT_FAILED_NOTICE.format(count=count, plural=plural, reason=reason)
+
 
 def _closing_doc_summary(
     full_response: str,

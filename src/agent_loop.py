@@ -38,6 +38,7 @@ from src.browser_gate import (
 )
 from src.turn_report import (
     DOC_EDIT_FAILED_NOTICE,
+    doc_edit_failed_notice,
     DOC_EDIT_RETRY_TOOLS,
     DOC_TOOLS,
     _cap_persisted_command,
@@ -3478,6 +3479,7 @@ def _empty_response_fallback(
     tool_events: list,
     doc_edit_failures: int = 0,
     doc_edit_error: str = "",
+    doc_edit_landed: Optional[dict] = None,
 ) -> tuple:
     """Return (final_response, sse_chunk_or_none) for the end-of-loop empty-response guard.
 
@@ -3500,11 +3502,7 @@ def _empty_response_fallback(
     """
     if doc_edit_failures:
         reason = (doc_edit_error or "the edit was rejected").strip().split("\n")[0]
-        notice = DOC_EDIT_FAILED_NOTICE.format(
-            count=doc_edit_failures,
-            plural="s" if doc_edit_failures != 1 else "",
-            reason=reason[:160],
-        )
+        notice = doc_edit_failed_notice(doc_edit_failures, reason[:160], doc_edit_landed)
         if not full_response.strip():
             return notice, f'data: {json.dumps({"delta": notice})}\n\n'
         # The model wrote something despite the failure. That prose is usually
@@ -4627,6 +4625,7 @@ async def stream_agent_loop(
     # tool that succeeds.
     _doc_edit_failures = 0
     _doc_edit_last_error = ""
+    _doc_edit_landed = None  # title/version of the last document write that landed this turn
     real_input_tokens = 0   # Accumulated real usage from API
     real_output_tokens = 0
     last_round_input_tokens = 0  # Last round's input tokens (for context % peak)
@@ -6554,6 +6553,8 @@ async def stream_agent_loop(
                 else:
                     _doc_edit_failures = 0
                     _doc_edit_last_error = ""
+            if block.tool_type in DOC_TOOLS and doc_tool_result_landed(result) and result.get("version"):
+                _doc_edit_landed = {"title": result.get("title") or "", "version": result.get("version")}
             tool_results.append(formatted)
             tool_result_texts.append(formatted)
             tool_result_records.append(
@@ -6666,6 +6667,7 @@ async def stream_agent_loop(
         full_response, round_reasoning, tool_events,
         doc_edit_failures=_doc_edit_failures,
         doc_edit_error=_doc_edit_last_error,
+        doc_edit_landed=_doc_edit_landed,
     )
     if _fallback_chunk:
         yield _fallback_chunk
