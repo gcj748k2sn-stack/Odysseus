@@ -22,6 +22,9 @@ USAGE (from the repo root, Odysseus running, nobody else chatting):
   --target NAME is a preset below, or NAME=ENDPOINT_ID:MODEL_ID for anything else.
   --runs N repeats every task N times (default 1). --tasks a,b,c picks tasks.
   --resume DIR continues an interrupted run directory.
+  A task whose every usable tool is switched off in Settings → Agent Tools
+  (e.g. calendar_create with manage_calendar off) is skipped, not failed; the
+  preflight and the report list it.
 
 Run ONE target per invocation, and only that model's server loaded: Bonsai 2
 on llama-server and Qwen in LM Studio together do not fit in memory without
@@ -379,6 +382,21 @@ def select_tasks(args):
     return tasks
 
 
+def unrunnable(tasks, disabled):
+    """Tasks Odysseus cannot do because the user switched their tools off:
+    every tool that could do the job is in the disabled list (Settings → Agent
+    Tools). A task with alternatives (find_file: grep, glob, bash, ls,
+    read_file) still runs while one of them is on; a task that needs no tool
+    always runs. Returns {task_id: [its tools]}."""
+    off = set(disabled or ())
+    return {t["id"]: sorted(t["tools"]) for t in tasks if t["tools"] and set(t["tools"]) <= off}
+
+
+def disabled_tools(api):
+    """Odysseus's switched-off tools, as the Agent Tools panel reads them."""
+    return sorted(x["id"] for x in (api.get("/api/tools") or {}).get("tools", []) if not x.get("enabled", True))
+
+
 def lint_prompts(tasks):
     """A non-web task whose prompt reads as web intent gets its file tools
     removed by chat_stream — refuse to run it rather than report a model failure."""
@@ -428,6 +446,12 @@ def preflight(api, target, tasks):
     Returns (env, warnings). Everything here is read-only."""
     name, (endpoint_id, model) = target
     env, warn = {"checked": now_local(), "git_head": git_head()}, []
+    try:
+        env["disabled_tools"] = disabled_tools(api)
+    except Exception as e:
+        env["disabled_tools"] = None
+        warn.append(f"could not read the switched-off tools (GET /api/tools: {e}) — no task is skipped")
+    env["skipped"] = unrunnable(tasks, env["disabled_tools"])
     eps = api.get("/api/model-endpoints")
     eps = eps.get("endpoints", eps) if isinstance(eps, dict) else eps
     base = next((ep.get("base_url") for ep in eps or [] if ep.get("id") == endpoint_id), None)
@@ -498,6 +522,8 @@ def show_preflight(env, warn):
     if env.get("searxng"):
         print(f"  SearXNG: {env['searxng']}")
     print(f"  Odysseus HEAD: {env.get('git_head')}")
+    for tid, tools in (env.get("skipped") or {}).items():
+        print(f"  ⏭  skipping {tid}: needs {' or '.join(tools)}, switched off in Settings → Agent Tools")
     for w in warn:
         print(f"  ⚠️  {w}")
 
@@ -534,6 +560,9 @@ def cmd_run(args):
     env, warn = preflight(api, target, tasks)
     print(f"preflight for {target[0]}:")
     show_preflight(env, warn)
+    tasks = [t for t in tasks if t["id"] not in env["skipped"]]
+    if not tasks:
+        sys.exit("error: every selected task needs a tool that is switched off")
     if warn and not args.yes:
         print("starting in 15 s despite the warning(s) above — Ctrl-C to abort (--yes skips this wait)", flush=True)
         time.sleep(15)
@@ -765,6 +794,15 @@ def cmd_report(args):
 
     targets = sorted({r["target"] for r in recs})
     by = {t: [r for r in recs if r["target"] == t] for t in targets}
+    # Skipped tasks, per target: a task skipped in one run of a target but run
+    # in another (tool switched back on, --resume) has results, so it isn't one.
+    skipped = {t: {} for t in targets}
+    for t in targets:
+        for m in metas.get(t, []):
+            for e in [m.get("env") or {}] + list(m.get("env_resumed") or []):
+                skipped[t].update(e.get("skipped") or {})
+        for tid in {r["task"] for r in by[t]}:
+            skipped[t].pop(tid, None)
     L = []
     L.append(f"# Odysseus agent benchmark — {dt.datetime.now():%Y-%m-%d %H:%M}\n")
     L.append("Runs: " + ", ".join(f"**{t}** ({by[t][0]['model']}, {len(by[t])} task runs)" for t in targets) + "\n")
@@ -787,6 +825,9 @@ def cmd_report(args):
                 bits.append("SearXNG " + ("ok" if e["searxng"].get("ok") else "**not answering**"))
             if e.get("warnings"):
                 bits.append("⚠️ " + " / ".join(e["warnings"]))
+            if e.get("skipped"):
+                bits.append("skipped, tool switched off: " + ", ".join(
+                    f"{k} ({' / '.join(v)})" for k, v in e["skipped"].items()))
             env_lines.append(f"- **{t}**: " + "; ".join(bits))
     if env_lines:
         L.append("Setup at the start of each run:\n")
@@ -874,12 +915,12 @@ def cmd_report(args):
     L.append("## By task\n")
     L.append("| task | " + " | ".join(targets) + " |")
     L.append("|---|" + "---|" * len(targets))
-    for tid in [t for t in T.TASK_IDS if any(r["task"] == t for r in recs)]:
+    for tid in [t for t in T.TASK_IDS if any(r["task"] == t for r in recs) or any(t in skipped[x] for x in targets)]:
         cells = []
         for t in targets:
             rs = [r for r in by[t] if r["task"] == tid]
             if not rs:
-                cells.append("–")
+                cells.append("⏭ tool off" if tid in skipped[t] else "–")
                 continue
             k = sum(r["passed"] for r in rs)
             cells.append(f"{'✅' if k == len(rs) else ('❌' if k == 0 else '🟡')} {k}/{len(rs)} · "
@@ -921,6 +962,9 @@ def cmd_report(args):
     L.append("- Every turn ran in incognito: no memory or skills context, which differs from your normal chats "
              "on purpose (reproducible, and no background extraction competing for the model).")
     L.append("- A failure with *tool not offered* is Odysseus's tool selection, not the model.")
+    if any(skipped.values()):
+        L.append("- ⏭ *tool off*: skipped because every tool the task needs was switched off in Settings → Agent "
+                 "Tools; it is in no pass rate. Compare models on the *only tasks every model ran* row.")
     L.append("- Approval cards (Odysseus's untrusted-context gate since the 2026-10-06 merge) were answered "
              "automatically with *Allow for this task*; they cost a round trip, not points. The count shows how "
              "often a model's tool sequence hits the gate.")
