@@ -69,3 +69,6 @@ Valid runs only (after the 2026-10-06 merge and the workspace fix). Pass counts 
 
 - Should Odysseus's turn report still list a tool failure the model recovered from later in the same turn? It is the fork's deliberate *failures always* rule; it made a JSON-only answer non-JSON.
 - With n = 16–36 per model, pass-rate gaps under ~15 points are noise. Speed is the only firm difference so far.
+
+### 2026-10-08: switched-off tools
+From now on a task whose every usable tool is switched off in Settings → Agent Tools is skipped, not failed (`calendar_create` while `manage_calendar` is off). Earlier runs include it, so their full-suite totals are out of 18 tasks per run (36 at `--runs 2`) and new ones out of 17 (34); compare per task, or on the report's *only tasks every model ran* row when two models differ.
