@@ -99,7 +99,9 @@ def chk(name, ok, detail=""):
 # tool ran or failed — even a failure the model recovered from later in the
 # turn (2026-10-07, Qwen json_output r2). That text is Odysseus's, not the
 # model's, so checks see the reply without it; the runner keeps both.
-_REPORT_LINE = re.compile(r"^(⚠️ \*\*`[\w.:-]+` failed\*\* — |⚠️ \*\*That file is empty\*\*|Ran `[\w.:-]+`|Wrote \d+ bytes )")
+# Odysseus writes one report line bare, and several as a "- " bullet list
+# (2026-10-08, json_output r2: two failed `python` calls).
+_REPORT_LINE = re.compile(r"^(?:- )?(⚠️ \*\*`[\w.:-]+` failed\*\* — |⚠️ \*\*That file is empty\*\*|Ran `[\w.:-]+`|Wrote \d+ bytes )")
 
 
 def split_turn_report(text):

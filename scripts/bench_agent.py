@@ -595,7 +595,11 @@ def cmd_run(args):
             sys.exit(f"\nerror: Odysseus rejected the task workspace ({WS_ROOT}); result not saved. Every file "
                      "task would fail for harness reasons. Set BENCH_WS_ROOT to a plain folder outside "
                      f"Odysseus's data/ directory, then continue with --resume {run_dir}")
-        infra = [e for e in rec.get("stream_errors", []) if is_server_fault(e)]
+        errs = rec.get("stream_errors", [])
+        # Odysseus reports one failure twice: the `error` event carries the text,
+        # the `agent_terminal` summary only "Model request failed (HTTP 502)".
+        # If the text says it was the model's own result, so is the summary.
+        infra = [] if any(MODEL_EMPTY_RE.search(e) for e in errs) else [e for e in errs if is_server_fault(e)]
         if infra:
             sys.exit(f"\nerror: the model server failed, not the model ({infra[0][:160]}); result not saved.\n"
                      f"Fix the server (LM Studio 'Compute error': `lms unload --all && lms load <model>`), "
