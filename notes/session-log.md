@@ -14,6 +14,16 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-08 (08:40–09:00) — approval-flow live check finished; item 69 found and fixed (uncommitted)
+
+- ✅ **Live, session `791d372a`, Qwen on LM Studio**, done from the agent's browser pane: (3) reload, panel closed, **Allow** → `edit_document` ran, v1 → v2 (verifies 67); (4) a card retired by a later message, re-posted → `Tool approval Dr069acB… rejected (409): not pending …` at 08:53:09; (5) *Resend* with the document panel open → `POST /api/chat_stream` 08:53:38 and no email error (verifies 66, together with Allow at 08:49). Every card was saved with no *"Updated"* line (65).
+- 🐞🔧 **Item 69 (S2):** after an approved document edit, the editor showed an **empty buffer stamped with the document's id**, so a Save or a keystroke would write an empty version. Cause: `chat.js`'s `tool_output` fallback read `document_*` keys, and the approved replay sends raw keys. It also explains both empty editors under item 67. Fixed in `static/js/chat.js`; reproduced, then verified live at 08:49 (editor `v3`, stamped). Test file `tests/test_approved_doc_tool_output_js.py`, run with system `python3`, not pytest. **M1 run owed.**
+- 🧹 Test document *"Yellow Oyster check 4"* (`04123181`) is now v3 (CO2 900 ppm, humidity 65–80 %); delete it when done.
+- **Edited:** `static/js/chat.js`, `tests/test_approved_doc_tool_output_js.py` (new), `notes/todo.md`, this file.
+- ➡️ **Next:** commit (commands in the chat), M1 suite, close 65–67; then items 7, 21, 9b, 2a.
+
+---
+
 ## 2026-10-07 (21:20–) — approval-flow fixes built: items 65, 66, 67 and the `409` log line — uncommitted
 
 - 🔧 **65:** `doc_tool_result_landed` (`src/turn_report.py`) — a document tool waiting on a card is no longer reported as done, the non-document report skips it too, and an approved document action replayed at the start of a turn now gets its closing line (it never did). **66:** `_eventInsideElement` (`static/js/document.js`) ignores scripted events and 0×0 elements. **67:** `static/js/chat.js` skips the pre-approval save when no editor buffer exists. **`409`:** `routes/chat_routes.py` logs which check rejected an approval. Details in each item.
