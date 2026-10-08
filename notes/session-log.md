@@ -20,7 +20,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🐞🔧 **Item 69 (S2):** after an approved document edit, the editor showed an **empty buffer stamped with the document's id**, so a Save or a keystroke would write an empty version. Cause: `chat.js`'s `tool_output` fallback read `document_*` keys, and the approved replay sends raw keys. It also explains both empty editors under item 67. Fixed in `static/js/chat.js`; reproduced, then verified live at 08:49 (editor `v3`, stamped). Test file `tests/test_approved_doc_tool_output_js.py`, run with system `python3`, not pytest. **M1 run owed.**
 - 🧹 Test document *"Yellow Oyster check 4"* (`04123181`) is now v3 (CO2 900 ppm, humidity 65–80 %); delete it when done.
 - **Edited:** `static/js/chat.js`, `tests/test_approved_doc_tool_output_js.py` (new), `notes/todo.md`, this file.
-- ➡️ **Next:** commit (commands in the chat), M1 suite, close 65–67; then items 7, 21, 9b, 2a.
+- ✅ **Committed** `09d75c4e` (fix) and `2c507b60` (notes). **M1 suite, `-n auto`: 7,493 passed, 3 skipped, 82 s.** `pytest-xdist` is now in `requirements.txt`. Items 65–67 closed (conclusions in resolvedissues.md).
+- ➡️ **Next:** items 7, 21, 9b, 2a.
 
 ---
 

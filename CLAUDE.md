@@ -133,8 +133,8 @@ re-read least, so trust it least.
 Policy: [`tests/TESTING_STANDARD.md`](tests/TESTING_STANDARD.md). Helpers:
 [`tests/README.md`](tests/README.md).
 
-- **Run with `./venv/bin/python -m pytest`.** System `python3` lacks pinned
-  dependencies. `--noconftest` drops fixtures, markers, the suite's own data
+- **Run with `./venv/bin/python -m pytest -n auto`** (pytest-xdist, about
+  80 s on the M1). System `python3` lacks pinned dependencies. `--noconftest` drops fixtures, markers, the suite's own data
   dir and the in-memory database — don't use it.
 - **A sandboxed agent cannot run the M1 venv** (a macOS tree). Report exactly
   which files ran with what, never a whole-suite number you did not produce, and
