@@ -52,6 +52,7 @@ from src.turn_report import (
 from src.prompt_security import untrusted_context_message
 from src.user_content_trust import document_is_user_trusted, record_ai_document_write
 from src.prefix_probe import log_request as log_prefix_probe
+from src.sticky_tools import stabilize as stabilize_tool_set
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -4122,6 +4123,11 @@ async def stream_agent_loop(
             if any(kw in ql for kw in keywords):
                 _relevant_tools.update(tools)
         logger.info(f"[tool-rag] Keyword fallback selected: {sorted(_relevant_tools - ALWAYS_AVAILABLE)}")
+
+    # Local servers: keep this chat's retrieved set stable across messages so
+    # the cached prompt prefix survives (fork module, see its docstring).
+    if not guide_only and not relevant_tools and _relevant_tools is not None:
+        _relevant_tools = stabilize_tool_set(session_id, endpoint_url, model, set(_relevant_tools))
 
     # If deterministic domain detection fired, seed the corresponding domain
     # tools into the selected tool set. This is not direct prompt-pack
