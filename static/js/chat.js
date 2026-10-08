@@ -3762,18 +3762,23 @@ import { loadPanel } from './panels.js';
                 // document editor from the real doc metadata carried on the
                 // tool result so "create a document" never leaves only a chat
                 // link behind if the later doc_update event is missed.
+                // The approved-action replay sends the raw result keys (content,
+                // version, ...) instead of document_*; a result carrying neither
+                // is skipped, because applying '' empties and stamps the editor.
+                const _toolDocContent = json.document_content ?? json.content;
                 if (
                   documentModule
                   && json.doc_id
                   && ['create_document', 'update_document', 'edit_document'].includes(json.tool)
+                  && typeof _toolDocContent === 'string'
                 ) {
                   documentModule.handleDocUpdate({
                     type: 'doc_update',
                     doc_id: json.doc_id,
-                    title: json.document_title || '',
-                    language: json.document_language || '',
-                    version: json.document_version || 1,
-                    content: json.document_content || '',
+                    title: json.document_title || json.title || '',
+                    language: json.document_language || json.language || '',
+                    version: json.document_version || json.version || 1,
+                    content: _toolDocContent,
                   });
                 }
 
