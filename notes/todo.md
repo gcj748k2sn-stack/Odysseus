@@ -51,6 +51,7 @@ Items whose record is longer than a screen live in [`items/`](items/), one file 
 | 74 | After an approval the model does not know it made the call | S4 | S | ✅ **committed 2026-10-09 (`1364ee37`)**, live check passed — `src/approval_replay.py` (call sites `core/models.py` `get_context_messages`, `src/agent_loop.py` approved-result injection) + `src/decision_nudge.py` (local endpoints) | **tests (21)** · 6 mutations caught · M1 suite green · **live** `20261009-175432` (quick ×2): `edit_file` 127/149 s (was 159/187, 324), both answers correct, thinking 324/1,540 chars (was 1,201–8,029); n = 2. **Close after a week without the pattern.** |
 | 75 | A plain question in a new chat without a workspace gets a 128-token reply cap, so thinking models answer nothing | S3 | XS | ✅ **committed `b3a52e79`, verified live** — `src/direct_reply.py`: the request/preset limit, else 4,096 | **tests (9)** · 3 mutations caught · M1 suite green · **live** `20261009-200520-qwen35` `explain` 2/2 (75 s / 124 s — slower than the ~20 s it took with a workspace: see the item) · found in **benchmark** `20261009-182957-qwen35`: `explain` failed 2/2 (empty answer, `stream_error`), `[agent] direct low-signal reply path` both times |
 | 76 | Direct reply path: no system prompt, so Qwen thinks 15–25× longer; and a "yes" to a lookup offer would get no web tool | S3 | S | ✅ **thinking half committed `137aba4a`, verified live** — real questions on the direct path get Odysseus's system prompt; greetings stay bare. Knowledge quick on Qwen: 0 empty answers, 6.5 min (was 42). **Lookup-offer half dropped** (re-probe 22:56: 0 real offers in 4, one fake JSON tool call) | **probe** `data/bench/probe/20261009-220643-qwen_qwen3_5_9b.json` (24 calls) · **tests** (13 in `test_direct_reply_cap.py`; 3 mutations caught) · sandbox only · **live check owed** |
+| 77 | System prompt change proposal (WIP): a leaner base prompt | — | S | proposal from the maintainer 2026-10-09 23:11 — **probed 23:26: A matches the current prompt (13–17 s), B lets the thinking loop again (81–179 s in 3 of 6)**; A not adopted yet | **probe** `data/bench/probe/20261009-232602-qwen_qwen3_5_9b.json` (n = 2 per cell) |
 
 **31 open as of 2026-10-09**; the 40 closed or retired rows are indexed at the top of [resolvedissues.md](resolvedissues.md). **Numbers are never reused** — a closed item keeps its number in that index, and new items continue after the highest number in either table. Renumbering has silently rotted cross-references four times (see *Notes & constraints*); item 2 split into 2a/2b, and 9 into 9/9b, rather than taking new numbers, for the same reason.
 
@@ -223,6 +224,49 @@ Recurring, and **it feeds item 2b** — the wrong-species drift there is partly 
 
 ### 73. A URL-join test needs DNS
 `tests/test_integrations_url_join.py::test_api_call_root_path_has_no_trailing_slash` mocks `httpx.AsyncClient`, but `integrations.execute_api_call` first resolves the host for its SSRF check; without DNS it returns `URL rejected: host does not resolve` (exit 1). Passes on the M1 (7,585 passed 2026-10-09). Fix: patch the resolver in the test.
+
+### 77. System prompt change proposal (WIP): a leaner base prompt
+**Maintainer's proposal, 2026-10-09 23:11.** The base prompt (`_assemble_prompt(…, compact=True)`, `_API_AGENT_RULES` in `src/agent_loop.py`) now also goes to the direct path (item 76), where it cut Qwen's thinking 10–25×. Proposal: drop the lines that don't apply to most turns.
+
+**Version A** (proposal; removes the "this workspace" rule, the `manage_memory` rule and the casual-message examples):
+```
+You are an AI assistant with native tool/function calling. Only the tool schemas provided by the API are available for this turn. Use native tool calls when action is needed; do not write tool syntax or tool instructions in chat.
+
+## Available tools
+none
+
+## Base rules
+- Prefer native tool/function calling when tools are needed.
+- Only call tools when they materially help answer the request. For casual messages answer normally.
+- You MUST use tools to take action; do not claim you did something without a tool result.
+- If a needed tool/domain is missing from this turn, say what is missing briefly instead of pretending.
+- Keep answers concise unless the user asks for depth.
+- After a tool succeeds, do not second-guess it; reply with one short confirmation unless more work remains.
+- After a tool fails, retry with a concrete fix or state what is blocking you.
+- Finish only when the user's concrete request is actually done, or clearly state that you are blocked.
+```
+
+**Version B** — for rounds without tools (the direct path), reworded 23:14. Its point is to stop the thinking from looping: *"do not second-guess"* is aimed at the model's own answer, not at a tool result. Tool rules dropped, since no tools are sent there:
+```
+You are an AI assistant. No tools are available for this reply.
+
+## Rules
+- Answer directly. Settle on an answer once; do not second-guess it or go over it again.
+- Keep answers concise unless asked for depth.
+- If the answer needs a tool or current data you don't have, say so briefly instead of guessing.
+```
+- ⚠️ Watch in the knowledge suite whether "don't go over it again" also stops useful self-correction (e.g. `mc_battery`'s arithmetic slip).
+
+- 📏 **Probe 2026-10-09 23:26** (`data/bench/probe/20261009-232602-qwen_qwen3_5_9b.json`, Qwen, ×2), seconds / thinking chars:
+  | | current | A | B |
+  |---|---|---|---|
+  | `explain` | 27 / 2,124 · 14 / 945 | 14 / 962 · 14 / 902 | **179 / 16,552 · 81 / 7,798** |
+  | `price_now` | 10 / 394 · 10 / 366 | 10 / 435 · 10 / 470 | 6 / 312 · 5 / 243 |
+  | `obscure` | 14 / 942 · 16 / 1,146 | 16 / 1,158 · 18 / 1,281 | **174 / 12,493** · 14 / 1,018 |
+  Answers: all correct on `explain`; all say "no real-time data" on `price_now`. `obscure`: current → Fries 1821 ×2, A → Persoon 1801 / Bulliard 1791, B → Persoon 1796 / Fries 1821 (key: Fries 1822; this cell flips between runs — at 22:06 the current prompt gave Persoon ×2 — so no version is better at facts).
+  **Reading:** A keeps the effect at 72 % of the length. **B loses it**: without the tool-agent framing, thinking runs as long as with no system prompt, and *"do not second-guess it"* did not stop it. So what keeps Qwen's thinking short is the framing/structure of the tool prompt, not a rule about length or second-guessing.
+- **Before adopting:** the removed rules exist for recorded failures — the "this workspace" rule (random home-folder edits) and the `manage_memory` rule (facts saved as contacts) are in `_API_AGENT_RULES` for every agent turn, not just the direct path. Check `git log -S` for each before dropping it from the agent path; dropping them from the direct path only (no tools there) is safe.
+- **Measure:** `./venv/bin/python scripts/probe_direct_reply.py --url http://localhost:1234 --model qwen/qwen3.5-9b --variants odysseus,proposal_a,proposal_b` (~6–8 min, Odysseus idle). Pass if thinking and answers stay at the `odysseus` level. For the agent path, the agent suite's quick run before/after.
 
 ### 76. Direct reply path: no system prompt, long thinking; a lookup offer would dead-end
 **Found 2026-10-09 20:05** after item 75: `explain` on Qwen passed but took 75 / 124 s. `results.jsonl`: prompt **35 tokens** (the question alone), thinking **6,994 / 12,102 chars**, 1,608 / 2,685 tokens written, answer 442 / 487 chars. Same task on the normal path (10-07, 10-08; workspace set, ~2,500-token prompt): thinking 301–565 chars, 147–225 tokens, 18–23 s. The answer is the same length; only the thinking grew.

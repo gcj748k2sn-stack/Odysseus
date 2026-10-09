@@ -39,6 +39,7 @@ Keep roughly the last working day here; older entries move verbatim to
 - ✅ Checker fix committed `666c026a`. **Probe run 22:06:** Odysseus's own system prompt cuts Qwen's thinking 10–25× on the direct path (10–20 s instead of 70–195 s); one-liners don't; the lookup-offer line was ignored (0/6); the obscure-fact question got a confident wrong answer every time (Persoon instead of Fries 1822).
 - 🔧 **Item 76 thinking half built (uncommitted):** `src/direct_reply.py`, call site `src/agent_loop.py`, `tests/test_direct_reply_cap.py`; `scripts/probe_direct_reply.py` gained `odysseus_offer`.
 - ✅ Item 76 committed `137aba4a`. **Knowledge quick, Qwen: 13/18 in 6.5 min** (was 8/18, 42 min). Checker fix: `mc_5v` now fails answers that call the pins 5 V tolerant (both "passes" did) — uncommitted, 75 tests, mutation caught. Lookup offer re-probed and **dropped** (0 real offers, one fake tool call).
+- 🧪 **Item 77 (maintainer's leaner prompts) probed 23:26:** version A = current prompt's speed and answers at 973 chars (vs 1,348); version B (no-tool, 306 chars) brings the long thinking back (81–179 s in 3 of 6). Notes and probe variants uncommitted.
 - ➡️ **Next:** commit the checker fix; Bonsai knowledge quick (Bonsai's server, LM Studio stopped). New Bonsai agent baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
 
 ## 2026-10-09 (10:55–16:55) — Bonsai full run read; effort picker; item 70 built; prompt trims; benchmark rebuilt

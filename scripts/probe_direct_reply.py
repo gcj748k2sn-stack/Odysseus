@@ -12,6 +12,7 @@ server directly, bypassing Odysseus, with four system-message variants:
   offer      + brief + offer a web lookup when unsure or when the answer can change
   odysseus   + Odysseus's own native-tools system prompt with no tools (the
                normal path's text, minus the tool schemas)
+  proposal_a / proposal_b  the maintainer's two leaner prompts (item 77; not run by default)
   odysseus_offer  odysseus + the lookup-offer rule (not run by default; the
                first probe, 2026-10-09 22:06, found the rule ignored on its own)
 
@@ -39,6 +40,29 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 
 BRIEF = "Answer directly and briefly; keep your reasoning short."
+# Maintainer's proposals for a leaner system prompt (2026-10-09 23:11, notes/todo.md item 77).
+PROPOSAL_A = """You are an AI assistant with native tool/function calling. Only the tool schemas provided by the API are available for this turn. Use native tool calls when action is needed; do not write tool syntax or tool instructions in chat.
+
+## Available tools
+none
+
+## Base rules
+- Prefer native tool/function calling when tools are needed.
+- Only call tools when they materially help answer the request. For casual messages answer normally.
+- You MUST use tools to take action; do not claim you did something without a tool result.
+- If a needed tool/domain is missing from this turn, say what is missing briefly instead of pretending.
+- Keep answers concise unless the user asks for depth.
+- After a tool succeeds, do not second-guess it; reply with one short confirmation unless more work remains.
+- After a tool fails, retry with a concrete fix or state what is blocking you.
+- Finish only when the user's concrete request is actually done, or clearly state that you are blocked."""
+
+PROPOSAL_B = """You are an AI assistant. No tools are available for this reply.
+
+## Rules
+- Answer directly. Settle on an answer once; do not second-guess it or go over it again.
+- Keep answers concise unless asked for depth.
+- If the answer needs a tool or current data you don't have, say so briefly instead of guessing."""
+
 OFFER_RULE = ("- If the answer depends on information that changes over time (prices, versions, news) or on a "
               "specific name, date or number you are not certain of, say so in one sentence and offer to look it up "
               "on the web; do not guess.")
@@ -103,7 +127,7 @@ def main():
     ap.add_argument("--timeout", type=int, default=600)
     args = ap.parse_args()
 
-    systems = {"bare": "", "brief": BRIEF, "offer": OFFER}
+    systems = {"bare": "", "brief": BRIEF, "offer": OFFER, "proposal_a": PROPOSAL_A, "proposal_b": PROPOSAL_B}
     variants = [v.strip() for v in args.variants.split(",") if v.strip()]
     if {"odysseus", "odysseus_offer"} & set(variants):
         try:
