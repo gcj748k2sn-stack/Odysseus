@@ -57,6 +57,7 @@ from src import local_tool_selection as _local_tool_selection
 from src import prompt_trims as _prompt_trims
 from src import approval_replay as _approval_replay
 from src import decision_nudge as _decision_nudge
+from src import direct_reply as _direct_reply
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -3882,7 +3883,8 @@ async def stream_agent_loop(
                 [(endpoint_url, model, headers)] + list(fallbacks or []),
                 direct_messages,
                 temperature=temperature,
-                max_tokens=min(max_tokens or 128, 128),
+                # Fork: thinking counts against the cap (src/direct_reply.py).
+                max_tokens=_direct_reply.max_tokens(max_tokens),
                 prompt_type=None,
                 tools=None,
                 timeout=int(get_setting("agent_stream_timeout_seconds", 300) or 300),

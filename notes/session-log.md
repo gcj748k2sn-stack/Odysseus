@@ -24,7 +24,9 @@ Keep roughly the last working day here; older entries move verbatim to
 - ⚠️ `src/local_tool_selection.py` has an uncommitted change from before this work (saved 16:54, narrows `ui_control` further) — not part of item 74; left as is.
 - 🧹 Process: one `git diff --stat` from the sandbox (no `index.lock` left). A debug test file was created and deleted again (delete permission granted for this session).
 - ✅ **Committed** `1364ee37` (fix) and `88d307f0` (notes) by the maintainer; M1 suite green. **Live 17:54–18:15 (`20261009-175432`): 16/16, 9.8 / 10.6 min per run** (was 13.1–13.5); `edit_file` 127 / 149 s with correct answers. Confounded with the `ui_control` narrowing going live at the same restart (−1,100 prompt tokens on simple tasks) — see item 74.
-- ➡️ **Next:** new baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
+- 📊 **Qwen (`c35f1b2a`, LM Studio):** quick ×1 `182456` 8/8, 3.9 min; full ×2 `182957` **37/40**, 12.5 min/run. Fails: `explain` ×2 (item 75, new), `document_followup` r1 (title brackets dropped — known title-copy slip). On 17 tasks unchanged since 10-07: 14.8 → 11.7 min.
+- 🔧 **Item 75 built (uncommitted, 19:58–20:15):** `src/direct_reply.py` + call site; `tests/test_direct_reply_cap.py` (9), 3 mutations caught; related files 267 + 145 passed in the sandbox.
+- ➡️ **Next:** commit item 75, live check `--tasks explain`; then the knowledge benchmark (plan in chat 19:23); new Bonsai baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
 
 ## 2026-10-09 (10:55–16:55) — Bonsai full run read; effort picker; item 70 built; prompt trims; benchmark rebuilt
 
