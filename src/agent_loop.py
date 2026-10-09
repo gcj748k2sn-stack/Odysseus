@@ -53,6 +53,7 @@ from src.prompt_security import untrusted_context_message
 from src.user_content_trust import document_is_user_trusted, record_ai_document_write
 from src.prefix_probe import log_request as log_prefix_probe
 from src.sticky_tools import stabilize as stabilize_tool_set
+from src import local_tool_selection as _local_tool_selection
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -4063,6 +4064,12 @@ async def stream_agent_loop(
             # Non-English queries are flagged low_signal by the English-only
             # intent classifier, but fastembed retrieval works across languages.
             logger.info("[tool-rag] Low-signal query; will run RAG retrieval")
+    if not guide_only and not _relevant_tools and _local_tool_selection.keyword_only(endpoint_url):
+        # Local servers: deterministic keyword selection, no similarity search
+        # (fork module, see its docstring).
+        _relevant_tools = _local_tool_selection.select(
+            _retrieval_query, [s.get("function", {}).get("name") for s in FUNCTION_TOOL_SCHEMAS])
+        logger.info("[tool-rag] Local endpoint, keyword selection: %s", sorted(_relevant_tools))
     if not guide_only and not _relevant_tools:
         try:
             from src.tool_index import get_tool_index, ALWAYS_AVAILABLE
