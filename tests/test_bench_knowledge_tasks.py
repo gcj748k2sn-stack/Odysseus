@@ -169,7 +169,15 @@ REAL_CORRECT = [
                "### 2. AHT20\n*   **Address:** `0x38` (fixed)"),
 ]
 # Real wrong answers from the same run: must stay failures.
-REAL_WRONG = [
+REAL_WRONG = [  # 20261009-202734 and 20261009-223421 (Qwen)
+    ("mc_5v", "No, you need to be careful here. While ESP32 GPIO pins **are** 5V tolerant (meaning they can accept "
+              "5V signals on the input), there are important considerations: ... The ESP32 operates at 3.3V logic. "
+              "Add a series resistor."),
+    ("mc_5v", "No, not directly. While ESP32 GPIOs are 5V tolerant (can withstand up to 5V on the pin), you should "
+              "still add protection: The ESP32 runs at 3.3V logic. Add a series resistor (1kΩ–4.7kΩ) or use a "
+              "voltage divider to step down to 3.3V."),
+    ("mc_battery", "Daily consumption: 144 × 0.113 mAh ≈ 16.3 mAh/day. Battery life: 2000 mAh ÷ 16.3 mAh/day ≈ "
+                   "12.3 days. The battery lasts approximately 12 days."),
     ("mc_5v", "The short answer is: **Generally yes, but with very important conditions.**\n\nWhile ESP32 GPIO "
               "pins are widely advertised as \"5 V tolerant\" (meaning you can physically connect 5V without burning "
               "the pin immediately), blindly connecting a 5V sensor directly to a"),

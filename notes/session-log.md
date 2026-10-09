@@ -38,7 +38,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - 📊 **Knowledge quick ×2, Qwen: 8/18** — 6 empty (thinking used the 4,096-token cap, item 76), 1 checker miss (`mc_i2c`, fixed, uncommitted: `scripts/bench_knowledge_tasks.py`, `tests/test_bench_knowledge_tasks.py` 72 passed, mutation caught), 3 real misses. Item 76 filed (direct path has no system prompt; a lookup offer would get no web tool on "yes"); `scripts/probe_direct_reply.py` written, not run yet.
 - ✅ Checker fix committed `666c026a`. **Probe run 22:06:** Odysseus's own system prompt cuts Qwen's thinking 10–25× on the direct path (10–20 s instead of 70–195 s); one-liners don't; the lookup-offer line was ignored (0/6); the obscure-fact question got a confident wrong answer every time (Persoon instead of Fries 1822).
 - 🔧 **Item 76 thinking half built (uncommitted):** `src/direct_reply.py`, call site `src/agent_loop.py`, `tests/test_direct_reply_cap.py`; `scripts/probe_direct_reply.py` gained `odysseus_offer`.
-- ➡️ **Next:** commit, restart, knowledge quick on Qwen (expect no empty answers, ~10 min instead of 42), probe `odysseus_offer`; then Bonsai. New Bonsai agent baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
+- ✅ Item 76 committed `137aba4a`. **Knowledge quick, Qwen: 13/18 in 6.5 min** (was 8/18, 42 min). Checker fix: `mc_5v` now fails answers that call the pins 5 V tolerant (both "passes" did) — uncommitted, 75 tests, mutation caught. Lookup offer re-probed and **dropped** (0 real offers, one fake tool call).
+- ➡️ **Next:** commit the checker fix; Bonsai knowledge quick (Bonsai's server, LM Studio stopped). New Bonsai agent baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
 
 ## 2026-10-09 (10:55–16:55) — Bonsai full run read; effort picker; item 70 built; prompt trims; benchmark rebuilt
 
