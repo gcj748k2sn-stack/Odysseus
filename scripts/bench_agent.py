@@ -207,6 +207,7 @@ def run_one(api, task, target, rep, run_dir, args):
             "workspace": ctx["ws"]}
     if getattr(args, "preset", None):
         form["preset_id"] = args.preset   # as the browser sends it (static/js/chat.js)
+    first_form = dict(form)
 
     state = {"event": None, "t0": time.time(), "first_text": None, "stream_rounds": 0, "approval": None}
     final_parts, all_parts = [], []
@@ -309,7 +310,12 @@ def run_one(api, task, target, rep, run_dir, args):
                                      "decision": args.approval})
             if args.approval == "deny":
                 rec["flags"].append("approval_denied")
+            # Same toggles as the message, as the browser sends them
+            # (static/js/chat.js builds both in one FormData). A missing
+            # allow_bash reads as "not restricted": bash joins the tool list,
+            # which sits at the top of the prompt, and the server re-reads it all.
             form = {"message": "", "session": sid, "incognito": "true", "mode": "agent",
+                    "allow_bash": first_form["allow_bash"], "allow_web_search": first_form["allow_web_search"],
                     "tool_approval_id": card.get("approval_id"), "tool_approval_decision": args.approval}
             if getattr(args, "preset", None):
                 form["preset_id"] = args.preset
