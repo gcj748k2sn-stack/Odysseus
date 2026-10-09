@@ -55,6 +55,8 @@ from src.prefix_probe import log_request as log_prefix_probe
 from src.sticky_tools import stabilize as stabilize_tool_set
 from src import local_tool_selection as _local_tool_selection
 from src import prompt_trims as _prompt_trims
+from src import approval_replay as _approval_replay
+from src import decision_nudge as _decision_nudge
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -4549,6 +4551,8 @@ async def stream_agent_loop(
             active_email=active_email,
             workspace=workspace,
         )
+        # Fork: local models get a short decision nudge (src/decision_nudge.py).
+        route_messages = _decision_nudge.apply(route_messages, candidate_url)
         if doc_mode and not plan_mode and not approved_plan and not guide_only:
             route_messages = _minimal_odysseus_doc_messages(
                 route_messages,
@@ -5014,6 +5018,10 @@ async def stream_agent_loop(
         if approved.tool_name in _VERIFIER_EFFECTFUL_TOOLS:
             _effectful_used = True
         formatted_approved_result = format_tool_result(desc, approved_result)
+        # Fork: say whose call this was (src/approval_replay.py).
+        formatted_approved_result = _approval_replay.result_text(
+            approved.tool_name, formatted_approved_result,
+        )
         _append_tool_results(
             messages,
             "",

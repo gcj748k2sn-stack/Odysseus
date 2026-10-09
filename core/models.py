@@ -166,6 +166,7 @@ class Session:
         transcript, so the model gets the reply without them plus one neutral
         line saying the turn ended early. See ``src/ui_notices.py``.
         """
+        from src.approval_replay import context_view as approval_context_view
         from src.ui_notices import context_view_of_reply
 
         out = []
@@ -175,6 +176,8 @@ class Session:
             d = msg.to_dict()
             if d.get("role") == "assistant":
                 d["content"] = context_view_of_reply(d.get("content"))
+                # Fork: an approval card's question becomes the call it asked about.
+                d["content"] = approval_context_view(d["content"], d.get("metadata"))
             out.append(d)
         messages = out
         if not _history_grants_chat_session_approval(self.history, self.id):
