@@ -58,6 +58,7 @@ import math
 import os
 import re
 import statistics
+import subprocess
 import sys
 import threading
 import time
@@ -441,6 +442,43 @@ def git_head():
 LMS_ROOT, OLLAMA_ROOT = "http://localhost:1234", "http://localhost:11434"
 
 
+def llama_server_cmdline(port):
+    """The full command line of the llama-server listening on `port`, from `ps`
+    (local servers only). None when no such process is found or ps fails."""
+    try:
+        out = subprocess.run(["ps", "-axww", "-o", "command="], capture_output=True,
+                             text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    for line in out.splitlines():
+        if "llama-server" not in line.split(" -", 1)[0]:
+            continue
+        ports = re.findall(r"--port[ =](\d+)", line)
+        if (ports[-1] if ports else "8080") == str(port):
+            return line
+    return None
+
+
+def reasoning_flags(cmdline):
+    """Reasoning settings a llama-server was started with. ps prints arguments
+    without their shell quotes, so the JSON is matched loosely; llama.cpp takes
+    the last occurrence of a repeated flag (start_bonsai2.sh's override)."""
+    kwargs = re.findall(r"--chat-template-kwargs[ =](\{.*?\})(?= -|$)", cmdline)
+    effort = None
+    if kwargs:
+        m = re.search(r"reasoning_effort\W*(\w+)", kwargs[-1])
+        effort = m.group(1) if m else None
+    budget = re.findall(r"--reasoning-budget[ =](-?\d+)", cmdline)
+    return {
+        # "default": the flag is absent, so the chat template's own default
+        # applies (Bonsai 2: xhigh). Odysseus sends no per-request effort.
+        "reasoning_effort": effort or "default",
+        "reasoning_budget": int(budget[-1]) if budget else None,
+        "chat_template_kwargs": kwargs[-1] if kwargs else None,
+        "source": "ps",
+    }
+
+
 def preflight(api, target, tasks):
     """Record the serving setup and warn about what would distort the run.
     Returns (env, warnings). Everything here is read-only."""
@@ -471,6 +509,15 @@ def preflight(api, target, tasks):
                 "temperature", "top_k", "top_p", "min_p", "n_predict", "reasoning_format",
                 "reasoning_budget", "reasoning_in_content", "chat_format", "cache_prompt", "n_keep")},
         }
+        port = urllib.parse.urlparse(root).port
+        cmd = llama_server_cmdline(port) if urllib.parse.urlparse(root).hostname in (
+            "localhost", "127.0.0.1") else None
+        if cmd:
+            env["llamacpp"].update(reasoning_flags(cmd))
+        else:
+            env["llamacpp"]["reasoning_effort"] = None
+            warn.append(f"could not read the llama-server command line for port {port} — "
+                        "reasoning effort not recorded, run not labelled with it")
 
     lms = probe(LMS_ROOT + "/api/v0/models")
     lms_loaded = [m for m in (lms or {}).get("data", []) if m.get("state") == "loaded"]
@@ -515,6 +562,8 @@ def show_preflight(env, warn):
     if lc:
         print(f"  llama.cpp: {os.path.basename(lc.get('model_path') or '?')}, n_ctx {lc.get('n_ctx')}, "
               f"build {lc.get('build_info')}, params {lc.get('params')}")
+        print(f"  reasoning effort: {lc.get('reasoning_effort') or 'unknown'}, "
+              f"budget {lc.get('reasoning_budget')}")
     if env.get("lmstudio_loaded"):
         print(f"  LM Studio loaded: {env['lmstudio_loaded']}")
     if env.get("ollama_loaded"):
@@ -549,6 +598,7 @@ def cmd_run(args):
         target = (f"{target[0]}+{args.preset}", target[1])
     api = Api(args.url, args.user, os.environ.get("ODYSSEUS_PASSWORD", ""))
     api.login()
+    preset_effort = ""
     if args.preset:
         presets = api.get("/api/presets") or {}
         p = presets.get(args.preset)
@@ -556,8 +606,21 @@ def cmd_run(args):
             sys.exit(f"error: preset {args.preset!r} not in Odysseus ({', '.join(presets)})")
         if p.get("enabled") is False:
             sys.exit(f"error: preset {args.preset!r} is disabled; Odysseus would use the defaults (temp 1.0)")
-        print(f"preset {args.preset}: temperature={p.get('temperature')} max_tokens={p.get('max_tokens')}")
+        preset_effort = str(p.get("reasoning_effort") or "")
+        print(f"preset {args.preset}: temperature={p.get('temperature')} max_tokens={p.get('max_tokens')}"
+              + (f" reasoning_effort={preset_effort}" if preset_effort else ""))
     env, warn = preflight(api, target, tasks)
+    base_name = target[0]
+    if preset_effort and env.get("llamacpp") is not None:
+        # Odysseus sends the preset's effort with every request, which
+        # overrides the server's --chat-template-kwargs.
+        lc = env["llamacpp"]
+        lc["server_reasoning_effort"] = lc.get("reasoning_effort")
+        lc["reasoning_effort"], lc["source"] = preset_effort, "preset"
+    effort = (env.get("llamacpp") or {}).get("reasoning_effort")
+    if effort:
+        # Like +preset: runs at different efforts never pool in a report.
+        target = (f"{target[0]}@{effort}", target[1])
     print(f"preflight for {target[0]}:")
     show_preflight(env, warn)
     tasks = [t for t in tasks if t["id"] not in env["skipped"]]
@@ -570,8 +633,11 @@ def cmd_run(args):
     if args.resume:
         run_dir = Path(args.resume)
         meta = json.loads((run_dir / "meta.json").read_text())
+        if meta["target"] == base_name and "@" not in base_name:
+            target = (base_name, target[1])     # started before runs carried @effort
         if meta["target"] != target[0]:
-            sys.exit(f"error: {run_dir} is a run of {meta['target']}, not {target[0]}")
+            sys.exit(f"error: {run_dir} is a run of {meta['target']}, not {target[0]}"
+                     + (" — the server's reasoning effort differs from the original run's" if "@" in meta["target"] else ""))
         meta.setdefault("env_resumed", []).append(dict(env, warnings=warn))
         # A resume finishes the original run: without --runs it would default
         # to 1 and silently skip every missing repetition 2+ (2026-10-09).
@@ -770,12 +836,20 @@ def cmd_report(args):
         if not p.exists():
             print(f"skip {d}: no results.jsonl", file=sys.stderr)
             continue
-        recs += [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+        rs = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
         try:
             m = json.loads((Path(d) / "meta.json").read_text())
+            # Runs from before the @effort name: label them from meta, so a
+            # report never pools two reasoning efforts under one name.
+            effort = ((m.get("env") or {}).get("llamacpp") or {}).get("reasoning_effort")
+            if effort and "@" not in m["target"]:
+                m["target"] = f"{m['target']}@{effort}"
+                for r in rs:
+                    r["target"] = m["target"]
             metas.setdefault(m["target"], []).append(m)
         except (OSError, ValueError, KeyError):
             pass
+        recs += rs
     if not recs:
         sys.exit("no results")
     log = load_log(args.log)
@@ -818,6 +892,11 @@ def cmd_report(args):
             if lc:
                 bits.append(f"llama.cpp `{os.path.basename(lc.get('model_path') or '?')}` n_ctx {lc.get('n_ctx')}, "
                             f"build {lc.get('build_info')}, params {lc.get('params')}")
+                if lc.get("reasoning_effort"):
+                    bits.append(f"reasoning effort **{lc['reasoning_effort']}**"
+                                + (f" (budget {lc['reasoning_budget']})" if lc.get("reasoning_budget") is not None else "")
+                                + (" — backfilled" if lc.get("source") == "backfill" else "")
+                                + (" — from the preset" if lc.get("source") == "preset" else ""))
             if e.get("lmstudio_loaded"):
                 bits.append("LM Studio loaded " + ", ".join(
                     f"{x.get('id')} ({x.get('quantization', '?')}, ctx {x.get('loaded_context_length', '?')})"
