@@ -15,6 +15,13 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-09 (20:55–21:20) — Odysseus as a launchd service + installable app (uncommitted)
+
+- 🔧 **New `launchd/`:** agents `local.odysseus`, `local.odysseus.chroma`, `local.odysseus.apfel` (only if `apfel` is on PATH), all through `launchd/run.sh <mode>` (foreground `exec`, `.env` as in `start-macos.sh`, logs `logs/<mode>-service.log` rotated at 10 MB on restart, reinstalls deps when the `requirements.txt` hash changes). `install.sh` / `uninstall.sh` mirror `searxng/install-launchagent.sh`. See [launchd/README.md](../launchd/README.md).
+- 🔧 **`start-macos.sh`:** one fork call site before the port check: `launchd/handoff.sh` opens the UI and exits when `local.odysseus` is loaded.
+- 📱 PWA needed nothing: `static/manifest.json` + `sw.js` already exist. Install via Chrome *Install page as app* or Safari *Add to Dock*.
+- ⚠️ **Unverified on the M1:** written in the Linux sandbox (`bash -n`, plist parse only). Owed: run `install.sh`, check the 3 ports answer, reboot once, confirm all agents come back.
+
 ## 2026-10-09 (16:05–17:45) — Bonsai memory: prompt cache off; approval replay fixed (item 74, uncommitted)
 
 - ⚙️ **`~/BonsaiDemo/start_bonsai2.sh`: `--cache-ram 0`** (was 2048). Vision projector was already off. A full log showed 0 RAM-cache hits with entries of 455–846 MiB; measured at startup (`-lv 4` log `~/BonsaiDemo/logs/bonsai-2026-10-09-1630.log`): model 6.9 GB, KV 576 MiB, recurrent state 150 MiB, checkpoints 150 MiB each (peak 4). Server output is now logged with `tee -i` to `~/BonsaiDemo/logs/` (commands in `~/Desktop/TerminalCheatSheet.md`).
@@ -27,7 +34,9 @@ Keep roughly the last working day here; older entries move verbatim to
 - 📊 **Qwen (`c35f1b2a`, LM Studio):** quick ×1 `182456` 8/8, 3.9 min; full ×2 `182957` **37/40**, 12.5 min/run. Fails: `explain` ×2 (item 75, new), `document_followup` r1 (title brackets dropped — known title-copy slip). On 17 tasks unchanged since 10-07: 14.8 → 11.7 min.
 - 🔧 **Item 75 built (uncommitted, 19:58–20:15):** `src/direct_reply.py` + call site; `tests/test_direct_reply_cap.py` (9), 3 mutations caught; related files 267 + 145 passed in the sandbox.
 - 🧪 **Knowledge suite built (20:06–21:00, uncommitted):** `scripts/bench_knowledge_tasks.py` (24 tasks: mycology, microelectronics, finance; quick 9), `--suite` in `scripts/bench_agent.py` (default `agent`, unchanged: 20 / 8), run dirs `…-knowledge`, report **By kind**. Answer keys fact-checked against sources ([benchmark.md](benchmark.md#knowledge-suite---suite-knowledge-since-2026-10-09)). `tests/test_bench_knowledge_tasks.py` 69 passed, 10 mutations caught; harness tests 102 passed.
-- ➡️ **Next:** commit items 75 + knowledge suite; live check `--tasks explain`; then knowledge `--quick --runs 2` on Qwen and Bonsai. New Bonsai agent baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
+- ✅ Committed by the maintainer: item 75 `b3a52e79` (live: `explain` 2/2, but 75 / 124 s), knowledge suite `bf504b11`.
+- 📊 **Knowledge quick ×2, Qwen: 8/18** — 6 empty (thinking used the 4,096-token cap, item 76), 1 checker miss (`mc_i2c`, fixed, uncommitted: `scripts/bench_knowledge_tasks.py`, `tests/test_bench_knowledge_tasks.py` 72 passed, mutation caught), 3 real misses. Item 76 filed (direct path has no system prompt; a lookup offer would get no web tool on "yes"); `scripts/probe_direct_reply.py` written, not run yet.
+- ➡️ **Next:** run the probe (Odysseus idle), then item 76's fix, then knowledge quick on Qwen again and on Bonsai. New Bonsai agent baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
 
 ## 2026-10-09 (10:55–16:55) — Bonsai full run read; effort picker; item 70 built; prompt trims; benchmark rebuilt
 

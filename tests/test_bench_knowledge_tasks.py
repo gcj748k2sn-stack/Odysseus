@@ -89,7 +89,8 @@ CASES = [
       "Das Myzel ist der Pilz und der Fruchtkörper ist auch der Pilz."], ()),
     ("mc_i2c",
      "No conflict: the AHT20 is fixed at 0x38, the BMP280 uses 0x76 (SDO to GND) or 0x77 (SDO to VDDIO).",
-     ["Yes, both sit at 0x76, so they conflict.", "No conflict, they have different addresses."], ()),
+     ["Yes, both sit at 0x76, so they conflict.", "No conflict, they have different addresses.",
+      "AHT20 is at 0x38 and the BMP280 at 0x76, so they **do** conflict."], ()),
     ("mc_led",
      "R = (3.3 − 2.0) V / 0.01 A = 130 Ω. The nearest E12 value is 150 Ω (or 120 Ω for slightly more current).",
      ["Use a 330 Ω resistor.", "R = 130 Ω, use exactly 130 Ω."], ()),
@@ -157,6 +158,36 @@ CASES = [
 def test_spore_prose_answer_passes(tmp_path):
     assert _passes("myco_spores", "Agaricus gives a dark chocolate-brown spore print; Amanita gives a white one.",
                    tmp_path)
+
+
+# Real answers from the first knowledge run (20261009-202734-qwen35-knowledge) that a
+# checker misjudged: right answers must pass, whatever their markdown.
+REAL_CORRECT = [
+    ("mc_i2c", "No, the AHT20 and BMP280 do **not** have conflicting I²C addresses. You can safely connect "
+               "both sensors to the same I²C bus on an ESP32.\n\nHere are their standard addresses:\n\n"
+               "### 1. BMP280 (Pressure & Temperature)\n*   **Default Address:** `0x76` (hexadecimal) or `0x77`\n"
+               "### 2. AHT20\n*   **Address:** `0x38` (fixed)"),
+]
+# Real wrong answers from the same run: must stay failures.
+REAL_WRONG = [
+    ("mc_5v", "The short answer is: **Generally yes, but with very important conditions.**\n\nWhile ESP32 GPIO "
+              "pins are widely advertised as \"5 V tolerant\" (meaning you can physically connect 5V without burning "
+              "the pin immediately), blindly connecting a 5V sensor directly to a"),
+    ("myco_parasol", "No, **Parasol mushrooms are edible and not poisonous**. They are a popular choice for foragers. "
+                     "However, you should **always consult an expert** to confirm the identification before eating "
+                     "any wild mushroom, as dangerous look-alikes exist."),
+]
+
+
+@pytest.mark.parametrize("task_id, text", REAL_CORRECT, ids=[c[0] for c in REAL_CORRECT])
+def test_real_correct_answers_pass(task_id, text, tmp_path):
+    failed = [(n, d) for n, ok, d in _run_checks(task_id, text, tmp_path) if not ok]
+    assert not failed, failed
+
+
+@pytest.mark.parametrize("task_id, text", REAL_WRONG, ids=[c[0] for c in REAL_WRONG])
+def test_real_wrong_answers_fail(task_id, text, tmp_path):
+    assert not _passes(task_id, text, tmp_path)
 
 
 def test_every_knowledge_task_has_cases():

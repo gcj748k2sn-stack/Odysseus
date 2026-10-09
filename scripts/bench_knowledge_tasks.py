@@ -158,7 +158,8 @@ def register(task, chk, answered, used_tool, write):
         task(suite="knowledge", **kw)
 
     def ft(rec):
-        return rec.get("final_text") or ""
+        # Markdown emphasis splits phrases ("do **not** have conflicting"); checks read plain text.
+        return re.sub(r"\*\*|__", "", rec.get("final_text") or "")
 
     def no_tools(rec):
         return chk("no tool calls", not rec["tools"], f"{len(rec['tools'])} tool calls")
@@ -293,8 +294,9 @@ def register(task, chk, answered, used_tool, write):
           chk("BMP280 at 0x76 or 0x77", _rx(r"0x7[67]\b", ft(rec)), ft(rec)[:160]),
           chk("says there is no conflict",
               _rx(r"no (address )?(conflict|clash|collision)|(don't|do not|won't|will not|doesn't|does not) "
-                  r"(conflict|clash|collide)|different addresses|can (share|coexist)|no problem|"
-                  r"without (any )?(conflict|issue)", ft(rec)), ft(rec)[:160]),
+                  r"(have |cause )?(any )?(conflict|clash|collid)|non-?conflicting|different addresses|"
+                  r"can (share|coexist)|no problem|without (any )?(address )?(conflict|collision|issue)",
+                  ft(rec)), ft(rec)[:160]),
       ])
 
     k(id="mc_led", cat="microelectronics", kind="calc",

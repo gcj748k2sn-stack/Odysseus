@@ -112,6 +112,8 @@ What a model **knows and can work out** in three topics, next to the agent suite
 - **Changed from the first plan (chat, 19:23):** straw prompt says 0 % moisture / % of wet weight (ambiguous otherwise); divider asks for the ratio, not two resistors; RAM-vs-flash replaced by a German I²C question (it duplicated `explain`); the real-return task dropped for a German share-vs-bond task; prompts avoid *rate* / *current* / *today* (web-intent rule).
 - **Time (estimate, from today's per-task times):** Qwen quick ×2 ~8 min, full ×2 ~25 min; Bonsai quick ×2 ~20 min, full ×2 ~60 min.
 
+**Results.** Qwen quick ×2 (`20261009-202734-qwen35-knowledge`, `bf504b11`): **8/18 as scored, 42 min.** 6 empty answers = Qwen's thinking used the direct path's whole 4,096-token cap (item 76) — not knowledge failures. 1 checker miss (`mc_i2c` r1, *"do **not** have conflicting"*; fixed: checks read text without `**`, and "have conflicting" counts) → 9/18 rescored. **3 real misses:** `myco_parasol` ×2 (says edible, never corrects *mycorrhizal*), `mc_5v` r1 (*"Generally yes … widely advertised as 5 V tolerant"* — wrong, and cut off at 4,096 tokens). Passed both times: `fin_pe`, `fin_price_limits`; `myco_amatoxin`, `mc_i2c`, `fin_gold_gram`, `myco_straw` once each (the other run empty). Not comparable with later runs once item 76 changes the direct path.
+
 **Quick knowledge run** (one model server up, as for the agent suite):
 ```
 cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --suite knowledge --quick --runs 2 --yes
