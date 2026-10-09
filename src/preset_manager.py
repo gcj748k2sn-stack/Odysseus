@@ -140,9 +140,11 @@ Use precise language. Show causal relationships explicitly. Quantify uncertainty
         enabled: bool = True,
         inject_prefix: str = "",
         inject_suffix: str = "",
+        reasoning_effort: str = "",
     ) -> bool:
         """Update the custom preset"""
         self.presets["custom"] = {
+            "reasoning_effort": reasoning_effort,
             "name": name or "Custom",
             "character_name": name,
             "temperature": temperature,

@@ -1247,6 +1247,16 @@
                 <span class="preset-slider-value" id="tokens-value">No limit</span>
               </div>
               <input type="range" class="preset-range" id="custom-max-tokens" min="256" max="8448" step="256" value="8448">
+              <div class="preset-slider-row">
+                <label for="custom-reasoning-effort">Reasoning effort <span class="preset-hint-icon" title="How long a local thinking model thinks (llama.cpp only, sent as a chat-template setting). Bonsai 2: xhigh is its own default, medium thinks much less at about the same accuracy, low is not supported and behaves like xhigh. gpt-oss: low / medium / high. Models without the setting ignore it. Server default sends nothing.">?</span></label>
+              </div>
+              <select id="custom-reasoning-effort" class="char-template-select" aria-label="Reasoning effort">
+                <option value="">Server default</option>
+                <option value="medium">Medium</option>
+                <option value="xhigh">xhigh</option>
+                <option value="high">High</option>
+                <option value="low">Low</option>
+              </select>
             </div>
             <!-- Prompt (character/persona) tab -->
             <div class="preset-chartab" data-chartab-panel="character" style="display:none">

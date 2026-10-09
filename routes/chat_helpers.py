@@ -318,6 +318,9 @@ def extract_preset(chat_handler, preset_id) -> PresetInfo:
     temperature, max_tokens, system_prompt, char_name = (
         chat_handler.validate_and_extract_preset(preset_id)
     )
+    from src import reasoning_effort
+    reasoning_effort.set_for_preset(
+        preset_id, chat_handler.preset_manager.presets.get(preset_id) if preset_id else None)
     return PresetInfo(
         temperature=temperature,
         max_tokens=max_tokens,

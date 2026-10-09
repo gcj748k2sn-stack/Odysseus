@@ -529,6 +529,7 @@ export async function loadPresets(showError) {
     const _customHasTuning = !!custom && (
       (custom.temperature !== undefined && Number(custom.temperature) !== 1.0)
       || (custom.max_tokens !== undefined && Number(custom.max_tokens) !== 0)
+      || !!custom.reasoning_effort
     );
     const _customHasInject = !!custom && !!(custom.inject_prefix || custom.inject_suffix);
     if (custom && custom.enabled !== false
@@ -609,6 +610,8 @@ export function openCustomPresetModal() {
     if (tkv) tkv.textContent = (saved === 0 || saved > 8192) ? 'No limit' : parseInt(saved).toLocaleString();
   }
   if (promptInput) promptInput.value = savedConfig.system_prompt || '';
+  const effortSelect = document.getElementById('custom-reasoning-effort');
+  if (effortSelect) effortSelect.value = savedConfig.reasoning_effort || '';
 
   // Load inject fields
   const prefixInput = document.getElementById('inject-prefix');
@@ -622,6 +625,7 @@ export function openCustomPresetModal() {
     prompt: promptInput ? promptInput.value : '',
     temp: tempInput ? tempInput.value : '1',
     tokens: tokensInput ? tokensInput.value : '8448',
+    effort: effortSelect ? effortSelect.value : '',
   };
   function _updateStartBtn() {
     const btn = document.getElementById('save-custom-preset');
@@ -630,7 +634,8 @@ export function openCustomPresetModal() {
     const changed = (nameInput && nameInput.value !== _snapshot.name)
       || (promptInput && promptInput.value !== _snapshot.prompt)
       || (tempInput && tempInput.value !== _snapshot.temp)
-      || (tokensInput && tokensInput.value !== _snapshot.tokens);
+      || (tokensInput && tokensInput.value !== _snapshot.tokens)
+      || (effortSelect && effortSelect.value !== _snapshot.effort);
     // The footer button starts whichever of the three things the active tab
     // represents — a character chat, a group, or a plain tuned chat. Label
     // it so the action is obvious instead of a generic "Start".
@@ -664,6 +669,7 @@ export function openCustomPresetModal() {
   [nameInput, promptInput, tempInput, tokensInput].forEach(el => {
     if (el) el.addEventListener('input', _updateStartBtn);
   });
+  if (effortSelect) effortSelect.onchange = _updateStartBtn;
   // Re-label the Start button when the user switches tabs. Rebind the fresh
   // closure each time the modal opens (removing any stale one) so the label
   // logic always reads this open's snapshot/inputs.
@@ -799,6 +805,7 @@ export async function saveCustomPreset(showToast, showError) {
     system_prompt: system_prompt,
     inject_prefix: _prefixInput ? _prefixInput.value : '',
     inject_suffix: _suffixInput ? _suffixInput.value : '',
+    reasoning_effort: document.getElementById('custom-reasoning-effort')?.value || '',
   };
 
   try {
@@ -818,7 +825,8 @@ export async function saveCustomPreset(showToast, showError) {
       // user has dialed in non-default tuning (temperature / max tokens) — the
       // "Inject" tab's plain-chat case. Without the tuning check, "just set
       // temp + max tokens" would silently do nothing.
-      const _hasTuning = (config.temperature !== 1.0) || (config.max_tokens !== 0);
+      const _hasTuning = (config.temperature !== 1.0) || (config.max_tokens !== 0)
+        || !!config.reasoning_effort;
       const _hasInject = !!(config.inject_prefix || config.inject_suffix);
       const _hasContent = !!(system_prompt || name || _hasTuning || _hasInject);
       if (enabled && _hasContent) {

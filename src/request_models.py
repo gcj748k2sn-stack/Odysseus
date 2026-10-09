@@ -91,6 +91,11 @@ class PresetUpdateRequest(BaseModel):
         max_length=5000,
         description="Text to append to each outgoing user message"
     )
+    reasoning_effort: str = Field(
+        "",
+        pattern="^(|low|medium|high|xhigh)$",
+        description="Chat-template reasoning effort for local llama.cpp models ('' = server default)"
+    )
 
 
 class DirectoryRequest(BaseModel):

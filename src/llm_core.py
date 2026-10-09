@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 from fastapi import HTTPException
 from typing import Any, Optional, Dict, List, Tuple
 from src.model_context import get_context_length, DEFAULT_CONTEXT, is_local_endpoint
+from src import reasoning_effort as _reasoning_effort
 from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
@@ -2519,6 +2520,7 @@ async def llm_call_async(
             payload["reasoning_effort"] = _MISTRAL_REASONING_EFFORT
         _apply_local_cache_affinity(payload, url, session_id)
         _apply_local_generation_stability(payload, target_url, model)
+        _reasoning_effort.apply(payload, _is_self_hosted_openai_compatible(url))
 
     if _is_host_dead(target_url):
         raise HTTPException(503, f"Upstream {_host_key(target_url)} marked unreachable (cooldown active)")
@@ -2829,6 +2831,7 @@ async def _stream_llm_inner(url: str, model: str, messages: List[Dict], temperat
                 payload["reasoning_effort"] = "none"
         _apply_local_cache_affinity(payload, url, session_id)
         _apply_local_generation_stability(payload, target_url, model)
+        _reasoning_effort.apply(payload, _is_self_hosted_openai_compatible(url))
         _scrub_openai_chat_tool_reasoning(payload, target_url, model)
         h = _provider_headers(provider, headers)
         if provider == "copilot":
