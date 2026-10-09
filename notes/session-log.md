@@ -15,6 +15,17 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-09 (10:55–13:30) — Bonsai full run read; benchmark records reasoning effort; effort picker in the custom preset (uncommitted)
+
+- 📊 **Bonsai 2 full ×2 (`20261009-031517`, medium): 34/36**, both failures `recover_typo` repetition loops; time breakdown in [benchmark.md](benchmark.md) (new chat round 1 33 min, approval continuation re-read 11.6 min, dropped thinking 8.3 min).
+- 🔧 **`scripts/bench_agent.py`:** reasoning effort read from the llama-server command line, run named `TARGET@EFFORT` (a `--preset` effort wins), report labels old runs from `meta.json`; four Bonsai runs backfilled `medium`. `tests/test_bench_agent_effort.py` (6, 3 mutations caught).
+- 🔧 **Effort picker:** *Reasoning effort* in the custom preset → `chat_template_kwargs.reasoning_effort` on every request of the turn (`src/reasoning_effort.py`, hooks in `routes/chat_helpers.py`, `src/llm_core.py`; field in `src/request_models.py`, `routes/preset_routes.py`, `src/preset_manager.py`; UI `static/index.html`, `static/js/presets.js`). `tests/test_reasoning_effort.py` (17, 4 mutations caught). **JS unverified** — confirm by saving the preset with *medium* and seeing `[reasoning-effort] preset=custom effort=medium` in `app.log`.
+- ⚠️ **`low` is not supported by Bonsai 2** (behaves close to `xhigh`, PrismML README; resolvedissues item 59 said so too). The maintainer's `bonsai2low` quick run (12:07) is therefore xhigh-like; label its `meta.json` when it ends.
+- 🧹 Process: `git status` / `git diff --stat` run once from the sandbox before reading CLAUDE.md §6 (no `index.lock` left). Left behind, undeletable from the sandbox: `scripts/__pycache__/bench_agent.cpython-310.pyc` (rewritten), `tests/__pycache__/*cpython-310*` from one early pytest run without `PYTHONDONTWRITEBYTECODE`.
+- ➡️ **Next:** commit (commands handed over); approval continuation should seal only `_tool_names_sent` (the `bash` re-read); item 70.
+
+---
+
 ## 2026-10-08 (17:00) – 2026-10-09 (01:40) — item 57 built and verified live; tool selection reviewed; item 70 filed
 
 - ✅ **Item 57 done:** prefix probe `2778b2be`; sticky tools `6dd7aaeb`; follow-up fix `fa0a3ba1` after the first live check (21:35) still missed. **Live 21:54 (chat `01492028`, Bonsai):** a low-signal follow-up reused the set, `first_diff=3/7`, **6.3 s instead of ~80 s**. A message that adds tools still re-reads the whole prompt once.
