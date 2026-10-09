@@ -54,6 +54,7 @@ from src.user_content_trust import document_is_user_trusted, record_ai_document_
 from src.prefix_probe import log_request as log_prefix_probe
 from src.sticky_tools import stabilize as stabilize_tool_set
 from src import local_tool_selection as _local_tool_selection
+from src import prompt_trims as _prompt_trims
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -2424,6 +2425,8 @@ def _build_system_prompt(
     try:
         from src.user_time import current_datetime_context_message
         _datetime_message = current_datetime_context_message()
+        # Fork: drop the calendar/task lines when those tools are not offered.
+        _datetime_message = _prompt_trims.trim_datetime_message(_datetime_message, relevant_tools)
     except Exception as e:
         logger.warning("Failed to build datetime context message", exc_info=e)
 
@@ -2719,7 +2722,8 @@ def _build_system_prompt(
     elif (
         relevant_tools
         and not suppress_local_context
-        and (set(relevant_tools) & _WORKSPACE_TERMINUS_TOOLS)
+        # Fork: needs a real file/shell tool, not just ask_user/update_plan.
+        and _prompt_trims.wants_local_computer_rules(relevant_tools)
     ):
         agent_prompt += _local_computer_rules()
 

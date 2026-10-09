@@ -19,7 +19,8 @@ scans, listing ``~/Documents``), because the URL still counted as a machine.
 Fix (b): only configured machines count — Cookbook servers and SSH aliases
 (``src/named_machines.py``, unit tests in ``test_named_machines.py``). The
 "this computer" phrasings are unchanged. Fix (c), the every-turn
-``_local_computer_rules()`` injection, is still open.
+``_local_computer_rules()`` injection: ``src/prompt_trims.py``
+(``tests/test_prompt_trims.py``).
 """
 import asyncio
 import json
