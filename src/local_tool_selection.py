@@ -14,6 +14,11 @@ This reuses upstream's keyword logic (`ToolIndex.get_tools_for_query`) with
 retrieval stubbed out, and adds tool names written in the message. MCP tools are not keyword-selected, so on local endpoints they are
 offered only through their own paths (intent domains, explicit requests).
 Set ODYSSEUS_LOCAL_TOOL_SIMILARITY=1 to restore similarity search.
+
+`ui_control` (the largest schema, ~4,300 chars) is kept only for messages that
+name a UI action. Upstream's keyword lists and topic detection add it for
+generic words ("enable", "disable", "turn on", "open", "show", "settings"),
+so "disable the alarm" carried it and changed the tool list for that message.
 """
 from __future__ import annotations
 
@@ -24,6 +29,22 @@ from typing import Iterable, Optional, Set
 from src.tool_index import ALWAYS_AVAILABLE, ToolIndex
 
 _TOOL_NAME_RE = re.compile(r"\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b")
+
+_UI_PANELS = r"(?:chats|documents|email|gallery|inbox|library|memories|memory|notes|sessions|settings|skills)"
+_UI_TOGGLES = r"(?:research|search|web search|shell|incognito)"
+UI_ACTION_RE = re.compile(
+    r"\b(?:"
+    r"dark mode|light mode|themes?|colou?r scheme|colou?rs of the ui|make (?:it|the ui) (?:dark|light)"
+    r"|(?:agent|chat|plan) mode|set mode|incognito"
+    r"|(?:switch|change) (?:the )?model"
+    rf"|(?:open|show|close|hide) (?:the |my )?(?:\w+ )?(?:panel|sidebar)"
+    rf"|(?:open|show) (?:the |my )?{_UI_PANELS}"
+    rf"|{_UI_TOGGLES} (?:on|off)"
+    rf"|(?:turn|switch) (?:on|off) (?:the )?{_UI_TOGGLES}"
+    r"|ui_control"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 def keyword_only(endpoint_url: Optional[str]) -> bool:
@@ -53,4 +74,12 @@ def select(query: str, known_tool_names: Iterable[str]) -> Set[str]:
     ql = query.lower()
     known = set(known_tool_names)
     tools.update(name for name in _TOOL_NAME_RE.findall(ql) if name in known)
+    return tools
+
+
+def narrow_ui_control(tools: Set[str], message: str) -> Set[str]:
+    """Drop ui_control unless the message names a UI action."""
+    if "ui_control" in tools and not UI_ACTION_RE.search(str(message or "")):
+        tools = set(tools)
+        tools.discard("ui_control")
     return tools

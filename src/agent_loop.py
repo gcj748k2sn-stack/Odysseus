@@ -4177,6 +4177,9 @@ async def stream_agent_loop(
                 )
         if "ui" in (_intent.get("domains") or set()):
             _relevant_tools.add("ui_control")
+        # Fork: on local endpoints only a named UI action keeps ui_control.
+        if _local_tool_selection.keyword_only(endpoint_url):
+            _relevant_tools = _local_tool_selection.narrow_ui_control(_relevant_tools, _last_user)
         if (
             (
                 (

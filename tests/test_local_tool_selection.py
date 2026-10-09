@@ -142,3 +142,35 @@ def test_the_switch_and_remote_endpoints_still_use_the_index(monkeypatch):
     monkeypatch.delenv("ODYSSEUS_LOCAL_TOOL_SIMILARITY")
     names, queries = _sent_tools(monkeypatch, "https://api.openai.com/v1")
     assert queries and "ui_control" in names
+
+
+# ── ui_control only for a named UI action ──
+
+@pytest.mark.parametrize("message", [
+    "switch to dark mode", "open the notes panel", "show my settings", "turn on incognito",
+    "change model to qwen", "research off", "use ui_control to hide the sidebar",
+])
+def test_ui_actions_keep_ui_control(message):
+    assert "ui_control" in L.narrow_ui_control({"ui_control", "ask_user"}, message)
+
+
+@pytest.mark.parametrize("message", [
+    "disable the alarm I set", "turn off the lights at 10", "enable logging in the config",
+    "show me three ideas", "open the document and fix the typo", "change my voice",
+])
+def test_generic_words_do_not(message):
+    assert L.narrow_ui_control({"ui_control", "ask_user"}, message) == {"ask_user"}
+
+
+def test_ui_control_follows_the_message_through_the_loop(monkeypatch):
+    monkeypatch.delenv("ODYSSEUS_LOCAL_TOOL_SIMILARITY", raising=False)
+    generic, _ = _sent_tools(monkeypatch, "http://localhost:8090/v1", "Please disable the alarm I set for tomorrow")
+    ui, _ = _sent_tools(monkeypatch, "http://localhost:8090/v1", "Switch the app to dark mode")
+    assert generic and "ui_control" not in generic
+    assert "ui_control" in ui
+
+
+def test_remote_endpoints_keep_upstreams_ui_control(monkeypatch):
+    monkeypatch.delenv("ODYSSEUS_LOCAL_TOOL_SIMILARITY", raising=False)
+    names, _ = _sent_tools(monkeypatch, "https://api.openai.com/v1", "Please disable the alarm I set for tomorrow")
+    assert "ui_control" in names
