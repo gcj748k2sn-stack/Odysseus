@@ -25,7 +25,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - 📏 **Reuse across chats confirmed live (13:52/13:54):** identical message + identical 8 tools in two new chats → `cache_n=3613/3854`, prefill 59.6 s → 4.0 s. A model-driven tool picker (`find_tools`/`call_tool`) was considered and rejected: it adds a round per turn and, if picked tools join the list, re-reads everything. Recorded under item 70, with the README question that got no file tools.
 - 🧹 Process: `git status` / `git diff --stat` run once from the sandbox before reading CLAUDE.md §6 (no `index.lock` left). Left behind, undeletable from the sandbox: `scripts/__pycache__/bench_agent.cpython-310.pyc` (rewritten), `tests/__pycache__/*cpython-310*` from one early pytest run without `PYTHONDONTWRITEBYTECODE`.
 - 🐞🔧 **The `bash` re-read after approval cards was the benchmark's own bug** (re-checked before building, 14:00): its approval answer omitted `allow_bash` / `allow_web_search`, which the browser always sends; both turns select the same tools, so the planned "seal only the sent tools" change would have done nothing. Fixed in `scripts/bench_agent.py`, `tests/test_bench_agent_approval.py` (2, mutation caught). Uncommitted.
-- ➡️ **Next:** item 70 (stable tool list for local models; reuse across chats confirmed).
+- 🔧 **Item 70 built (uncommitted):** keyword-only tool selection for local endpoints (`src/local_tool_selection.py`, one call site in `src/agent_loop.py`) + tool names in the message (German aliases dropped); 15 tests, 3 mutations caught; replay of 25 recent messages in todo.md. Not seen live.
+- ➡️ **Next:** live check of item 70 (two new chats, `cache_n`), then a Bonsai benchmark run to see the effect on round 1.
 
 ---
 
