@@ -18,11 +18,12 @@ Keep roughly the last working day here; older entries move verbatim to
 ## 2026-10-08 (17:00) – 2026-10-09 (01:40) — item 57 built and verified live; tool selection reviewed; item 70 filed
 
 - ✅ **Item 57 done:** prefix probe `2778b2be`; sticky tools `6dd7aaeb`; follow-up fix `fa0a3ba1` after the first live check (21:35) still missed. **Live 21:54 (chat `01492028`, Bonsai):** a low-signal follow-up reused the set, `first_diff=3/7`, **6.3 s instead of ~80 s**. A message that adds tools still re-reads the whole prompt once.
-- ⚙️ **Maintainer switched off `manage_skills` and `manage_calendar`** (Settings → Agent Tools); email, contacts, chats, cookbook and multi-model tools were already off. 36 tools are on.
+- ⚙️ **Maintainer switched off `manage_skills`, `manage_calendar`, and at 02:00 `manage_mcp` and `manage_tasks`** (Settings → Agent Tools); email, contacts, chats, cookbook and multi-model tools were already off. 34 tools are on.
 - 🔧 **Benchmark skips tasks whose tools are switched off** (`797ae545`, 8 tests): `calendar_create` is now *⏭ tool off*, so full runs are out of 17 tasks per run. [benchmark.md](benchmark.md) has a new **Commands** section with paste-ready blocks for each kind of run.
 - 🅿️ **Shorter tool descriptions parked** ([item 64, entry 12](items/64-decisions-waiting-for-approval.md)): ~4 s per uncached round, not worth a second copy of the descriptions. Measured on the way: the real prompt is ~4,700 tokens, while Odysseus's own estimate (~2,000) leaves out the tool schemas.
 - 📝 **Item 70 filed, high priority:** an offline replay of 263 agent turns shows the similarity search was needed in 1 turn; keywords + topic detection cover the rest. Keyword-only selection for local models is the next step.
 - ⚠️ M1 suite once failed `test_trigger_research_probe.py::test_route_with_wait_for_probe_returns_the_probe_failure`; it passed alone and on the rerun — a flake, watch it. Process slip: `git status` was run twice from the sandbox (CLAUDE.md §6); no `index.lock` left behind.
+- 🐞🔧 **02:05 — `--resume` ignored the original `--runs 2`:** it fell back to 1, found every r1 done and ran nothing (three tries on the Qwen 0.6 run). Fixed in `scripts/bench_agent.py` (a resume uses `max(--runs, meta.runs)`), test added (9 in `tests/test_bench_agent_skip.py`, mutation caught); uncommitted.
 - **Uncommitted:** `CLAUDE.md` (§7: no `#` comments in pasted commands; stop a chain on a failing suite through a file), `notes/todo.md`, `notes/benchmark.md`, `notes/items/64-…`, `notes/archive/` (README + `session-log-2026-10-07.md`), this file.
 - ➡️ **Next:** item 70; then the owed benchmark runs (Qwen 0.6 `json_output` r2 via `--resume`, Bonsai full suite); decide on the custom preset (disabled since 17:06).
 

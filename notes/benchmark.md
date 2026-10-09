@@ -80,7 +80,7 @@ cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --
 cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --tasks calendar_create,json_output --runs 2 --yes
 ```
 
-**Continue an interrupted run** — same target (and preset) as the original:
+**Continue an interrupted run** — same target (and preset) as the original. Since 2026-10-09 the resume keeps the original run's `--runs`; before that it fell back to 1 and silently skipped every missing r2:
 ```
 cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --preset custom --resume data/bench/agent/20261008-144530-qwen35+custom --yes
 ```
