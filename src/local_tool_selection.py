@@ -16,7 +16,9 @@ offered only through their own paths (intent domains, explicit requests).
 Set ODYSSEUS_LOCAL_TOOL_SIMILARITY=1 to restore similarity search.
 
 `ui_control` (the largest schema, ~4,300 chars) is kept only for messages that
-name a UI action. Upstream's keyword lists and topic detection add it for
+name a UI action (mode, incognito, model switch, a panel or view, an explicit
+"turn on/off the research/search/shell"). Not "research on X" / "search on
+X", which are ordinary requests, and not themes (maintainer, 2026-10-09). Upstream's keyword lists and topic detection add it for
 generic words ("enable", "disable", "turn on", "open", "show", "settings"),
 so "disable the alarm" carried it and changed the tool list for that message.
 """
@@ -34,12 +36,10 @@ _UI_PANELS = r"(?:chats|documents|email|gallery|inbox|library|memories|memory|no
 _UI_TOGGLES = r"(?:research|search|web search|shell|incognito)"
 UI_ACTION_RE = re.compile(
     r"\b(?:"
-    r"dark mode|light mode|themes?|colou?r scheme|colou?rs of the ui|make (?:it|the ui) (?:dark|light)"
-    r"|(?:agent|chat|plan) mode|set mode|incognito"
+    r"(?:agent|chat|plan) mode|set mode|incognito"
     r"|(?:switch|change) (?:the )?model"
     rf"|(?:open|show|close|hide) (?:the |my )?(?:\w+ )?(?:panel|sidebar)"
     rf"|(?:open|show) (?:the |my )?{_UI_PANELS}"
-    rf"|{_UI_TOGGLES} (?:on|off)"
     rf"|(?:turn|switch) (?:on|off) (?:the )?{_UI_TOGGLES}"
     r"|ui_control"
     r")\b",

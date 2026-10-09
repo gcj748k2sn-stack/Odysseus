@@ -23,7 +23,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🧪 **Sandbox suite** (Python 3.10 venv, `-n 4 --timeout=30`, run in slices): 7,548 passed. Failures: the DNS test (item 73); 20 timeouts in one slice that all pass alone (68/68); `test_session_tools_registry.py` ×7 in its slice, **also with the original `core/models.py` and `src/agent_loop.py`** — order-dependent, passes alone. M1 run owed.
 - ⚠️ `src/local_tool_selection.py` has an uncommitted change from before this work (saved 16:54, narrows `ui_control` further) — not part of item 74; left as is.
 - 🧹 Process: one `git diff --stat` from the sandbox (no `index.lock` left). A debug test file was created and deleted again (delete permission granted for this session).
-- ➡️ **Next:** M1 suite + commit (commands handed over), restart, Bonsai `--quick --runs 2` for item 74's live check.
+- ✅ **Committed** `1364ee37` (fix) and `88d307f0` (notes) by the maintainer; M1 suite green. **Live 17:54–18:15 (`20261009-175432`): 16/16, 9.8 / 10.6 min per run** (was 13.1–13.5); `edit_file` 127 / 149 s with correct answers. Confounded with the `ui_control` narrowing going live at the same restart (−1,100 prompt tokens on simple tasks) — see item 74.
+- ➡️ **Next:** new baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
 
 ## 2026-10-09 (10:55–16:55) — Bonsai full run read; effort picker; item 70 built; prompt trims; benchmark rebuilt
 
