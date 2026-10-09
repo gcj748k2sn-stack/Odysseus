@@ -3784,13 +3784,15 @@ async def stream_agent_loop(
         logger.info("[agent-intent] browser disabled for this turn (builtin_browser in disabled tools)")
     if _direct_low_signal:
         logger.info("[agent] direct low-signal reply path for latest=%r", _last_user[:80])
+        # Fork: a real question gets Odysseus's system prompt (src/direct_reply.py).
+        _direct_system = "" if _casual_low_signal_turn else _assemble_prompt(set(), compact=True)
         direct_messages = (
             _minimal_odysseus_general_messages(
                 messages,
                 include_memory=True,
             )
             if _ody_qwen_finetune_model
-            else [{"role": "user", "content": _last_user}]
+            else _direct_reply.messages(_last_user, _casual_low_signal_turn, _direct_system)
         )
         direct_response = ""
         direct_start = time.time()
@@ -3810,7 +3812,7 @@ async def stream_agent_loop(
             candidate_messages = (
                 _minimal_odysseus_general_messages(messages, include_memory=True)
                 if candidate_is_qwen
-                else [{"role": "user", "content": _last_user}]
+                else _direct_reply.messages(_last_user, _casual_low_signal_turn, _direct_system)
             )
             direct_candidate_messages[_index] = candidate_messages
             return {

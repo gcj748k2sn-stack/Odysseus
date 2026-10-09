@@ -6,6 +6,12 @@ notes/todo.md, *"A plain question in a new chat without a workspace gets a
 let Qwen's thinking use every token and the answer came back empty, 2 of 2.
 
 Covers ``src/direct_reply.py`` and its call site in ``stream_agent_loop``.
+
+Item 76 (notes/todo.md, *"Direct reply path: no system prompt, long
+thinking"*): the same path sent the question alone; Qwen then thought 7,000–
+16,000 chars and often used the whole cap. With Odysseus's own system prompt it
+thought 285–1,500 (scripts/probe_direct_reply.py, 2026-10-09). A real question
+now gets that prompt; a greeting stays bare, as upstream sends it.
 """
 
 import asyncio
@@ -13,7 +19,7 @@ import json
 
 import pytest
 
-from src.direct_reply import DEFAULT_MAX_TOKENS, max_tokens
+from src.direct_reply import DEFAULT_MAX_TOKENS, max_tokens, messages
 
 _EXPLAIN = (
     "In at most three sentences: what is the difference between RAM and flash "
@@ -37,7 +43,17 @@ def test_default_leaves_room_for_thinking():
     assert DEFAULT_MAX_TOKENS >= 2048
 
 
-def _direct_call(monkeypatch, **loop_kwargs):
+def test_messages_add_the_system_prompt_for_a_question():
+    assert messages("why?", False, "SYS") == [{"role": "system", "content": "SYS"},
+                                              {"role": "user", "content": "why?"}]
+
+
+def test_messages_leave_a_greeting_bare():
+    assert messages("hi", True, "SYS") == [{"role": "user", "content": "hi"}]
+    assert messages("why?", False, "") == [{"role": "user", "content": "why?"}]
+
+
+def _direct_call(monkeypatch, question=_EXPLAIN, **loop_kwargs):
     import src.agent_loop as agent_loop
 
     monkeypatch.setattr(agent_loop, "get_setting", lambda k, d=None: d, raising=False)
@@ -55,16 +71,28 @@ def _direct_call(monkeypatch, **loop_kwargs):
     async def run():
         return [c async for c in agent_loop.stream_agent_loop(
             "http://localhost:1234/v1", "qwen/qwen3.5-9b",
-            [{"role": "user", "content": _EXPLAIN}], max_rounds=1, **loop_kwargs,
+            [{"role": "user", "content": question}], max_rounds=1, **loop_kwargs,
         )]
 
     asyncio.run(run())
     assert len(calls) == 1, "expected exactly one model call"
     call = calls[0]
-    assert call.get("tools") is None and call["messages"] == [
-        {"role": "user", "content": _EXPLAIN}
-    ], "this question must take the direct reply path, or the test proves nothing"
+    assert call.get("tools") is None and call["messages"][-1] == {"role": "user", "content": question}, \
+        "this question must take the direct reply path, or the test proves nothing"
     return call
+
+
+def test_plain_question_gets_odysseus_system_prompt(monkeypatch):
+    from src.agent_loop import _assemble_prompt
+
+    sent = _direct_call(monkeypatch)["messages"]
+    assert len(sent) == 2 and sent[0]["role"] == "system"
+    assert sent[0]["content"] == _assemble_prompt(set(), compact=True)
+    assert "Keep answers concise" in sent[0]["content"]
+
+
+def test_greeting_on_the_direct_path_stays_bare(monkeypatch):
+    assert _direct_call(monkeypatch, question="hello")["messages"] == [{"role": "user", "content": "hello"}]
 
 
 def test_plain_question_in_new_chat_is_not_capped_at_128(monkeypatch):
