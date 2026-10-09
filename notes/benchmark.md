@@ -22,7 +22,7 @@ The steps, in order: `cleanup` removes leftovers from earlier runs, `preflight` 
 - Asks for the Odysseus password unless `ODYSSEUS_PASSWORD` is set. Odysseus runs on **:7860** (7000 is macOS AirPlay).
 - Targets: `bonsai2` (endpoint `ed1cd41c`, llama.cpp :8090) and `qwen35` (`a5179555`, LM Studio :1234), or `NAME=ENDPOINT_ID:MODEL_ID`.
 - An interrupted run continues with `--resume <run dir>`. Results go to `data/bench/agent/<run-id>/` (gitignored); task fixtures go to `~/odysseus-bench/<run-id>/` (`BENCH_WS_ROOT` overrides) and can be deleted any time.
-- Time: Qwen ~40 s per task, Bonsai 2 ~140 s; full suite ×2 ≈ 30 min vs ≈ 3 h.
+- Time: Qwen ~43 s per task, Bonsai 2 ~110–150 s; full suite ×2 ≈ 30 min (Qwen) vs ≈ 1 h 45 min (Bonsai, measured 2026-10-09 before the approval fix).
 - **Switched-off tools (since 2026-10-08):** a task whose every usable tool is switched off in Settings → Agent Tools is skipped, not failed (`calendar_create` while `manage_calendar` is off). Preflight prints `⏭ skipping …`; the report shows *⏭ tool off*. Earlier runs include it, so their full-suite totals are out of 18 per run (36 at `--runs 2`) and new ones out of 17 (34); compare per task, or on the report's *only tasks every model ran* row.
 
 ## Commands
@@ -67,12 +67,12 @@ cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinat
 cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target bonsai2 --quick --runs 2 --yes
 ```
 
-**Full run, Bonsai 2** — 17 tasks ×2, roughly 1.5–3 h (never run yet):
+**Full run, Bonsai 2** — 17–18 tasks ×2, ~1 h 45 min (2026-10-09, before the approval and tool-selection fixes; less now):
 ```
 cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target bonsai2 --runs 2 --yes
 ```
 
-**With the custom preset** (temp 0.6 / 8192) — add `--preset custom` to any `run`; the run is named `qwen35+custom` / `bonsai2+custom`. It stops at once if the preset is disabled (the chip's × disables it):
+**With the custom preset** (currently temp 1.0 / 8192 / effort medium — check `data/presets.json`) — add `--preset custom` to any `run`; the run is named `qwen35+custom` / `bonsai2+custom`. It stops at once if the preset is disabled (the chip's × disables it):
 ```
 cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --quick --runs 2 --preset custom --yes
 ```
@@ -113,21 +113,23 @@ Each of these was found in the code or in a failed run; changing one changes wha
 - **URLs in the prompt are fetched by Odysseus before round 1** (`src/chat_processor.py`, first 10,000 chars), so web tasks with a URL do not require a `web_fetch` call.
 - **Odysseus's closing turn report is not model text.** `src/turn_report.py` appends *"⚠️ `tool` failed — …"* for any failed tool, even one the model recovered from; checks see the reply without it.
 - **Server faults stop the run instead of scoring:** unreachable, LM Studio *Compute error*, other HTTP 5xx. Odysseus's 502 *"Model returned an empty response"* and a 400 context overflow are model results.
+- **Every task has its own workspace, and the path is in the system prompt** (*"Active workspace: …"*), so no task can reuse the previous task's cached prompt start. Real chats in one workspace can; the benchmark therefore overstates round-1 time for new chats.
 - **Titles with the run marker are checked twice:** *created* and *copied exactly* are separate checks, and cleanup matches any `bench-xxxx` tag, because both models have mangled the marker.
 
 ## Results
 
-Valid runs only (after the 2026-10-06 merge and the workspace fix). Pass counts are per task run.
+Valid runs only (after the 2026-10-06 merge and the workspace fix). Pass counts are per task run. Full comparison: `data/bench/agent/report.md` (regenerated 2026-10-09 15:21, all runs 10-07 … 10-09).
 
-| | Bonsai 2 27B (llama.cpp, 32k, q4 KV) | Qwen 3.5 9B (LM Studio GGUF Q4_K_M, 64k) |
-|---|---|---|
-| Runs | `20261007-012621`, `20261007-171522` (`--quick` ×2) | `20261007-175428` (full ×2) |
-| Passed | 16/16 | 35/36 (34/36 as scored before the turn-report fix) |
-| On the 8 tasks both ran | 16/16 | 16/16 |
-| Median per task / per round | 142 s / 62 s | 42 s / 19 s |
-| Empty answer after a tool round | 0 of 31 rounds | 0 of 43 |
-| Approval cards | 7 — mostly from computing with `python` | 11 |
+| | Bonsai 2 @medium | Bonsai 2 @low | Qwen 3.5 9B (temp 1.0) | Qwen 3.5 9B +custom (0.6) |
+|---|---|---|---|---|
+| Passed | 74/76 | 16/16 | 68/72 | 51/52 (+1 loop not recorded) |
+| On tasks every config ran | 56/56 | 16/16 | 32/32 | 32/32 |
+| Median per task | 131 s | 133 s | 43 s | 44 s |
+| Median per round (log) | 52 s | 59 s | 19 s | 20 s |
 
+⚠️ **Baseline break 2026-10-09 ~14:45** (commits `48652619` approval answer, `eea56cb2` keyword-only tool selection, `21282328` prompt trims): runs before it are slower on approval tasks and differ in the tools offered, so compare speed only within one side.
+
+- **Bonsai 2 quick ×1, first run after the break (`20261009-145108-bonsai2@medium`, Odysseus `7e49a802`, restarted): 8/8, 22.4 min** vs 28.1 min (sum of per-task medians of the 6 earlier medium runs); faster on 7 of 8 (edit_file 157 vs 266 s, write_file 373 vs 463 s). `[tool-rag] Local endpoint, keyword selection` logged for every task without the Terminus path. **Approval continuations:** `tools_same=True` now, re-read ~1,200 tokens / ~20 s (was ~72 s) — the rest is the date/time message (`first_diff=1 … user 729ch`): its clock changes between the card and the answer, so everything after the system prompt is re-read. n = 8, one run: direction, not a measurement.
 - **Qwen, 2026-10-08 (`20261008-133121`, full ×2, default temp 1.0, Odysseus `7f355714` plus the uncommitted item 7/43/48 fixes, restarted 13:26): 34/36 as scored, 35/36 after the rescore below.** Median 44 s per task, 11 approval cards, same as 10-07. Failures: `calendar_create` r2 wrote `bench-2a8] Dentist` for `[bench-2a8c] Dentist` (the 10-07 copying slip again, so 2 of 4 calendar runs over two days); `json_output` r2 was a **scoring bug** — the reply was exactly the JSON, but Odysseus listed two failed `python` calls as a `- ` bullet list, which `split_turn_report` did not recognise. Fixed in `scripts/bench_agent_tasks.py` (`_REPORT_LINE` takes an optional `- `); rescored by hand, it passes all four checks. Negative control: a model's own bullet stays model text. ⚠️ **`recover_typo` looped on its first attempt in both repetitions** (`[degenerate-stream]` 13:37:58 *'entries rows entries rows'*, 14:07:39 *'lines cover rows lines'*). The script treated Odysseus's repetition 502 as a server fault, stopped, and the resumed attempt was recorded (both passed). Fixed in two steps: `MODEL_EMPTY_RE` recognises the repetition text, and, since 15:45, a turn is judged as a whole. Odysseus reports the failure twice — the `error` event with the text, then `agent_terminal` with only *"Model request failed (HTTP 502)"* — and the bare summary alone still read as a server fault. That is why the first step did not stop the 14:07 halt or the 15:17 one. **Strict reading, with the two loops as failures: 33/36.** Both loops ran at temp 1.0 with no presence penalty from Odysseus; Qwen pairs 1.0 with presence_penalty 1.5.
 - **Qwen at temp 0.6, 2026-10-08 (`--preset custom`; every turn logged `Preset custom: temp=0.6, max_tokens=8192`):** quick ×2 `20261008-142729-qwen35+custom` **16/16**, median 64 s; full ×2 `20261008-144530-qwen35+custom` **34/35 recorded**, median 43 s, 11 cards. The missing row, `json_output` r2, **looped** (`[degenerate-stream]` 15:17:54, *'rows rows rows rows'*) and was not saved: the script stopped with *"the model server failed"* (it was not interrupted). Counted as a failure: **34/36**. The other failure: `calendar_create` r2 wrote `bench-0c8c Dentist` (brackets dropped). **Reading: 0.6 and 1.0 are the same at this n** (34/36 vs 33–35/36, same median time). Loops occur at both temperatures (1.0: 2 in `recover_typo`; 0.6: 1 in `json_output`), so lowering the temperature does not remove them. The title-copying slip is now **3 of 6** `calendar_create` runs over two days, the one consistent Qwen weakness here.
 - Qwen's real failure: `calendar_create` r1 created *"bench-2d22 Dentist"* (brackets dropped) and then said it had created *"[bench-2d22] Dentist"*. Same kind of copying slip as the 2026-10-05 note.
