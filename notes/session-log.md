@@ -28,7 +28,10 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🔧 **Item 70 built (uncommitted):** keyword-only tool selection for local endpoints (`src/local_tool_selection.py`, one call site in `src/agent_loop.py`) + tool names in the message (German aliases dropped); 15 tests, 3 mutations caught; replay of 25 recent messages in todo.md. Not seen live.
 - 🔎 **Prompt review against real chats (15:00):** 379 replies in 155 chats — web (fetch 107, search 98) and documents (create 92, edit 66) dominate; files/shell ~15; `ask_user` 3, `update_plan` 1, `manage_memory` 0 (maintainer has switched it off).
 - 🔧 **`src/prompt_trims.py` (uncommitted):** the Terminus local-machine rules now need a real file/shell tool (they were on every turn via `ask_user`/`update_plan`; "fix (c)" in `test_terminus_keeps_intent_domains.py`); the date/time context drops its `manage_calendar` / `manage_tasks` lines when those tools are not offered. `tests/test_prompt_trims.py` (7, 2 mutations caught).
-- ➡️ **Next:** live check of item 70 (two new chats, `cache_n`) and of the trims (`plain.txt`-style render); Bonsai quick benchmark.
+- 📊 **First quick run after the fixes** (`20261009-145108-bonsai2@medium`): 8/8, 22.4 min vs 28.1 min; approval continuations ~20 s instead of ~72 s, the rest from the date message's clock.
+- 🔧 **Prompt (uncommitted):** date context cut to the date alone unless calendar/task tools are offered (`date_only_message`); "## Available tools" name list dropped from the native-tools prompt (`drop_tool_name_list`); both in `src/prompt_trims.py`, tests 11 (2 more mutations caught).
+- 🔧 **Benchmark rebuilt (uncommitted):** `workspace` per task (only file tasks), `session_setup` + `followups` hooks, new `document_edit` / `document_followup`, `--quick` rebalanced to real use; `tests/test_bench_agent_chat_shape.py` (8, 4 mutations caught). Baseline break noted in benchmark.md.
+- ➡️ **Next:** commit; restart; quick ×2 on Bonsai as the new baseline.
 
 ---
 

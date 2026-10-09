@@ -1,10 +1,10 @@
 # Agent benchmark (`scripts/bench_agent.py`)
 
-Compares models **inside Odysseus**: the same 18 tasks (17 while `manage_calendar` is switched off) go through the real
+Compares models **inside Odysseus**: the same 20 tasks (fewer while their tools are switched off) go through the real
 `/api/chat_stream` in agent mode, exactly as the browser sends them, and each is
 checked on its outcome — the answer text, files on disk, notes/events/documents
 through the API. Tasks: `scripts/bench_agent_tasks.py` (`bench_agent.py tasks`
-lists them; 8 are in `--quick`). Raw speed per engine is a different script:
+lists them; 8 are in `--quick`: arith, read_fact, edit_file, web_fact, web_read, document_create, document_edit, document_followup — chosen 2026-10-09 to match real use, which is mostly web and documents). Raw speed per engine is a different script:
 `scripts/bench_qwen_backends.py` ([qwensetup.md](qwensetup.md), *Engine benchmark*).
 
 ## Running it
@@ -113,7 +113,8 @@ Each of these was found in the code or in a failed run; changing one changes wha
 - **URLs in the prompt are fetched by Odysseus before round 1** (`src/chat_processor.py`, first 10,000 chars), so web tasks with a URL do not require a `web_fetch` call.
 - **Odysseus's closing turn report is not model text.** `src/turn_report.py` appends *"⚠️ `tool` failed — …"* for any failed tool, even one the model recovered from; checks see the reply without it.
 - **Server faults stop the run instead of scoring:** unreachable, LM Studio *Compute error*, other HTTP 5xx. Odysseus's 502 *"Model returned an empty response"* and a 400 context overflow are model results.
-- **Every task has its own workspace, and the path is in the system prompt** (*"Active workspace: …"*), so no task can reuse the previous task's cached prompt start. Real chats in one workspace can; the benchmark therefore overstates round-1 time for new chats.
+- **Only file tasks get a workspace** (task field `workspace`, since 2026-10-09). Real web and document chats have none, and the workspace path is in the system prompt (*"Active workspace: …"*), so with a workspace on every task the non-file tasks got the "Workspace coding mode" rules (which forbid notes/documents) and no task could reuse the previous task's cached prompt start. File tasks still each have their own folder.
+- **Documents open in the panel are sent as `active_doc_id`** with every request of that chat, approval answers included, as the browser does: `document_edit` creates its document through `POST /api/document` after the chat exists (`session_setup`), `document_followup` sends message 2 with the document message 1 created (`followups`). `rec["turns"]` has time and rounds per message.
 - **Titles with the run marker are checked twice:** *created* and *copied exactly* are separate checks, and cleanup matches any `bench-xxxx` tag, because both models have mangled the marker.
 
 ## Results
@@ -126,6 +127,8 @@ Valid runs only (after the 2026-10-06 merge and the workspace fix). Pass counts 
 | On tasks every config ran | 56/56 | 16/16 | 32/32 | 32/32 |
 | Median per task | 131 s | 133 s | 43 s | 44 s |
 | Median per round (log) | 52 s | 59 s | 19 s | 20 s |
+
+⚠️ **Second baseline break 2026-10-09 ~15:45 (task suite):** non-file tasks lost their workspace, `document_edit` and `document_followup` were added, and `--quick` was rebalanced (out: write_file, note_create, multi_step, german; in: web_fact, document_create, document_edit, document_followup). Quick-run totals before and after are not comparable; per-task results of unchanged file tasks are.
 
 ⚠️ **Baseline break 2026-10-09 ~14:45** (commits `48652619` approval answer, `eea56cb2` keyword-only tool selection, `21282328` prompt trims): runs before it are slower on approval tasks and differ in the tools offered, so compare speed only within one side.
 
