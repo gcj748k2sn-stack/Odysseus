@@ -2402,6 +2402,11 @@ def _build_system_prompt(
             _cached_base_prompt = agent_prompt
             _cached_base_prompt_key = cache_key
 
+    # Fork: the native-tools prompt drops the tool-name list (the template
+    # renders every schema).
+    if compact:
+        agent_prompt = _prompt_trims.drop_tool_name_list(agent_prompt)
+
     # Dynamic parts that change per request
     mcp_schemas = []
     if mcp_mgr:
@@ -2426,7 +2431,7 @@ def _build_system_prompt(
         from src.user_time import current_datetime_context_message
         _datetime_message = current_datetime_context_message()
         # Fork: drop the calendar/task lines when those tools are not offered.
-        _datetime_message = _prompt_trims.trim_datetime_message(_datetime_message, relevant_tools)
+        _datetime_message = _prompt_trims.date_only_message(_datetime_message, relevant_tools)
     except Exception as e:
         logger.warning("Failed to build datetime context message", exc_info=e)
 
