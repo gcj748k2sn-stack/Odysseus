@@ -19,6 +19,15 @@ Each task is a dict:
               rec["tools"]       [{"tool", "command", "round"}...] in call order
               rec["tool_results"][{"tool", "exit_code"}...]
   cleanup   optional cleanup(ctx) → removes what the task created through the API.
+  workspace True (default) → the turn is sent with the fixture folder as its
+            workspace, as a file task in a workspace chat. False → no
+            workspace, as a real web/document chat (the workspace path goes
+            into the system prompt, so it also decides cache reuse).
+  session_setup optional session_setup(ctx) → dict of extra form fields, run
+            after the chat exists (ctx["session"]); e.g. creates a document
+            and returns {"active_doc_id": …}, as an open document panel sends.
+  followups optional [(prompt(ctx), fields(ctx) or None), …] → more messages
+            in the same chat after the first; fields are added to that message.
 
 ⚠️ PROMPT WORDING MATTERS. routes/chat_routes.py treats a message matching
 WEB_INTENT_RE (below, copied from chat_stream) as an explicit web lookup and
@@ -156,12 +165,13 @@ def task(**kw):
     kw.setdefault("quick", False)
     kw.setdefault("tools", [])
     kw.setdefault("cleanup", None)
+    kw.setdefault("workspace", True)
     TASKS.append(kw)
 
 
 # 1 ─ restraint: no tools needed
 task(
-    id="arith", cat="restraint", quick=True,
+    id="arith", cat="restraint", quick=True, workspace=False,
     setup=lambda ws, ctx: {"answer": 391},
     prompt=lambda ctx: "What is 17 × 23? Reply with just the number.",
     checks=lambda rec, ctx: [
@@ -172,7 +182,7 @@ task(
 )
 
 task(
-    id="explain", cat="restraint",
+    id="explain", cat="restraint", workspace=False,
     setup=lambda ws, ctx: {},
     prompt=lambda ctx: ("In at most three sentences: what is the difference between RAM and "
                         "flash memory on a microcontroller like the ESP32?"),
@@ -246,7 +256,7 @@ def _check_summary(rec, ctx):
 
 
 task(
-    id="write_file", cat="files", quick=True, tools=["write_file"],
+    id="write_file", cat="files", tools=["write_file"],
     setup=lambda ws, ctx: make_sensors(ws),
     prompt=lambda ctx: (f"Using {ctx['ws']}/sensors.csv, create the file {ctx['ws']}/summary.md containing a "
                         "markdown table with one row per node and its average temp_c, rounded to one decimal."),
@@ -332,7 +342,7 @@ task(
 task(
     # Passable from memory (the year is well known) — it tests that the model
     # searches when told to, not that it reads. web_read tests reading.
-    id="web_fact", cat="web", web=True, tools=["web_search"],
+    id="web_fact", cat="web", quick=True, workspace=False, web=True, tools=["web_search"],
     setup=lambda ws, ctx: {},
     prompt=lambda ctx: "Search the web: in which year was the Eiffel Tower completed? Answer with the year.",
     checks=lambda rec, ctx: [
@@ -343,7 +353,7 @@ task(
 )
 
 task(
-    id="web_fetch", cat="web", web=True, tools=["web_fetch"],
+    id="web_fetch", cat="web", workspace=False, web=True, tools=["web_fetch"],
     setup=lambda ws, ctx: {},
     prompt=lambda ctx: "Fetch https://example.com and tell me the exact text of its main heading.",
     checks=lambda rec, ctx: [
@@ -366,7 +376,7 @@ task(
 # calling the tool — Bonsai 2 did, 2026-10-06 21:38. Correctness still needs
 # the page, which is what these tasks are for.
 task(
-    id="web_read", cat="web", quick=True, web=True, tools=["web_fetch"],
+    id="web_read", cat="web", quick=True, workspace=False, web=True, tools=["web_fetch"],
     setup=lambda ws, ctx: {"who": "Fries", "year": 1822, "forest": "fir", "country": "Sweden"},
     prompt=lambda ctx: ("Read the Wikipedia article https://en.wikipedia.org/wiki/Morchella and tell me: "
                         "who described Morchella elata, in which year, and in what kind of forest and "
@@ -435,7 +445,7 @@ def _cleanup_note(ctx):
 
 
 task(
-    id="note_create", cat="odysseus", quick=True, tools=["manage_notes"],
+    id="note_create", cat="odysseus", workspace=False, tools=["manage_notes"],
     setup=lambda ws, ctx: (ctx.__setitem__("notes_before", _note_ids(ctx)), {})[1],
     prompt=lambda ctx: (f'Create a checklist note titled "{ctx["marker"]} Workshop shopping" with three items: '
                         "PLA filament, M3 screws, isopropyl alcohol."),
@@ -494,7 +504,7 @@ def _cleanup_event(ctx):
 
 
 task(
-    id="calendar_create", cat="odysseus", tools=["manage_calendar"],
+    id="calendar_create", cat="odysseus", workspace=False, tools=["manage_calendar"],
     setup=lambda ws, ctx: (ctx.__setitem__("events_before", {e["uid"] for e in _find_events(ctx, loose=True)}), {})[1],
     prompt=lambda ctx: (f'Add a calendar event "{ctx["marker"]} Dentist" on '
                         f'{_event_day(ctx).strftime("%A, %d %B %Y")} from 14:00 to 15:00.'),
@@ -526,11 +536,103 @@ def _cleanup_doc(ctx):
 
 
 task(
-    id="document_create", cat="odysseus", tools=["create_document"],
+    id="document_create", cat="odysseus", quick=True, workspace=False, tools=["create_document"],
     setup=lambda ws, ctx: {},
     prompt=lambda ctx: (f'Create a document titled "{ctx["marker"]} Packing list" containing a bullet list of '
                         "exactly five items for a weekend hiking trip."),
     checks=_check_doc, cleanup=_cleanup_doc,
+)
+
+
+# Editing a document that is open in the panel: the browser sends its id as
+# active_doc_id with every message. Real chats edit documents about as often
+# as they create them (2026-10-09: 92 create / 81 edit replies in 155 chats).
+GROW_LOG = [
+    "# Grow log",
+    "",
+    "- Species: pink oyster",
+    "- Substrate: straw pellets",
+    "- Humidity target: 80 %",
+    "- Fresh air: 4 exchanges per hour",
+    "- Fruiting temperature: 24 °C",
+]
+
+
+def _make_open_doc(ctx):
+    doc = ctx["api"].post("/api/document", js={
+        "session_id": ctx["session"], "title": f'{ctx["marker"]} Grow log',
+        "language": "markdown", "content": "\n".join(GROW_LOG) + "\n"})
+    ctx["doc_id"] = doc.get("id") if isinstance(doc, dict) else None
+    return {"active_doc_id": ctx["doc_id"]} if ctx["doc_id"] else {}
+
+
+def _doc_body(ctx, doc_id):
+    try:
+        d = ctx["api"].get(f"/api/document/{doc_id}")
+    except Exception:
+        return None
+    return (d or {}).get("current_content") if isinstance(d, dict) else None
+
+
+def _check_doc_edit(rec, ctx):
+    body = _doc_body(ctx, ctx.get("doc_id"))
+    out = [chk("fixture document exists", body is not None, "GET /api/document failed")]
+    if body is None:
+        return out
+    lines = [l.rstrip() for l in body.strip().splitlines()]
+    want = [l.replace("80 %", "85 %") for l in GROW_LOG]
+    out.append(chk("humidity target is 85 %", any("85" in l and "umidity" in l for l in lines),
+                   next((l for l in lines if "umidity" in l), "no humidity line")))
+    out.append(chk("no 80 % left", not any("80" in l and "umidity" in l for l in lines), ""))
+    other = [l for l in want if "umidity" not in l and l]
+    missing = [l for l in other if l not in lines]
+    out.append(chk("every other line unchanged", not missing, f"missing: {missing[:2]}"))
+    out.append(chk("no second document", len(_find_docs(ctx, loose=True)) == 1,
+                   f"{len(_find_docs(ctx, loose=True))} documents with the marker"))
+    return out
+
+
+task(
+    id="document_edit", cat="odysseus", quick=True, workspace=False, tools=["edit_document"],
+    setup=lambda ws, ctx: {"from": "80 %", "to": "85 %"},
+    session_setup=_make_open_doc,
+    prompt=lambda ctx: "In the open document, change the humidity target from 80 % to 85 %. Leave everything else as it is.",
+    checks=_check_doc_edit, cleanup=_cleanup_doc,
+)
+
+
+# Two messages in one chat: create, then change the document it just made.
+# The second message is the common real case (a follow-up in a running chat),
+# where the cached prompt start and the chat's tool set should carry over;
+# rec["turns"] has time and rounds per message.
+def _created_doc_fields(ctx):
+    docs = _find_docs(ctx)
+    ctx["doc_id"] = docs[0]["id"] if docs else None
+    return {"active_doc_id": ctx["doc_id"]} if ctx["doc_id"] else {}
+
+
+def _check_followup(rec, ctx):
+    docs = _find_docs(ctx)
+    out = [chk("document exists (via /api/documents)", docs, "no document with the marker in its title"),
+           chk("one document, not two", len(_find_docs(ctx, loose=True)) == 1,
+               f"{len(_find_docs(ctx, loose=True))} documents with the marker")]
+    if docs:
+        body = _doc_body(ctx, docs[0]["id"]) or docs[0].get("current_content") or ""
+        items = [l for l in body.splitlines() if re.match(r"^\s*([-*•]|\d+[.)])\s+\S", l)]
+        out.append(chk("4 list items after the follow-up", len(items) == 4, f"{len(items)} items"))
+        out.append(chk("has 'headlamp'", "headlamp" in body.lower(), "missing"))
+    out.append(chk("both messages answered", len(rec.get("turns") or []) == 2, f"{len(rec.get('turns') or [])} turns"))
+    return out
+
+
+task(
+    id="document_followup", cat="odysseus", quick=True, workspace=False,
+    tools=["create_document", "edit_document"],
+    setup=lambda ws, ctx: {},
+    prompt=lambda ctx: (f'Create a document titled "{ctx["marker"]} Day pack" containing a bullet list of '
+                        "exactly three items: water bottle, rain jacket, map."),
+    followups=[(lambda ctx: "Add a fourth item to that list: headlamp.", _created_doc_fields)],
+    checks=_check_followup, cleanup=_cleanup_doc,
 )
 
 
@@ -546,7 +648,7 @@ def _setup_order(ws, ctx):
 
 
 task(
-    id="multi_step", cat="multistep", quick=True, tools=["read_file", "write_file"],
+    id="multi_step", cat="multistep", tools=["read_file", "write_file"],
     setup=_setup_order,
     prompt=lambda ctx: (f"{ctx['ws']}/order.txt lists quantities and item keys; {ctx['ws']}/prices.json has the "
                         f"unit prices in EUR. Compute the order total and write it to {ctx['ws']}/total.txt — "
@@ -609,7 +711,7 @@ TERMINE = """Termine Herbst 2026
 
 
 task(
-    id="german", cat="language", quick=True, tools=["read_file"],
+    id="german", cat="language", tools=["read_file"],
     setup=lambda ws, ctx: (write(ws, "termine.txt", TERMINE), {"answer": "TÜV"})[1],
     prompt=lambda ctx: (f"Welcher Termin in {ctx['ws']}/termine.txt liegt am frühesten? "
                         "Antworte auf Deutsch in einem Satz."),

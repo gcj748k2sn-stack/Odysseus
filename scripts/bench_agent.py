@@ -201,13 +201,21 @@ def run_one(api, task, target, rep, run_dir, args):
                                           "endpoint_id": endpoint_id, "model": model})
     sid = ctx["session"] = rec["session"] = sess["id"]
 
-    form = {"message": prompt, "session": sid, "mode": "agent", "incognito": "true",
-            "allow_bash": "true" if task["bash"] else "false",
-            "allow_web_search": "true" if task["web"] else "false",
-            "workspace": ctx["ws"]}
+    # Fields the browser sends with every request of this chat: toggles, the
+    # preset, the workspace only for tasks that need one (real web/document
+    # chats have none, and its path in the system prompt keeps a task from
+    # reusing the previous task's cached prompt), and what session_setup
+    # returns (e.g. active_doc_id for a document the "panel" has open).
+    base_form = {"session": sid, "mode": "agent", "incognito": "true",
+                 "allow_bash": "true" if task["bash"] else "false",
+                 "allow_web_search": "true" if task["web"] else "false"}
+    if task["workspace"]:
+        base_form["workspace"] = ctx["ws"]
     if getattr(args, "preset", None):
-        form["preset_id"] = args.preset   # as the browser sends it (static/js/chat.js)
-    first_form = dict(form)
+        base_form["preset_id"] = args.preset   # as the browser sends it (static/js/chat.js)
+    if task.get("session_setup"):
+        base_form.update(task["session_setup"](ctx) or {})
+    form = dict(base_form, message=prompt)
 
     state = {"event": None, "t0": time.time(), "first_text": None, "stream_rounds": 0, "approval": None}
     final_parts, all_parts = [], []
@@ -289,7 +297,21 @@ def run_one(api, task, target, rep, run_dir, args):
     stopper.daemon = True
     rec["start"] = now_local()
     stopper.start()
+    # Follow-up messages in the same chat: (prompt(ctx), fields(ctx)) pairs;
+    # fields are added to that message, e.g. the document message 1 created.
+    turns = [(prompt, None)] + list(task.get("followups") or [])
+    rec["turns"] = []
     try:
+      for turn_no, (turn_prompt, turn_fields) in enumerate(turns):
+        if rec.get("timed_out") or rec["status"] != "ok":
+            break
+        if turn_no:
+            final_parts.clear()
+            turn_prompt = turn_prompt(ctx)
+            form = dict(base_form, message=turn_prompt)
+            form.update((turn_fields(ctx) if turn_fields else None) or {})
+            rec.setdefault("followup_prompts", []).append(turn_prompt)
+        turn_form, turn_t0, turn_rounds0 = dict(form), time.time(), rec["rounds"]
         while True:
             state["approval"], state["stream_rounds"] = None, 0
             api.stream("/api/chat_stream", form, on_line)
@@ -310,18 +332,18 @@ def run_one(api, task, target, rep, run_dir, args):
                                      "decision": args.approval})
             if args.approval == "deny":
                 rec["flags"].append("approval_denied")
-            # Same toggles as the message, as the browser sends them
+            # Same fields as the message, as the browser sends them
             # (static/js/chat.js builds both in one FormData). A missing
             # allow_bash reads as "not restricted": bash joins the tool list,
             # which sits at the top of the prompt, and the server re-reads it all.
-            form = {"message": "", "session": sid, "incognito": "true", "mode": "agent",
-                    "allow_bash": first_form["allow_bash"], "allow_web_search": first_form["allow_web_search"],
-                    "tool_approval_id": card.get("approval_id"), "tool_approval_decision": args.approval}
-            if getattr(args, "preset", None):
-                form["preset_id"] = args.preset
+            form = {k: v for k, v in turn_form.items() if k not in ("message", "workspace")}
+            form.update({"message": "", "tool_approval_id": card.get("approval_id"),
+                         "tool_approval_decision": args.approval})
             if args.approval == "deny":
                 api.stream("/api/chat_stream", form, on_line)
                 break
+        rec["turns"].append({"wall_s": round(time.time() - turn_t0, 2),
+                             "rounds": rec["rounds"] - turn_rounds0})
     except Exception as e:
         rec["status"], rec["error"] = "http_error", f"{type(e).__name__}: {e}"[:400]
     finally:
@@ -410,9 +432,10 @@ def lint_prompts(tasks):
     fake = {"ws": "/x", "marker": "[bench-0000]", "expect": {}, "session": "s", "api": None}
     bad = []
     for t in tasks:
-        m = T.WEB_INTENT_RE.search(t["prompt"](fake))
-        if m and not t["web"]:
-            bad.append(f"{t['id']}: '{m.group(0)}'")
+        for p in [t["prompt"]] + [f for f, _ in t.get("followups") or []]:
+            m = T.WEB_INTENT_RE.search(p(fake))
+            if m and not t["web"]:
+                bad.append(f"{t['id']}: '{m.group(0)}'")
     if bad:
         sys.exit("error: these prompts trigger Odysseus's web-intent rule and would lose their file tools:\n  "
                  + "\n  ".join(bad))
