@@ -1,9 +1,11 @@
 """Reasoning effort from the preset, sent to llama.cpp as a chat-template kwarg.
 
-Bonsai 2's chat template reads `reasoning_effort` (default `xhigh`; `medium`
-thinks much less at about the same accuracy; `low` is not supported and
-behaves close to `xhigh`, per the model's README). gpt-oss templates read
-low/medium/high. llama.cpp merges a request's `chat_template_kwargs` over the
+Bonsai 2's chat template reads `reasoning_effort` and accepts exactly `xhigh`
+(default), `medium` and `low`; any other value raises a template error, so
+every request would fail. `xhigh` and `low` add an instruction sentence to the
+system block, `medium` adds none. PrismML: `medium` thinks less than `xhigh`
+at about the same accuracy; `low` "is not supported and … will behave close
+to `xhigh`". llama.cpp merges a request's `chat_template_kwargs` over the
 server's `--chat-template-kwargs`, so the preset can override
 `start_bonsai2.sh` per chat.
 
@@ -21,8 +23,8 @@ from typing import Any, Dict, Mapping, Optional
 
 logger = logging.getLogger(__name__)
 
-# "" = server default. Values other templates do not know are ignored by them.
-VALUES = ("", "low", "medium", "high", "xhigh")
+# "" = server default. Bonsai 2's template raises on anything else ("high" too).
+VALUES = ("", "low", "medium", "xhigh")
 
 _effort: contextvars.ContextVar[str] = contextvars.ContextVar("reasoning_effort", default="")
 

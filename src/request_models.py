@@ -93,7 +93,7 @@ class PresetUpdateRequest(BaseModel):
     )
     reasoning_effort: str = Field(
         "",
-        pattern="^(|low|medium|high|xhigh)$",
+        pattern="^(|low|medium|xhigh)$",
         description="Chat-template reasoning effort for local llama.cpp models ('' = server default)"
     )
 

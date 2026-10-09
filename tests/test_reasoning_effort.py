@@ -31,6 +31,8 @@ def test_from_preset_reads_a_known_value():
     {},
     {"reasoning_effort": ""},
     {"reasoning_effort": "extreme"},
+    # Bonsai 2's template raises on "high", which would fail every request.
+    {"reasoning_effort": "high"},
     {"reasoning_effort": "medium", "enabled": False},
 ])
 def test_from_preset_gives_nothing_for_none_junk_or_a_disabled_preset(preset):
@@ -171,6 +173,8 @@ def test_preset_update_accepts_known_efforts_and_rejects_others():
     assert PresetUpdateRequest().reasoning_effort == ""
     with pytest.raises(ValidationError):
         PresetUpdateRequest(reasoning_effort="extreme")
+    with pytest.raises(ValidationError):
+        PresetUpdateRequest(reasoning_effort="high")
 
 
 def test_update_custom_stores_the_effort(tmp_path):
