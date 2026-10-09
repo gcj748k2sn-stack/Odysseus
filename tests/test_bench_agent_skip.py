@@ -122,3 +122,28 @@ def test_run_never_starts_a_skipped_task(tmp_path, monkeypatch, capsys):
     meta = json.loads(next(tmp_path.glob("*/meta.json")).read_text())
     assert meta["tasks"] == ["arith"]
     assert meta["env"]["skipped"] == {"calendar_create": ["manage_calendar"]}
+
+
+def test_resume_without_runs_finishes_the_original_repetitions(tmp_path, monkeypatch, capsys):
+    """A run started with --runs 2 and resumed without --runs must still run
+    the missing r2 (it defaulted to 1 and ran nothing, 2026-10-09)."""
+    run_dir = tmp_path / "20261008-144530-qwen35"
+    run_dir.mkdir()
+    (run_dir / "meta.json").write_text(json.dumps({"target": "qwen35", "runs": 2, "tasks": ["arith"]}))
+    (run_dir / "results.jsonl").write_text(json.dumps(_rec("arith", target="qwen35")) + "\n")
+    started = []
+
+    class Api:
+        def __init__(self, *a):
+            pass
+
+        def login(self):
+            pass
+
+    monkeypatch.setattr(B, "Api", Api)
+    monkeypatch.setattr(B, "preflight", lambda api, target, tasks: ({"skipped": {}}, []))
+    monkeypatch.setattr(B, "run_one", lambda api, task, target, rep, rd, args: started.append((task["id"], rep)) or _rec(task["id"], target="qwen35"))
+    args = SimpleNamespace(target="qwen35", quick=False, tasks="arith", runs=1, resume=str(run_dir),
+                           preset=None, no_warmup=True, yes=True, url="http://x", user="u")
+    B.cmd_run(args)
+    assert started == [("arith", 2)]

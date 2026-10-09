@@ -573,6 +573,9 @@ def cmd_run(args):
         if meta["target"] != target[0]:
             sys.exit(f"error: {run_dir} is a run of {meta['target']}, not {target[0]}")
         meta.setdefault("env_resumed", []).append(dict(env, warnings=warn))
+        # A resume finishes the original run: without --runs it would default
+        # to 1 and silently skip every missing repetition 2+ (2026-10-09).
+        args.runs = max(args.runs, int(meta.get("runs") or 1))
     else:
         run_id = dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + target[0]
         run_dir, n = RESULTS_ROOT / run_id, 1
