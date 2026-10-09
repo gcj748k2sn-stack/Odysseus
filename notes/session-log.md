@@ -26,7 +26,9 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🧹 Process: `git status` / `git diff --stat` run once from the sandbox before reading CLAUDE.md §6 (no `index.lock` left). Left behind, undeletable from the sandbox: `scripts/__pycache__/bench_agent.cpython-310.pyc` (rewritten), `tests/__pycache__/*cpython-310*` from one early pytest run without `PYTHONDONTWRITEBYTECODE`.
 - 🐞🔧 **The `bash` re-read after approval cards was the benchmark's own bug** (re-checked before building, 14:00): its approval answer omitted `allow_bash` / `allow_web_search`, which the browser always sends; both turns select the same tools, so the planned "seal only the sent tools" change would have done nothing. Fixed in `scripts/bench_agent.py`, `tests/test_bench_agent_approval.py` (2, mutation caught). Uncommitted.
 - 🔧 **Item 70 built (uncommitted):** keyword-only tool selection for local endpoints (`src/local_tool_selection.py`, one call site in `src/agent_loop.py`) + tool names in the message (German aliases dropped); 15 tests, 3 mutations caught; replay of 25 recent messages in todo.md. Not seen live.
-- ➡️ **Next:** live check of item 70 (two new chats, `cache_n`), then a Bonsai benchmark run to see the effect on round 1.
+- 🔎 **Prompt review against real chats (15:00):** 379 replies in 155 chats — web (fetch 107, search 98) and documents (create 92, edit 66) dominate; files/shell ~15; `ask_user` 3, `update_plan` 1, `manage_memory` 0 (maintainer has switched it off).
+- 🔧 **`src/prompt_trims.py` (uncommitted):** the Terminus local-machine rules now need a real file/shell tool (they were on every turn via `ask_user`/`update_plan`; "fix (c)" in `test_terminus_keeps_intent_domains.py`); the date/time context drops its `manage_calendar` / `manage_tasks` lines when those tools are not offered. `tests/test_prompt_trims.py` (7, 2 mutations caught).
+- ➡️ **Next:** live check of item 70 (two new chats, `cache_n`) and of the trims (`plain.txt`-style render); Bonsai quick benchmark.
 
 ---
 
