@@ -15,6 +15,16 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-09 (16:05–17:45) — Bonsai memory: prompt cache off; approval replay fixed (item 74, uncommitted)
+
+- ⚙️ **`~/BonsaiDemo/start_bonsai2.sh`: `--cache-ram 0`** (was 2048). Vision projector was already off. A full log showed 0 RAM-cache hits with entries of 455–846 MiB; measured at startup (`-lv 4` log `~/BonsaiDemo/logs/bonsai-2026-10-09-1630.log`): model 6.9 GB, KV 576 MiB, recurrent state 150 MiB, checkpoints 150 MiB each (peak 4). Server output is now logged with `tee -i` to `~/BonsaiDemo/logs/` (commands in `~/Desktop/TerminalCheatSheet.md`).
+- 📊 **`20261009-163128-bonsai2@medium`** (quick ×1, cache off): 8/8, 16.5 min vs 13.1–13.5 for `155236`; without `edit_file` 11.1 vs 10.0–10.9. Prefill 65.8 tok/s, decode 10.3 — unchanged. The gap is item 74.
+- 🔧 **Item 74 built, uncommitted:** `src/approval_replay.py`, `src/decision_nudge.py`, call sites in `core/models.py` and `src/agent_loop.py`, `tests/test_approval_replay.py`, `tests/test_decision_nudge.py`. Earlier uncommitted work (`ui_control` narrowing) untouched.
+- 🧪 **Sandbox suite** (Python 3.10 venv, `-n 4 --timeout=30`, run in slices): 7,548 passed. Failures: the DNS test (item 73); 20 timeouts in one slice that all pass alone (68/68); `test_session_tools_registry.py` ×7 in its slice, **also with the original `core/models.py` and `src/agent_loop.py`** — order-dependent, passes alone. M1 run owed.
+- ⚠️ `src/local_tool_selection.py` has an uncommitted change from before this work (saved 16:54, narrows `ui_control` further) — not part of item 74; left as is.
+- 🧹 Process: one `git diff --stat` from the sandbox (no `index.lock` left). A debug test file was created and deleted again (delete permission granted for this session).
+- ➡️ **Next:** M1 suite + commit (commands handed over), restart, Bonsai `--quick --runs 2` for item 74's live check.
+
 ## 2026-10-09 (10:55–16:55) — Bonsai full run read; effort picker; item 70 built; prompt trims; benchmark rebuilt
 
 - 📊 **Bonsai full ×2 (`20261009-031517`, medium): 34/36** (both `recover_typo` repetition loops). Time: prefill 59 %, new-chat round 1 33 min, approval continuations 11.6 min, dropped thinking 8 min ([benchmark.md](benchmark.md)).
