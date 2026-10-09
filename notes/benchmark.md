@@ -101,6 +101,33 @@ cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py report data/bench/ag
 ```
 Replace `RUN_DIR` with the folder the run printed at its start (`run dir: …`).
 
+## Knowledge suite (`--suite knowledge`, since 2026-10-09)
+
+What a model **knows and can work out** in three topics, next to the agent suite's tool handling: 24 tasks in `scripts/bench_knowledge_tasks.py`, 8 per topic (mycology, microelectronics, finance), `--quick` = 9 (3 per topic). Each topic mixes the same kinds — `fact`, `calc`, `trap` (false premise to correct), `safety`, `limits` (says what it cannot know), `data` (fixture file), `web`, `code`, `language` (German) — and the report has a **By kind** table. Run dirs end in `-knowledge`, so a `data/bench/agent/2*` glob of agent runs still pools only agent runs if you exclude them (`report` takes explicit dirs).
+
+- **Checks are lexical**, with a correct and ≥ 2 wrong sample answers per task in `tests/test_bench_knowledge_tasks.py` (69 tests; 10 checker mutations caught, e.g. negation ignored, tolerance ×100, opening "yes" not detected, source check dropped). The tests caught one checker bug while writing them: *"Agaricus: white. Amanita: brown."* passed, because a colour in the next sentence counted — matches now stay inside one clause.
+- **Needs item 75 committed.** Most tasks have no workspace and no tools, so they take the direct reply path; before the fix its 128-token cap left thinking models with empty answers.
+- **Answer keys, checked 2026-10-09:** amatoxins / α-amanitin, onset 6–24 h, false recovery 24–48 h ([WikEM](https://wikem.org/wiki/Mushroom_poisoning)); parasol saprobic, edible with caution, green-spored *Chlorophyllum molybdites* lookalike ([MDC](https://mdc.mo.gov/discover-nature/field-guide/parasol)); pink oyster 21–26 °C, high CO₂ → long stringy stems, small caps ([North Spore](https://northspore.com/products/pink-oyster-mushroom-ready-to-grow-fruiting-block-kit)); spore prints *Agaricus* cocoa/purple/dark brown, *Amanita* white to pale ([MykoWeb](https://mykoweb.com/CAF/skey/agaric.html)); AHT20 fixed at 0x38 ([Linux hwmon](https://docs.kernel.org/6.5/_sources/hwmon/aht10.rst.txt)); BMP280 0x76/0x77 by SDO ([Bosch forum](https://community.bosch-sensortec.com/mems-sensors-forum-jrmujtaw/post/bmp280-reading-data-using-i2c-from-address-0x76-XkXG3A9jAg3E8U0)); ESP32 strapping pins GPIO0/2/5/12/15 ([ESP-IDF](https://docs.espressif.com/projects/esp-idf/en/v5.3/esp32/api-reference/peripherals/gpio.html)); ESP32 supply/IO absolute max 3.6 V, no 5 V tolerance stated ([datasheet](https://documentation.espressif.com/esp32_datasheet_en.pdf)); gold drivers: real rates, dollar, central banks, safe haven, inflation ([Banque de France](https://banque-france.fr/system/files/2024-09/How_can_we_account_for_the_increase_in_the_price_of_gold.pdf)); troy ounce 31.1034768 g = 480 × 64.79891 mg (definition). Calculations computed in code: straw 3.71 kg, LED 130 Ω, divider 0.215, battery 123.2 days, gold 77.16 $/g / 77,162 $/kg, growth 9.86 %.
+- **`fin_price_web` accepts 3,000–6,000 $/oz** ($4,143.94 on 2026-10-06, [pricegold.net](https://pricegold.net/2026/october/6/)). Widen it if gold leaves that band.
+- **Changed from the first plan (chat, 19:23):** straw prompt says 0 % moisture / % of wet weight (ambiguous otherwise); divider asks for the ratio, not two resistors; RAM-vs-flash replaced by a German I²C question (it duplicated `explain`); the real-return task dropped for a German share-vs-bond task; prompts avoid *rate* / *current* / *today* (web-intent rule).
+- **Time (estimate, from today's per-task times):** Qwen quick ×2 ~8 min, full ×2 ~25 min; Bonsai quick ×2 ~20 min, full ×2 ~60 min.
+
+**Quick knowledge run** (one model server up, as for the agent suite):
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --suite knowledge --quick --runs 2 --yes
+```
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target bonsai2 --suite knowledge --quick --runs 2 --yes
+```
+**Full knowledge run** — replace `--quick` by nothing:
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --suite knowledge --runs 2 --yes
+```
+**Report over all knowledge runs:**
+```
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py report data/bench/agent/*-knowledge --out data/bench/agent/report-knowledge.md
+```
+
 ## Why it is built this way
 
 Each of these was found in the code or in a failed run; changing one changes what the numbers mean.

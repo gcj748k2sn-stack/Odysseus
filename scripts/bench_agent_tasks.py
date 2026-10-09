@@ -3,6 +3,9 @@
 Each task is a dict:
   id        short name, used in results and on the command line (--tasks)
   cat       category for the report: restraint | files | shell | web | odysseus | multistep | language
+            (knowledge suite: mycology | microelectronics | finance)
+  suite     agent (default) | knowledge — `--suite` picks one; runs of different suites never pool
+  kind      knowledge suite only: fact | calc | trap | safety | limits | data | web | code | language
   quick     True → part of the --quick subset
   bash      send allow_bash=true for this turn
   web       send allow_web_search=true for this turn
@@ -166,6 +169,8 @@ def task(**kw):
     kw.setdefault("tools", [])
     kw.setdefault("cleanup", None)
     kw.setdefault("workspace", True)
+    kw.setdefault("suite", "agent")     # agent | knowledge (--suite)
+    kw.setdefault("kind", None)         # knowledge suite: fact, calc, trap, … (report)
     TASKS.append(kw)
 
 
@@ -755,5 +760,11 @@ task(
 )
 
 
+# Knowledge suite (mycology, microelectronics, finance): scripts/bench_knowledge_tasks.py.
+import bench_knowledge_tasks as _knowledge  # noqa: E402
+
+_knowledge.register(task, chk, answered, used_tool, write)
+
+SUITES = ("agent", "knowledge")
 TASK_IDS = [t["id"] for t in TASKS]
 assert len(TASK_IDS) == len(set(TASK_IDS)), "duplicate task id"

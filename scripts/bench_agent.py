@@ -8,7 +8,8 @@ thinking/tool-round handling in src/agent_loop.py. This script drives the real
 /api/chat_stream in agent mode, exactly as the browser does, and checks the
 outcome (answer text, files on disk, notes/events/documents via the API).
 
-Tasks live in scripts/bench_agent_tasks.py (18 tasks, 8 in --quick; `tasks` lists them).
+Tasks live in scripts/bench_agent_tasks.py (agent suite: 20 tasks, 8 in --quick) and
+scripts/bench_knowledge_tasks.py (`--suite knowledge`: 24 tasks, 9 in --quick); `tasks` lists them.
 
 USAGE (from the repo root, Odysseus running, nobody else chatting):
 
@@ -399,7 +400,8 @@ def parse_target(spec):
 
 
 def select_tasks(args):
-    tasks = T.TASKS
+    suite = getattr(args, "suite", None) or "agent"
+    tasks = [t for t in T.TASKS if suite == "all" or t["suite"] == suite]
     if args.quick:
         tasks = [t for t in tasks if t["quick"]]
     if args.tasks:
@@ -620,6 +622,7 @@ def cmd_preflight(args):
 
 def cmd_run(args):
     tasks = select_tasks(args)
+    suite = getattr(args, "suite", None) or "agent"
     lint_prompts(tasks)
     target = parse_target(args.target)
     if args.preset:
@@ -664,6 +667,9 @@ def cmd_run(args):
         meta = json.loads((run_dir / "meta.json").read_text())
         if meta["target"] == base_name and "@" not in base_name:
             target = (base_name, target[1])     # started before runs carried @effort
+        if meta.get("suite", "agent") != suite:
+            sys.exit(f"error: {run_dir} is a {meta.get('suite', 'agent')}-suite run; resume it with "
+                     f"--suite {meta.get('suite', 'agent')}")
         if meta["target"] != target[0]:
             sys.exit(f"error: {run_dir} is a run of {meta['target']}, not {target[0]}"
                      + (" — the server's reasoning effort differs from the original run's" if "@" in meta["target"] else ""))
@@ -673,13 +679,15 @@ def cmd_run(args):
         args.runs = max(args.runs, int(meta.get("runs") or 1))
     else:
         run_id = dt.datetime.now().strftime("%Y%m%d-%H%M%S") + "-" + target[0]
+        if suite != "agent":
+            run_id += "-" + suite               # never pooled with agent-suite runs by a glob
         run_dir, n = RESULTS_ROOT / run_id, 1
         while run_dir.exists():                 # two starts in one second
             n += 1
             run_dir = RESULTS_ROOT / f"{run_id}-{n}"
         run_dir.mkdir(parents=True)
         meta = {"target": target[0], "endpoint_id": target[1][0], "model": target[1][1],
-                "runs": args.runs, "tasks": [t["id"] for t in tasks], "started": now_local(),
+                "suite": suite, "runs": args.runs, "tasks": [t["id"] for t in tasks], "started": now_local(),
                 "url": args.url, "host": os.uname().nodename, "env": dict(env, warnings=warn)}
     (run_dir / "meta.json").write_text(json.dumps(meta, indent=2))
     out = run_dir / "results.jsonl"
@@ -1023,6 +1031,19 @@ def cmd_report(args):
             for t in targets) + " |")
     L.append("")
 
+    kinds = {t["id"]: t.get("kind") for t in T.TASKS}
+    present = sorted({kinds.get(r["task"]) for r in recs} - {None})
+    if present:
+        L.append("## By kind\n")
+        L.append("| kind | " + " | ".join(targets) + " |")
+        L.append("|---|" + "---|" * len(targets))
+        for kd in present:
+            L.append(f"| {kd} | " + " | ".join(
+                "%d/%d" % (sum(r["passed"] for r in by[t] if kinds.get(r["task"]) == kd),
+                           sum(1 for r in by[t] if kinds.get(r["task"]) == kd))
+                for t in targets) + " |")
+        L.append("")
+
     L.append("## By task\n")
     L.append("| task | " + " | ".join(targets) + " |")
     L.append("|---|" + "---|" * len(targets))
@@ -1099,7 +1120,9 @@ def main():
 
     r = sub.add_parser("run", help="run the task suite against one model")
     r.add_argument("--target", required=True, help="preset (%s) or NAME=ENDPOINT_ID:MODEL_ID" % ", ".join(PRESETS))
-    r.add_argument("--quick", action="store_true", help="8-task subset")
+    r.add_argument("--quick", action="store_true", help="the suite's quick subset")
+    r.add_argument("--suite", choices=list(T.SUITES) + ["all"], default="agent",
+                   help="agent (default) or knowledge (mycology, microelectronics, finance)")
     r.add_argument("--tasks", help="comma-separated task ids")
     r.add_argument("--runs", type=int, default=1)
     r.add_argument("--resume", help="continue this run directory")
@@ -1123,12 +1146,13 @@ def main():
     pf = sub.add_parser("preflight", help="check the serving setup for a run without running it")
     pf.add_argument("--target", required=True)
     pf.add_argument("--quick", action="store_true")
+    pf.add_argument("--suite", choices=list(T.SUITES) + ["all"], default="agent")
     pf.add_argument("--tasks")
     pf.set_defaults(func=cmd_preflight)
     sub.add_parser("targets", help="list endpoint ids and models").set_defaults(func=cmd_targets)
     sub.add_parser("cleanup", help="delete [bench] leftovers").set_defaults(func=cmd_cleanup)
     sub.add_parser("tasks", help="list tasks").set_defaults(func=lambda a: [
-        print(f"{t['id']:16} {t['cat']:10} {'quick' if t['quick'] else '':6}"
+        print(f"{t['id']:18} {t['suite']:9} {t['cat']:16} {(t.get('kind') or ''):9} {'quick' if t['quick'] else '':6}"
               f"{'bash ' if t['bash'] else ''}{'web' if t['web'] else ''}") for t in T.TASKS])
 
     args = ap.parse_args()
