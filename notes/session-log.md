@@ -20,7 +20,7 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🔧 **New `launchd/`:** agents `local.odysseus`, `local.odysseus.chroma`, `local.odysseus.apfel` (only if `apfel` is on PATH), all through `launchd/run.sh <mode>` (foreground `exec`, `.env` as in `start-macos.sh`, logs `logs/<mode>-service.log` rotated at 10 MB on restart, reinstalls deps when the `requirements.txt` hash changes). `install.sh` / `uninstall.sh` mirror `searxng/install-launchagent.sh`. See [launchd/README.md](../launchd/README.md).
 - 🔧 **`start-macos.sh`:** one fork call site before the port check: `launchd/handoff.sh` opens the UI and exits when `local.odysseus` is loaded.
 - 📱 PWA needed nothing: `static/manifest.json` + `sw.js` already exist. Install via Chrome *Install page as app* or Safari *Add to Dock*.
-- ⚠️ **Unverified on the M1:** written in the Linux sandbox (`bash -n`, plist parse only). Owed: run `install.sh`, check the 3 ports answer, reboot once, confirm all agents come back.
+- ✅ **Installed on the M1 2026-10-10 08:33:** all three agents up (`logs/*-service.log`: Apfel listening on :11435, ChromaDB serving the app, UI loaded). Fix on the way: `install.sh` `envval` under `pipefail` when `.env` has no `APP_PORT`. **Owed:** one reboot to confirm the agents come back at login.
 
 ## 2026-10-09 (16:05–17:45) — Bonsai memory: prompt cache off; approval replay fixed (item 74, uncommitted)
 
