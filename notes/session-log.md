@@ -15,6 +15,16 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-10 (08:20–09:40) — items 72 and 68 built (uncommitted)
+
+- 🔧 **Item 72:** filed cause was wrong (the path block is not chat-mode-only). Real causes: the task-word gate and the trailing `?`. New `src/message_path_workspace.py` (bind any existing, vetted path; bash only for action requests), call site `routes/chat_routes.py`. 45 tests, 11 mutations caught.
+- 🔧 **Item 68:** report-only `_action_claim_notice` in `src/turn_report.py` + `src/ui_notices.py`. Corpus: 2 of 94 zero-tool replies flagged, both real. 33 tests, 9 mutations caught.
+- 🧪 **Sandbox suite** (Python 3.10 venv, `-n 4`, run in slices): 7,738 passed, 3 skipped, 2 failed — item 73's DNS test, and `test_tls_overrides_scope.py` timing out while reading the Mac `venv/` over the folder share (environment). M1 run owed.
+- 🧹 Process: `git diff` run from the sandbox (no `index.lock` left). Scratch venv and mutation script live outside the repo.
+- ➡️ **Next:** M1 suite + commit; restart; live check of item 72 (commands in todo.md); watch `app.log` for item 68's log line. Then items 71, 58.
+
+---
+
 ## 2026-10-09 (20:55–21:20) — Odysseus as a launchd service + installable app (uncommitted)
 
 - 🔧 **New `launchd/`:** agents `local.odysseus`, `local.odysseus.chroma`, `local.odysseus.apfel` (only if `apfel` is on PATH), all through `launchd/run.sh <mode>` (foreground `exec`, `.env` as in `start-macos.sh`, logs `logs/<mode>-service.log` rotated at 10 MB on restart, reinstalls deps when the `requirements.txt` hash changes). `install.sh` / `uninstall.sh` mirror `searxng/install-launchagent.sh`. See [launchd/README.md](../launchd/README.md).
@@ -41,6 +51,7 @@ Keep roughly the last working day here; older entries move verbatim to
 - ✅ Item 76 committed `137aba4a`. **Knowledge quick, Qwen: 13/18 in 6.5 min** (was 8/18, 42 min). Checker fix: `mc_5v` now fails answers that call the pins 5 V tolerant (both "passes" did) — uncommitted, 75 tests, mutation caught. Lookup offer re-probed and **dropped** (0 real offers, one fake tool call).
 - 🧪 **Item 77 (maintainer's leaner prompts) probed 23:26:** version A = current prompt's speed and answers at 973 chars (vs 1,348); version B (no-tool, 306 chars) brings the long thinking back (81–179 s in 3 of 6). Notes and probe variants uncommitted.
 - 🧪 **2026-10-10 07:58 probe (item 77):** C (607 chars), framing-only and C-without-tools-line each let 1 of 6 rounds run long (61–168 s); C-without-tools-line also wrote a fake tool call. A: 0 slow of 12 so far — the candidate.
+- 🧪 **09:14:** LM Studio ignores `enable_thinking: false` per request (Qwen thought as usual). Battery calc with thinking: current prompt 4/5, A 2/5 → hold A. `og_refined`/`a_refined` (08:23): the thinking rule adds nothing; "helpful assistant" makes Qwen think 4–8× longer.
 - ➡️ **Next:** commit the checker fix; Bonsai knowledge quick (Bonsai's server, LM Studio stopped). New Bonsai agent baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
 
 ## 2026-10-09 (10:55–16:55) — Bonsai full run read; effort picker; item 70 built; prompt trims; benchmark rebuilt
