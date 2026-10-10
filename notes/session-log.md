@@ -52,7 +52,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🧪 **Item 77 (maintainer's leaner prompts) probed 23:26:** version A = current prompt's speed and answers at 973 chars (vs 1,348); version B (no-tool, 306 chars) brings the long thinking back (81–179 s in 3 of 6). Notes and probe variants uncommitted.
 - 🧪 **2026-10-10 07:58 probe (item 77):** C (607 chars), framing-only and C-without-tools-line each let 1 of 6 rounds run long (61–168 s); C-without-tools-line also wrote a fake tool call. A: 0 slow of 12 so far — the candidate.
 - 🧪 **09:14:** LM Studio ignores `enable_thinking: false` per request (Qwen thought as usual). Battery calc with thinking: current prompt 4/5, A 2/5 → hold A. `og_refined`/`a_refined` (08:23): the thinking rule adds nothing; "helpful assistant" makes Qwen think 4–8× longer.
-- ➡️ **Next:** commit the checker fix; Bonsai knowledge quick (Bonsai's server, LM Studio stopped). New Bonsai agent baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
+- 🧪 **Research suite + long Bonsai chain (09:20–10:00, uncommitted):** `scripts/bench_research_tasks.py` (5 web-research tasks, fact-checked), `--suite research`; `scripts/bench_chain.sh` phases `bonsai`, `bonsai-long`, `qwen` (dry-run tested). Tests: research 18, knowledge + harness 99 — 117 passed.
+- ➡️ **Next:** commit; run `bench_chain.sh bonsai-long qwen`. Earlier: Bonsai knowledge quick (Bonsai's server, LM Studio stopped). New Bonsai agent baseline is `20261009-175432`. Commit or drop the uncommitted `src/local_tool_selection.py` change (it is live now). Items 71, 58, 72.
 
 ## 2026-10-09 (10:55–16:55) — Bonsai full run read; effort picker; item 70 built; prompt trims; benchmark rebuilt
 

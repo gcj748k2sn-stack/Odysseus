@@ -9,7 +9,8 @@ thinking/tool-round handling in src/agent_loop.py. This script drives the real
 outcome (answer text, files on disk, notes/events/documents via the API).
 
 Tasks live in scripts/bench_agent_tasks.py (agent suite: 20 tasks, 8 in --quick) and
-scripts/bench_knowledge_tasks.py (`--suite knowledge`: 24 tasks, 9 in --quick); `tasks` lists them.
+scripts/bench_knowledge_tasks.py (`--suite knowledge`: 24 tasks, 9 in --quick) and
+scripts/bench_research_tasks.py (`--suite research`: 5 web-research tasks, 3 in --quick); `tasks` lists them.
 
 USAGE (from the repo root, Odysseus running, nobody else chatting):
 
@@ -1122,7 +1123,7 @@ def main():
     r.add_argument("--target", required=True, help="preset (%s) or NAME=ENDPOINT_ID:MODEL_ID" % ", ".join(PRESETS))
     r.add_argument("--quick", action="store_true", help="the suite's quick subset")
     r.add_argument("--suite", choices=list(T.SUITES) + ["all"], default="agent",
-                   help="agent (default) or knowledge (mycology, microelectronics, finance)")
+                   help="agent (default), knowledge (mycology, microelectronics, finance) or research (web)")
     r.add_argument("--tasks", help="comma-separated task ids")
     r.add_argument("--runs", type=int, default=1)
     r.add_argument("--resume", help="continue this run directory")

@@ -132,6 +132,22 @@ cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinat
 cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py report data/bench/agent/*-knowledge --out data/bench/agent/report-knowledge.md
 ```
 
+## Chained runs (`scripts/bench_chain.sh`, since 2026-10-10)
+
+Runs probes and benchmark runs back to back, unattended, and switches the model server in between: stops LM Studio (`lms unload --all`, `lms server stop`) before starting Bonsai in the background and waiting for :8090; stops Bonsai (`pkill -f -- "--alias bonsai2-27b"`) before `lms server start` + `lms load qwen/qwen3.5-9b`. Odysseus must be running; it asks for the password once. A failed step is logged and the chain goes on. Logs: `data/logs/chain-<start>/NN-<step>.log`, summary in `summary.txt` (also printed at the end). Edit the step lists in `bonsai_phase` / `qwen_phase`. Dry-run tested with stand-ins for `lms`, `curl`, the Bonsai start script and the benchmark (order, failure handling, summary); not yet run for real.
+
+Phases, run in the order given (`bench_chain.sh bonsai-long qwen`):
+- `bonsai` (default): `--no-think` probe, reference probe, knowledge quick ×2.
+- `bonsai-long` (~3.5–5 h, estimate): `--no-think` probe (4 questions) → knowledge full ×2 → agent full ×2 → research ×2 → prompt-variant probe (current, `og_refined`, A, `a_refined` × 4 questions × 2) — everything run on Qwen so far.
+- `qwen`: knowledge full ×2, research ×2. (`--with-qwen` = `bonsai qwen`.)
+```
+cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh bonsai-long qwen
+```
+
+## Research suite (`--suite research`, since 2026-10-10)
+
+Web research by the **chat** model — not Odysseus's deep-research job, which runs on the research model (Qwen in LM Studio) and is down while Bonsai runs. 5 tasks in `scripts/bench_research_tasks.py`, `--quick` = 3: `res_esp32c3` (lookup: RISC-V, single core, 160 MHz), `res_gold2000` (lookup: August 2020), `res_towers` (compare: Fernsehturm 368 m vs Eiffel Tower 330 m → 38 m; 324 m / 44 m accepted), `res_djamor` (lookup: tropical/subtropical, on wood), `res_gnats` (synthesis: 3–5 bullets, ≥ 2 known measures, ≥ 2 cited sites). Every task needs a web tool call and source links. Keys checked 2026-10-10 against [Elektor](https://elektormagazine.com/news/esp32-c3-risc-v-core), [S&P Global](https://www.spglobal.com/energy/en/news-research/latest-news/metals/080520-gold-spot-price-breaks-above-2000oz-analysts), Wikipedia ([Fernsehturm](https://en.wikipedia.org/wiki/Fernsehturm_Berlin), [Eiffel Tower](https://en.wikipedia.org/wiki/Eiffel_Tower), [P. djamor](https://www.wikipedia.com/wiki/Pleurotus_djamor)), [La Mycosphère](https://lamycosphere.com/en-int/blogs/the-future-is-fungi/les-mouchettes-dans-la-culture-des-champignons-un-probleme-a-eviter). Tests: `tests/test_bench_research_tasks.py` (18; 3 checker mutations caught — two-source rule, "taller" direction, dual-core rejection; the last needed an extra wrong sample first).
+
 ## Why it is built this way
 
 Each of these was found in the code or in a failed run; changing one changes what the numbers mean.

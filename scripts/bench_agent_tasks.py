@@ -4,8 +4,9 @@ Each task is a dict:
   id        short name, used in results and on the command line (--tasks)
   cat       category for the report: restraint | files | shell | web | odysseus | multistep | language
             (knowledge suite: mycology | microelectronics | finance)
-  suite     agent (default) | knowledge — `--suite` picks one; runs of different suites never pool
-  kind      knowledge suite only: fact | calc | trap | safety | limits | data | web | code | language
+  suite     agent (default) | knowledge | research — `--suite` picks one; runs of different suites never pool
+  kind      knowledge: fact | calc | trap | safety | limits | data | web | code | language;
+            research: lookup | compare | synthesis
   quick     True → part of the --quick subset
   bash      send allow_bash=true for this turn
   web       send allow_web_search=true for this turn
@@ -765,6 +766,11 @@ import bench_knowledge_tasks as _knowledge  # noqa: E402
 
 _knowledge.register(task, chk, answered, used_tool, write)
 
-SUITES = ("agent", "knowledge")
+# Research suite (web research by the chat model): scripts/bench_research_tasks.py.
+import bench_research_tasks as _research  # noqa: E402
+
+_research.register(task, chk, answered, used_tool)
+
+SUITES = ("agent", "knowledge", "research")
 TASK_IDS = [t["id"] for t in TASKS]
 assert len(TASK_IDS) == len(set(TASK_IDS)), "duplicate task id"
