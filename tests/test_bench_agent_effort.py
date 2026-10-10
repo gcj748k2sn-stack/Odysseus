@@ -41,6 +41,15 @@ def test_the_last_repeated_flag_wins_like_llama_cpp():
     assert f["reasoning_effort"] == "low"
 
 
+def test_thinking_switched_off_is_labelled_nothink():
+    f = B.reasoning_flags(BONSAI + " --chat-template-kwargs {\"enable_thinking\": false}")
+    assert f["reasoning_effort"] == "nothink"
+    f = B.reasoning_flags(BONSAI + " --chat-template-kwargs {enable_thinking:false,reasoning_effort:medium}")
+    assert f["reasoning_effort"] == "nothink"
+    f = B.reasoning_flags(BONSAI + " --chat-template-kwargs {\"enable_thinking\": true}")
+    assert f["reasoning_effort"] == "default"   # the last flag replaces the whole JSON
+
+
 def test_no_flag_means_the_template_default():
     f = B.reasoning_flags("llama-server -m m.gguf --port 8090")
     assert f["reasoning_effort"] == "default"

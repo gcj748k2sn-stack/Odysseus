@@ -17,6 +17,8 @@ from src.model_context import get_context_length, DEFAULT_CONTEXT, is_local_endp
 from src import reasoning_effort as _reasoning_effort
 from urllib.parse import urlparse
 
+from src import stream_words as _stream_words
+
 logger = logging.getLogger(__name__)
 
 _LOCAL_MODEL_LOCK = asyncio.Lock()
@@ -373,12 +375,14 @@ class _DegenerateStreamGuard:
         self.same_run = 0
         self.recent_tokens: List[str] = []
         self.total_chars = 0
+        # Fork: words joined across deltas, numbers kept (src/stream_words.py).
+        self._words = _stream_words.WordStream()
 
     def check(self, text: str) -> Optional[str]:
         if not text:
             return None
         self.total_chars += len(text)
-        tokens = [t.lower() for t in _DEGENERATE_WORD_RE.findall(text) if len(t) >= 2]
+        tokens = self._words.feed(text)
         if not tokens:
             return None
         for token in tokens:

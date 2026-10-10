@@ -15,6 +15,19 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-10 (14:20–15:00) — Bonsai long chain analysed; items 78, 79 found and fixed, 58 built (uncommitted)
+
+- 📊 Chain `chain-20261010-0935` read: knowledge 38/48, agent 37/40, research aborted at task 2, prompt probe → keep current prompt, thinking off works on llama.cpp. Details in benchmark.md *Results*.
+- 🐞🔧 **78:** `trim_for_context` dropped the turn's user message in a long tool chain → llama.cpp 500 *No user query found*. `src/context_anchor.py`. Harness: template rejections are recorded (`request_rejected`) instead of stopping the run.
+- 🐞🔧 **79:** the repetition guard read sub-word deltas as words and dropped one-digit numbers → stopped CSV restating (`'cl imal og cl'`). `src/stream_words.py`.
+- 🔧 **58 built:** `src/turn_reasoning.py` (local endpoints keep every round's thinking, capped); `estimate_tokens` counts `reasoning_content`.
+- 🔧 Bench: `reasoning_flags` labels `enable_thinking:false` as `@nothink`; `bench_chain.sh` phases `qwen-full`, `bonsai-check`, Odysseus freshness check, `start_bonsai` takes flags, `stop_bonsai` waits for the port.
+- 🧪 **Sandbox suite** (Python 3.10 venv, `-n 4`, 12 slices): 7,791 passed, 4 skipped, 1 failed (item 73's DNS test). New tests: `test_context_anchor.py` (6), `test_turn_reasoning.py` (7), `test_stream_words.py` (12), `test_bench_agent_errors.py` (5), +1 in `test_bench_agent_effort.py`; 14 mutations caught. M1 run owed.
+- 🔧 **15:00:** `bench_chain.sh full` (= `qwen-full bonsai-full`) and `scripts/bench_sysmon.py` (CPU/GPU/memory/swap/thermal/processes every 10 s per step, optional watts with `BENCH_POWER=1`, log copies per phase); `tests/test_bench_sysmon.py` (17), 3 of 4 mutations caught, the 4th was dead code and is removed.
+- ➡️ **Next:** M1 suite + commit, restart Odysseus, `bench_chain.sh full`; then read `cache_n` on rounds 3+ (58), research completion (78), CSV tasks (79), `@nothink` knowledge vs medium.
+
+---
+
 ## 2026-10-10 (08:20–09:40) — items 72 and 68 built (uncommitted)
 
 - 🔧 **Item 72:** filed cause was wrong (the path block is not chat-mode-only). Real causes: the task-word gate and the trailing `?`. New `src/message_path_workspace.py` (bind any existing, vetted path; bash only for action requests), call site `routes/chat_routes.py`. 45 tests, 11 mutations caught.

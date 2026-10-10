@@ -57,6 +57,7 @@ from src import local_tool_selection as _local_tool_selection
 from src import prompt_trims as _prompt_trims
 from src import approval_replay as _approval_replay
 from src import decision_nudge as _decision_nudge
+from src import turn_reasoning as _turn_thinking
 from src import direct_reply as _direct_reply
 from src.tool_security import (
     blocked_tools_for_owner,
@@ -4440,6 +4441,8 @@ async def stream_agent_loop(
 
     def _trim_route_request_messages(candidate_url, candidate_model, route_messages):
         """Apply the candidate route's own context budget to its request."""
+        # Fork: keep each tool round's thinking for local servers (src/turn_reasoning.py).
+        route_messages = _turn_thinking.apply(route_messages, candidate_url)
 
         def _without_protection(items):
             # Route markers remain internal for later prompt rebuilding;

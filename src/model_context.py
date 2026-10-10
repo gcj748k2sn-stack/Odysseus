@@ -623,4 +623,8 @@ def estimate_tokens(messages: List[Dict]) -> int:
                     args = str(args)  # some shapes store arguments as a dict
                 total += 4  # per tool-call overhead (id, type, wrapper)
                 total += int((len(str(name)) + len(args)) * 0.3)
+        # Thinking sent back on an assistant message is rendered into the prompt too.
+        reasoning = msg.get("reasoning_content")
+        if isinstance(reasoning, str):
+            total += int(len(reasoning) * 0.3)
     return total

@@ -102,10 +102,28 @@ SERVER_FAULT_RE = re.compile(r"Cannot reach|Compute error|['\"]status['\"]: ?5\d
 # (2026-10-06 21:5x, Bonsai 2 on `german`), or it looped and Odysseus's
 # degenerate-stream guard stopped it (2026-10-08 13:37, Qwen on `recover_typo`).
 MODEL_EMPTY_RE = re.compile(r"empty response|started repeating tokens", re.I)
+# ...and a 500 that is the chat template refusing what Odysseus sent (llama.cpp
+# wraps template exceptions as HTTP 500). The server is fine; the request was
+# wrong, so it is an Odysseus result: record it as a failure and carry on.
+REQUEST_REJECTED_RE = re.compile(r"Jinja Exception|raise_exception\(|No user query found", re.I)
 
 
 def is_server_fault(err):
     return bool(SERVER_FAULT_RE.search(err)) and not MODEL_EMPTY_RE.search(err)
+
+
+def classify_stream_errors(errs):
+    """(server faults that should stop the run, extra flags for the record).
+
+    Odysseus reports one failure twice: the `error` event carries the text,
+    the `agent_terminal` summary only "Model request failed (HTTP 5xx)".
+    When the text says what happened, the summary is the same event.
+    """
+    if any(REQUEST_REJECTED_RE.search(e) for e in errs):
+        return [], ["request_rejected"]
+    if any(MODEL_EMPTY_RE.search(e) for e in errs):
+        return [], []
+    return [e for e in errs if is_server_fault(e)], []
 APPROVAL_WAIT = "Waiting for an exact user approval"   # src/agent_loop.py placeholder output
 TASK_TIMEOUT_S = 20 * 60      # whole turn; Bonsai 2 rounds reach 300 s at p90
 READ_IDLE_S = 960             # Odysseus's own per-round timeout is 900 s
@@ -500,6 +518,8 @@ def reasoning_flags(cmdline):
     if kwargs:
         m = re.search(r"reasoning_effort\W*(\w+)", kwargs[-1])
         effort = m.group(1) if m else None
+        if re.search(r"enable_thinking\W*false", kwargs[-1], re.I):
+            effort = "nothink"      # thinking switched off outranks any effort level
     budget = re.findall(r"--reasoning-budget[ =](-?\d+)", cmdline)
     return {
         # "default": the flag is absent, so the chat template's own default
@@ -731,15 +751,14 @@ def cmd_run(args):
             sys.exit(f"\nerror: Odysseus rejected the task workspace ({WS_ROOT}); result not saved. Every file "
                      "task would fail for harness reasons. Set BENCH_WS_ROOT to a plain folder outside "
                      f"Odysseus's data/ directory, then continue with --resume {run_dir}")
-        errs = rec.get("stream_errors", [])
-        # Odysseus reports one failure twice: the `error` event carries the text,
-        # the `agent_terminal` summary only "Model request failed (HTTP 502)".
-        # If the text says it was the model's own result, so is the summary.
-        infra = [] if any(MODEL_EMPTY_RE.search(e) for e in errs) else [e for e in errs if is_server_fault(e)]
+        infra, extra_flags = classify_stream_errors(rec.get("stream_errors", []))
         if infra:
             sys.exit(f"\nerror: the model server failed, not the model ({infra[0][:160]}); result not saved.\n"
-                     f"Fix the server (LM Studio 'Compute error': `lms unload --all && lms load <model>`), "
-                     f"then continue with --resume {run_dir}")
+                     f"Check the server's own log (LM Studio 'Compute error': `lms unload --all && lms load "
+                     f"<model>`; llama.cpp: ~/BonsaiDemo/logs/), then continue with --resume {run_dir}")
+        if extra_flags:
+            rec["flags"] = sorted(set(rec.get("flags", [])) | set(extra_flags))
+            rec["passed"] = False
         with out.open("a") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         fails = [c["name"] for c in rec.get("checks", []) if not c["ok"]]

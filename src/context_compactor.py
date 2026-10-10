@@ -11,6 +11,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from src.model_context import get_context_length, estimate_tokens
+from src import context_anchor as _context_anchor
 from src.llm_core import llm_call_async
 from src.endpoint_resolver import resolve_endpoint
 from core.models import ChatMessage
@@ -295,18 +296,22 @@ def trim_for_context(messages: List[Dict], context_length: int, reserve_tokens: 
     # model appears to "ignore" large pastes because it never receives them.
     # Hermes-style: recent context matters more than old context.
     PROTECT_RECENT = 10
+    # Fork: never drop the turn's user message (src/context_anchor.py).
+    anchor = _context_anchor.latest_user(convo_msgs)
     current_msg = convo_msgs[-1:] if convo_msgs else []
     prior_convo = convo_msgs[:-1] if convo_msgs else []
     if len(prior_convo) >= PROTECT_RECENT:
         old_msgs = prior_convo[:-(PROTECT_RECENT - 1)]
         recent_msgs = prior_convo[-(PROTECT_RECENT - 1):] + current_msg
-        while old_msgs and estimate_tokens(essential_system + old_msgs + recent_msgs) > budget:
-            old_msgs.pop(0)
+        while (estimate_tokens(essential_system + old_msgs + recent_msgs) > budget
+               and _context_anchor.drop_oldest(old_msgs, anchor)):
+            pass
         convo_msgs = old_msgs + recent_msgs
     else:
         convo_msgs = prior_convo + current_msg
-        while prior_convo and estimate_tokens(essential_system + prior_convo + current_msg) > budget:
-            prior_convo.pop(0)
+        while (estimate_tokens(essential_system + prior_convo + current_msg) > budget
+               and _context_anchor.drop_oldest(prior_convo, anchor)):
+            pass
         convo_msgs = prior_convo + current_msg
 
     # If the current message itself is too large, shrink only that message.
