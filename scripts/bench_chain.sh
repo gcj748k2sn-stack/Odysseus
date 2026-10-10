@@ -60,12 +60,14 @@ wait_for() {                  # wait_for URL SECONDS
     sleep 5; waited=$((waited + 5))
     [ $waited -ge "$limit" ] && return 1
   done
+  return 0                    # an until loop returns its body's last status, i.e. the failed test above
 }
 
 stop_lmstudio() { "$LMS" unload --all > /dev/null 2>&1; "$LMS" server stop > /dev/null 2>&1; sleep 3; }
 stop_bonsai()   { pkill -f -- "--alias bonsai2-27b" > /dev/null 2>&1; sleep 5; }   # the server, not a probe
 
 start_bonsai() {
+  stop_bonsai                 # a Bonsai left running would mean two 27B models in 16 GB
   stop_lmstudio
   mkdir -p "$HOME/BonsaiDemo/logs"
   nohup "$BONSAI_START" > "$HOME/BonsaiDemo/logs/bonsai-$STAMP-chain.log" 2>&1 &
@@ -84,7 +86,7 @@ bench() { python3 scripts/bench_agent.py cleanup > /dev/null 2>&1; python3 scrip
 
 bonsai_phase() {
   note "── Bonsai phase"
-  if ! start_bonsai; then note "  ✗ Bonsai server did not come up in 5 min — phase skipped"; return; fi
+  if ! start_bonsai; then note "  ✗ Bonsai server did not come up in 5 min — phase skipped"; stop_bonsai; return; fi
   note "  Bonsai up"
   step bonsai-probe-nothink  "$PY" scripts/probe_direct_reply.py --url "$BONSAI_URL" --model bonsai2-27b \
        --variants odysseus --questions explain,price_now,calc --reps 2 --no-think
@@ -99,7 +101,7 @@ bonsai_long_phase() {
   # Everything run on Qwen so far, on Bonsai: thinking-off probe, full knowledge, full agent
   # suite, research suite, then the prompt-variant probe (item 77) last, as it is the longest.
   note "── Bonsai long phase"
-  if ! start_bonsai; then note "  ✗ Bonsai server did not come up in 5 min — phase skipped"; return; fi
+  if ! start_bonsai; then note "  ✗ Bonsai server did not come up in 5 min — phase skipped"; stop_bonsai; return; fi
   note "  Bonsai up"
   step bonsai-probe-nothink   "$PY" scripts/probe_direct_reply.py --url "$BONSAI_URL" --model bonsai2-27b \
        --variants odysseus --questions explain,price_now,obscure,calc --reps 2 --no-think
