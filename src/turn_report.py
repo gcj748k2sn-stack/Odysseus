@@ -277,6 +277,84 @@ def _tool_payload_as_text_notice(full_response: str, tool_events: list) -> str:
     return ""
 
 
+_CLAIM_VERBS = (
+    r"(?:created|updated|added|saved|sent|scheduled|deleted|removed|renamed|"
+    r"wrote|written|edited|moved|appended|inserted|replaced|archived|booked|"
+    r"emailed|set up)"
+)
+# Things the tools make or change. "list" is left out on purpose: rewriting a
+# list in chat ("Added milk to the list:") is a real answer with no tool.
+_CLAIM_OBJECTS = (
+    r"(?:document|doc|note|event|reminder|task|to-?do|file|email|e-mail|"
+    r"calendar|memory|webhook|spreadsheet|folder)s?"
+)
+# Sentence-initial claim: "Created ...", "I've updated ...", "✅ Saved ...",
+# "Done! Sent ...". The claim has to open its sentence, so "You created ...",
+# "To create ...", "If I updated ..." and quoted lines ("> Created") don't match.
+_ACTIVE_CLAIM_RE = re.compile(
+    r"(?:^|(?<=[.!?])[ \t]+)[ \t]*(?:[-*\u2022][ \t]+)?"
+    r"(?:[\u2705\u2714\u2611\U0001F389\U0001F4C4\U0001F4DD\U0001F4C5\u2709]\ufe0f?[ \t]*)?"
+    r"(?:\*\*)?(?:(?:I(?:'ve|\u2019ve| have)?|Done[.!:,\u2014\u2013-]*)[ \t]+)?"
+    r"(?:(?:just|now|also|successfully)[ \t]+)?"
+    + _CLAIM_VERBS + r"\b(?P<rest>[^.!?\n]{0,100})",
+    re.IGNORECASE | re.MULTILINE,
+)
+_OBJECT_RE = re.compile(r"\b" + _CLAIM_OBJECTS + r"\b", re.IGNORECASE)
+# "Your document has been saved", "The event has been scheduled".
+_PASSIVE_CLAIM_RE = re.compile(
+    r"\b" + _CLAIM_OBJECTS + r"\b[^.!?\n]{0,60}?\b(?:has|have) been\s+(?:successfully\s+)?"
+    + _CLAIM_VERBS + r"\b",
+    re.IGNORECASE,
+)
+# A recap of an earlier turn is not a claim about this one.
+_RECAP_RE = re.compile(
+    r"\b(?:earlier|previously|before|yesterday|last (?:turn|time|message)|"
+    r"in (?:the|my|our) (?:last|previous|earlier))\b",
+    re.IGNORECASE,
+)
+_FENCE_RE = re.compile(r"```.*?(?:```|\Z)", re.DOTALL)
+
+ACTION_CLAIM_NOTICE = (
+    "\n\n\u26a0\ufe0f **No tool ran this turn, so nothing was created, changed "
+    "or sent just now** \u2014 whatever the reply above says was done. If you "
+    "asked for it, ask again and I'll make the call."
+)
+
+
+def _claims_action(text: str) -> str:
+    """The first sentence that claims a finished action, or ""."""
+    text = _FENCE_RE.sub(" ", text or "")
+    for m in _ACTIVE_CLAIM_RE.finditer(text):
+        sentence = m.group(0).strip()
+        if _OBJECT_RE.search(m.group("rest")) and not _RECAP_RE.search(sentence):
+            return sentence
+    for m in _PASSIVE_CLAIM_RE.finditer(text):
+        if not _RECAP_RE.search(m.group(0)):
+            return m.group(0)
+    return ""
+
+
+def _action_claim_notice(full_response: str, tool_events: list) -> str:
+    """Notice for a turn that says it did something and called no tool.
+
+    Seen live: "Created **"Switch check"** document with the text "hello"."
+    with zero tool calls and no such document (notes: "A turn that claims an
+    action and called no tool is saved as if it happened"). The prompt rule
+    against it was already there.
+
+    Report-only (CLAUDE.md §3): it never makes the model act, so it cannot
+    create duplicates or run anything unasked. Its text is a fact whenever it
+    fires - no tool ran - so a false positive costs a redundant line. Lexical
+    and narrow: a claim verb opening a sentence plus an object the tools make.
+    """
+    if tool_events:
+        return ""
+    body = strip_tool_blocks(full_response or "")
+    if not _claims_action(body):
+        return ""
+    return ACTION_CLAIM_NOTICE
+
+
 def _doc_edit_retry_directive(tool: str, attempt: int) -> str:
     """Corrective instruction appended to a FAILED document-edit tool result.
 
@@ -724,4 +802,17 @@ def end_of_turn_report(
         full_response = full_response.rstrip() + _chunk_text
         chunks.append('data: ' + json.dumps({"delta": _chunk_text}) + '\n\n')
         logger.info("[agent] turn announced work, called no tools, and stopped")
+
+    # A finished-sounding claim with zero tools. Last, and only when neither
+    # zero-tool notice above already said that nothing happened.
+    _claim_notice = "" if (_payload_notice or _unstarted_notice) else _action_claim_notice(
+        full_response, tool_events,
+    )
+    if _claim_notice:
+        logger.info(
+            "[agent] turn claimed an action and called no tools: %r",
+            _claims_action(strip_tool_blocks(full_response))[:120],
+        )
+        full_response = full_response.rstrip() + _claim_notice
+        chunks.append('data: ' + json.dumps({"delta": _claim_notice}) + '\n\n')
     return full_response, chunks

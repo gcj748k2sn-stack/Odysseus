@@ -27,6 +27,7 @@ from src.agent_loop import _empty_response_fallback  # noqa: E402
 from src.turn_report import (  # noqa: E402
     _gathering_only_notice,
     _tool_payload_as_text_notice,
+    _action_claim_notice,
     _unstarted_promise_notice,
 )
 from src.ui_notices import (  # noqa: E402
@@ -76,6 +77,7 @@ def _real_notices():
     )
     yield "unstarted_promise", _unstarted_promise_notice("I'll create the document now:", [])
     yield "payload_as_text", _tool_payload_as_text_notice(_EDIT_PAYLOAD, [])
+    yield "action_claim", _action_claim_notice('Created "X" document.', [])
 
 
 @pytest.mark.parametrize("label,notice", list(_real_notices()))

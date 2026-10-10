@@ -96,6 +96,14 @@ _NOTICE_PATTERNS = [
             "properly."
         )
     ),
+    # `_action_claim_notice`.
+    re.compile(
+        re.escape(
+            "\u26a0\ufe0f **No tool ran this turn, so nothing was created, "
+            "changed or sent just now** \u2014 whatever the reply above says "
+            "was done. If you asked for it, ask again and I'll make the call."
+        )
+    ),
 ]
 
 
