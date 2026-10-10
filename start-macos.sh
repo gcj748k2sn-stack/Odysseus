@@ -48,6 +48,9 @@ trap 'echo; echo "✗ Setup failed above. It is safe to re-run ./start-macos.sh.
 
 echo "▶ Odysseus quick start for macOS"
 
+# Fork: when the launchd agent runs the server, just open it (launchd/README.md).
+[ -f "$REPO_DIR/launchd/handoff.sh" ] && bash "$REPO_DIR/launchd/handoff.sh" "http://$PROBE_HOST:$PORT" && exit 0
+
 # Fail fast if the port is already taken (e.g. a previous run still running).
 if (exec 3<>"/dev/tcp/$PROBE_HOST/$PORT") 2>/dev/null; then
     echo "✗ Port $PORT is already in use on $PROBE_HOST. Stop what's using it, or pick another port:"

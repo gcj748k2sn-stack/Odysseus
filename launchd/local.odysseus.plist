@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>local.odysseus</string>
+
+    <!-- Odysseus web app (uvicorn) on 127.0.0.1:7860, or APP_BIND/APP_PORT from .env.
+         run.sh ends in exec, so launchd supervises the server process itself.
+         It also writes the log: logs/app-service.log. -->
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>/Users/cedrik/odysseus/launchd/run.sh</string>
+        <string>app</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/cedrik/odysseus</string>
+
+    <!-- Start at login and restart if it exits. -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+
+    <!-- Don't hot-loop if the port is taken or startup fails. -->
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+
+    <key>ProcessType</key>
+    <string>Standard</string>
+</dict>
+</plist>
