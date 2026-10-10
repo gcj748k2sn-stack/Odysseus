@@ -79,6 +79,7 @@ from src.tool_policy import (
 from src.tool_approvals import tool_approval_store
 from src.tool_approval_scopes import stamp_chat_session_grant
 from src.tool_security import delegated_credential_blocked_tools
+from src import message_path_workspace as _message_path_workspace
 
 logger = logging.getLogger(__name__)
 
@@ -417,44 +418,20 @@ def _resolve_request_workspace(request, raw_value) -> tuple:
     return workspace, (requested if not workspace else "")
 
 
-_ABS_PATH_RE = re.compile(r"(?<!\S)(~?/[^\"'\s`<>]+)")
-_LOCAL_FILE_TASK_RE = re.compile(
-    r"\b(?:file|folder|directory|path|workspace|repo|project|movie|video|"
-    r"subtitle|subtitles|srt|vtt|ass|download|save|rename|move|copy|extract|"
-    r"convert|ffmpeg|run|execute|open|read|inspect|fix|debug|test|build)\b",
-    re.IGNORECASE,
-)
-
-
 def _resolve_workspace_from_message_path(request, message: str) -> tuple[str, str]:
     """Auto-bind a workspace only when the user names an explicit safe path.
 
-    This is intentionally deterministic rather than LLM/RAG-driven: RAG can
-    choose the tool family, but filesystem binding must not let a prompt infer
-    or probe arbitrary host paths. For a file path, bind its parent directory.
-    For a directory path, bind that directory.
+    Deterministic, never LLM/RAG-driven: the path must exist and pass
+    vet_workspace. Detection lives in src/message_path_workspace.py (fork).
     """
-    text = str(message or "")
-    if not text or not _LOCAL_FILE_TASK_RE.search(text):
+    if not _message_path_workspace.candidate_paths(message):
         return "", ""
 
     from src.tool_security import owner_is_admin_or_single_user
     if not owner_is_admin_or_single_user(get_current_user(request)):
         return "", ""
 
-    from src.tool_execution import vet_workspace
-
-    for match in _ABS_PATH_RE.finditer(text):
-        raw = match.group(1).rstrip(".,;:)]}")
-        expanded = os.path.realpath(os.path.expanduser(raw))
-        candidates = [expanded]
-        if os.path.isfile(expanded):
-            candidates.insert(0, os.path.dirname(expanded))
-        for candidate in candidates:
-            workspace = vet_workspace(candidate) or ""
-            if workspace:
-                return workspace, ""
-    return "", ""
+    return _message_path_workspace.resolve(message), ""
 
 
 def _session_url_matches_endpoint(session_url: str, endpoint_base: str) -> bool:
@@ -1353,7 +1330,7 @@ def setup_chat_routes(
                     chat_mode = "agent"
                     auto_escalated = True
                     _workspace_agent_intent = True
-                    allow_bash = "true"
+                    allow_bash = _message_path_workspace.bash_setting(message, allow_bash)
                     logger.info("chat→agent auto-escalation: explicit path workspace=%s", workspace)
         except SessionNotFoundError as e:
             raise HTTPException(404, str(e))
