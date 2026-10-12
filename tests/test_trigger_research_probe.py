@@ -129,9 +129,16 @@ class _FakeHandler:
 
 
 def _start_route(monkeypatch, handler):
+    import importlib
+
     import routes.research_routes as rr
 
-    monkeypatch.setattr("src.auth_helpers.require_privilege", lambda request, priv: "alice")
+    # The route imports require_privilege inside the function, i.e. from
+    # sys.modules. Patch that module object, not the `src` package attribute:
+    # a test that pops src.auth_helpers from sys.modules leaves the two
+    # pointing at different modules, and a string-path patch then misses.
+    auth = importlib.import_module("src.auth_helpers")
+    monkeypatch.setattr(auth, "require_privilege", lambda request, priv: "alice")
     monkeypatch.setattr(rr, "resolve_endpoint", lambda role, owner=None: ("http://localhost:1234/v1", "qwen/qwen3.5-9b", {}))
     router = rr.setup_research_routes(handler)
     for route in router.routes:
