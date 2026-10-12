@@ -34,7 +34,8 @@ function badge(text, title) {
 
 function metaFor(t) {
   const r = t.ratings || { up: 0, down: 0 };
-  return badge((t.searches || 0) + ' searches', 'Web searches assigned to this topic (from the decision log)')
+  const n = t.searches || 0;
+  return badge(n + (n === 1 ? ' search' : ' searches'), 'Web searches assigned to this topic (from the decision log)')
     + badge(r.up + ' up · ' + r.down + ' down', 'Your source ratings in this topic');
 }
 
@@ -82,7 +83,7 @@ function topicsPanel() {
     + '<label class="admin-switch" title="Match web searches to topics"><input type="checkbox" class="rt-master"'
     + (on ? ' checked' : '') + ' /><span class="admin-slider"></span></label>'
     + '</div>'
-    + '<div class="rt-body"' + (on ? '' : ' style="opacity:0.3"') + '>'
+    + '<div class="rt-body">'
     + '<p class="memory-desc doclib-desc" style="margin-top:6px;">Web searches are matched to the topic whose example queries are closest '
     + '(while the relevance filter is on). Your up/down ratings in the sources box are counted per topic.</p>'
     + '<div class="rt-toolbar"><button type="button" class="memory-toolbar-btn rt-add" title="Add a topic">+ Add topic</button></div>'
@@ -158,11 +159,20 @@ function applyDim() {
   });
 }
 
+// Like Brain's Skills tab: switched off, the whole tab panel greys out
+// (header and switch included) but the tab bar stays as it is.
+function dimTopics(on) {
+  const el = _modal.querySelector('[data-rt-panel="topics"]');
+  if (el) el.style.opacity = on ? '' : '0.3';
+}
+
 function render() {
   const tab = _modal.dataset.tab || 'topics';
   _modal.querySelectorAll('[data-rt-tab]').forEach(b => b.classList.toggle('active', b.dataset.rtTab === tab));
   _modal.querySelectorAll('[data-rt-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.rtPanel !== tab));
-  _modal.querySelector('[data-rt-panel="topics"]').innerHTML = topicsPanel();
+  const topicsEl = _modal.querySelector('[data-rt-panel="topics"]');
+  topicsEl.innerHTML = topicsPanel();
+  dimTopics(!_data || _data.enabled !== false);
   _modal.querySelector('[data-rt-panel="settings"]').innerHTML = settingsPanel();
   applyDim();
 }
@@ -261,8 +271,7 @@ function onChange(ev) {
     t.closest('.rt-item').classList.toggle('rt-off', !t.checked);
     saveTopics(topics);
   } else if (t.classList.contains('rt-master')) {
-    const body = _modal.querySelector('.rt-body');
-    if (body) body.style.opacity = t.checked ? '' : '0.3';
+    dimTopics(t.checked);
     saveTopics(plainTopics(), t.checked);
   } else if (t.classList.contains('rt-flag')) {
     applyDim();
