@@ -6,7 +6,7 @@ Open item. Its row in the [todo.md](../todo.md) index carries the current status
 
 **Idea (maintainer, 2026-10-12):** a small "decision" model between web retrieval and the thinking model (Qwen 3.5 / Bonsai 2) that decides what reaches it. **Proposed shape:** a cross-encoder reranker (fastembed, already a dependency), not a generative model. It scores (question, passage) pairs in milliseconds and does not compete with the chat model for LM Studio. Two levels: (1) the search result list (title/URL/snippet), where *"Web search derails on ambiguous common nouns"* and *"today/latest routes web_search to the news category"* happen; (2) paragraphs of fetched pages, where most of the context, and so most of the prefill time, goes.
 
-**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (28 tests).
+**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (29 tests).
 
 ## How results are ranked today
 
@@ -47,7 +47,7 @@ All commands from `/Users/cedrik/odysseus`. `extract` copies `app.db` itself (ha
    ```
    ./venv/bin/python scripts/bench_web_filter.py label --dir $RUN
    ```
-   After a first `run` (step 4), refill the sheet with a sortable `score` column and label the lowest scores first, since those are what a filter would drop:
+   After a first `run` (step 4), refill the sheet with a `score` column, ordered so the unlabelled rows with the lowest scores (what a filter would drop) come first:
    ```
    ./venv/bin/python scripts/bench_web_filter.py label --dir $RUN --scores-from rerank:query
    ```
@@ -81,6 +81,18 @@ All commands from `/Users/cedrik/odysseus`. `extract` copies `app.db` itself (ha
 - Snippets are cut at 200 chars by the writer, and a stored tool output at 10,000 chars; a result whose URL line was cut off is dropped.
 - `web_fetch` pages are stored cut at 10,000 chars, so the paragraph preview sees the start of each page only.
 - The user message is the last user row in the same session at or before the assistant row (naive UTC).
+
+## `domains_seen.csv` — what each column counts
+
+One row per domain (`www.` stripped); `report.md` shows the top 40, the CSV has all of them.
+
+- **seen** — how many times the domain appeared in a `web_search` result list, across all recorded searches. A page returned by three searches counts three times.
+- **mean_rank** — its average position in those lists, as the model saw them (after `rank_search_results`); 1 = top. Positions 1–5 are the ones `comprehensive_web_search` fetches.
+- **label_y / label_n** — your labels from `labels.csv`; while there are none, the SEED_RULES proxy fills `label_n`.
+- **fetched / fetch_failed** — `web_fetch` calls the model made itself to that domain, and how many returned `exit_code≠0` (a remembered failure counts too). **The automatic top-5 fetches inside `web_search` are not recorded as tool events and are not in these columns.** A domain with fetches but no appearances got there from a link or the model's own guess.
+- **prior** — its value from `domains.json`, 0 without one.
+
+`label --scores-from SCORER` writes the label sheet already ordered: unlabelled rows first, lowest score (the first a filter would drop) at the top, labelled rows at the bottom. Editing in Numbers: open `labels.csv`, label, then **Ablage → Exportieren → CSV** over the same file (Numbers otherwise saves a `.numbers` file and the CSV stays unchanged).
 
 ## A list of known domains
 

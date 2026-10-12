@@ -347,3 +347,17 @@ def test_an_unreadable_sheet_is_refused_and_left_untouched(tmp_path):
     assert sheet.read_text(encoding="utf-8") == original
     with pytest.raises(SystemExit):
         W.load_labels(sheet)
+
+
+def test_scored_sheet_puts_unlabelled_drop_candidates_on_top(tmp_path):
+    sheet = tmp_path / "labels.csv"
+    s = _searches()
+    W.write_label_sheet(s, sheet)
+    text = sheet.read_text(encoding="utf-8").replace("\n,,seed:n,", "\nn,,seed:n,")
+    sheet.write_text(text, encoding="utf-8")                       # junk is labelled
+    scores = {W.label_key("pink oyster", u): v for u, v in
+              [("https://junk", 0.0001), ("https://good1", 0.9), ("https://good2", 0.2)]}
+    W.write_label_sheet(s, sheet, scores)
+    import csv as _csv
+    order = [r["url"] for r in _csv.DictReader(open(sheet, encoding="utf-8"))]
+    assert order == ["https://good2", "https://good1", "https://unl", "https://junk"]

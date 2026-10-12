@@ -494,6 +494,14 @@ def write_label_sheet(searches, path=LABELS_FILE, scores=None):
         if scores is not None:
             sc = scores.get(label_key(row["query"], row["url"]))
             row["score"] = "" if sc is None else f"{sc:.6f}"
+    if scores is not None:
+        # Work queue order: unlabelled rows first, lowest score (= first to be
+        # dropped) at the top; labelled rows and rows without a score below.
+        def _order(row):
+            labelled = bool((row.get("label") or "").strip())
+            sc = row.get("score")
+            return (labelled, sc == "", float(sc) if sc else 0.0)
+        rows.sort(key=_order)
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = ["label", "score", "hint", "query", "rank", "domain", "title", "snippet", "url", "user_message"]
     with open(path, "w", newline="", encoding="utf-8") as f:
@@ -656,7 +664,7 @@ def cmd_label(args):
     added, total = write_label_sheet(searches, args.labels, scores)
     print(f"{args.labels}: {added} new rows, {total} total. Fill the label column with y or n.")
     if scores:
-        print(f"score column = {args.scores_from}; sort ascending to label the drop candidates first.")
+        print(f"score column = {args.scores_from}; unlabelled rows first, lowest score at the top.")
 
 
 def cmd_run(args):
