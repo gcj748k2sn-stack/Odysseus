@@ -679,19 +679,6 @@ def setup_document_routes(session_manager, upload_handler=None) -> APIRouter:
         try:
             doc = db.query(Document).filter(Document.id == doc_id).first()
             if not doc:
-                # [doc-put-404] report-only. A PUT to an id the server never
-                # had otherwise leaves no trace. The client can reach here with
-                # an orphaned `_streaming_<ts>` placeholder after an aborted
-                # document stream (todo: "An aborted document stream orphans
-                # its placeholder as activeDocId"). Counting these decides
-                # whether that needs a fix. Length only, never content. Remove
-                # once that item is closed.
-                logger.info(
-                    "[doc-put-404] doc=%s len=%d base_version=%s",
-                    doc_id,
-                    len(req.content or ""),
-                    req.base_version,
-                )
                 raise HTTPException(404, "Document not found")
             _verify_doc_owner(db, doc, user)
 

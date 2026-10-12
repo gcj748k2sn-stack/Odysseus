@@ -24,6 +24,7 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🧹 **Stale state fixed in todo.md:** rows and bodies of 58, 68, 70, 72, 74–76, 79, 80 said "uncommitted" but are committed (hashes now in each); item 43's "preset disabled" warning (back on since 10-09); the *Next* list rewritten (it still led with item 70); open/closed counts were 36/40, now 35/53 (counted from the tables). Item 82's file notes that its commits say "item 71".
 - **Item 64:** §4 decided (remove the document diagnostics if `[doc-put-404]` count is zero). The removal was **not made**: the count needs the M1's logs, and the classifier refused the edit. §9 parked; §10 `.env.bak` commands handed over.
 - 📦 Session-log entries of 10-09 and 10-10 moved to the archive.
+- ✅ **Later: item 34 closed, diagnostics removed.** Maintainer's count: one `[doc-put-404]` (the 07-31 repro) in logs from 07-12, 64 stream opens. Removed `[doc-put-404]`, `_stackFrames`, `switchAway`; `node --check` and `py_compile` only — **JS unverified**: manual step, open a document, type one character, confirm one `[doc-save] target=… stamp=… len=…` console line with no `via` lines. M1 suite owed.
 - ➡️ **Next:** the *Next* list in todo.md.
 
 ---

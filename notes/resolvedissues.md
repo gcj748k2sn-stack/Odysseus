@@ -63,8 +63,17 @@ Moved here from the [todo.md](todo.md) index on 2026-10-07, rows verbatim as the
 | 52 | ~~Odysseus's own end-of-turn notices were replayed to the model as its words~~ | S3 | S | ✅ **CLOSED 2026-10-12** — built `c084b9e3` | **live** 2026-10-06 00:31 · corpus 56/56 stripped, 0/212 others touched · tests (29) |
 | 54 | ~~"New Chat" sent the next message into the previously open chat — modules ran as two copies~~ | S2 | S | ✅ **CLOSED 2026-10-12** — fixed `c29a068a` | **live** in the agent's pane, in Safari, and after the 2026-10-06 merge · tests (4) |
 | 55 | ~~`trigger_research` reported "started" when the research model was down~~ | S3 | S | ✅ **CLOSED 2026-10-12** — fixed `0c71f29e` | **live** 2026-10-04 23:24 (`cf7e2281`): `exit_code=1`, no research link · tests (8) |
+| 34 | ~~An aborted document stream orphans its placeholder as `activeDocId`~~ | S2 | XS | ✅ **CLOSED 2026-10-12 — bounded by the 404 reaper; fix not built**; diagnostics removed | **log** — 1 `[doc-put-404]` in `app.log*` (07-12 → 10-12), and it is the scripted repro; 64 `Doc streaming: open` |
 
 ---
+
+## An aborted document stream orphaned its placeholder — closed 2026-10-12 (item 34), bounded, not fixed
+Full record: [items/34-an-aborted-document-stream-orphans-its-placeholder.md](items/34-an-aborted-document-stream-orphans-its-placeholder.md) (due to move to `archive/items/`).
+
+- **Ground truth:** after an aborted document stream the client can keep an orphaned `_streaming_<ts>` id as `activeDocId`; a save then PUTs to an id the server never had. Reproduced on demand 2026-07-31. The 404 reaper drops the map entry on that 404.
+- **Measured 2026-10-12 (maintainer's M1):** `app.log*` covers 2026-07-12 to now; the only `[doc-put-404]` is the 07-31 scripted repro (`len=500`); 64 `Doc streaming: open` lines. Zero spontaneous orphans reaching the network.
+- **Removed:** `[doc-put-404]` in `update_document`, `_stackFrames` (and its uses in `saveCurrentToMap` / `saveDocument`), the `switchAway` trace in `switchToDoc`. Kept: the `[doc-save]` and `[doc-map]` lines (CLAUDE.md §3).
+- **Reopen if** the background-stream error recurs with a document save failing: the unbuilt fix is to clear `_streamDocId` where the map entry is dropped (404 reaper, `loadSessionDocs`) plus a stream `finally` hook. ⚠️ That teardown must not persist anything (*"Empty document writes destroyed a document"*) and must not kill a backgrounded stream.
 
 ## Five built-and-verified items closed — 2026-10-12 (items 13, 25, 52, 54, 55)
 Closed on the maintainer's decision (item 64). Full records: [13](items/13-terminal-access-log-noise.md), [52](items/52-odysseus-s-own-notices-are-replayed-to.md), [54](items/54-new-chat-sent-the-next-message-into.md) (still in `items/`; due to move to `archive/items/`); items 25 and 55 were inline in `todo.md` — `git show 8310935:notes/todo.md`.

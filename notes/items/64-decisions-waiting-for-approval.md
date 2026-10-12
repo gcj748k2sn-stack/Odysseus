@@ -17,14 +17,6 @@ Open item, filed 2026-10-07. A parking list, not a defect: each entry is a choic
 - **Options:** keep (every failure reported, by design — a confident summary must not bury one) · report only failures not followed by a successful call of the same tool · keep them but phrase recovered ones as such.
 - **Recommendation:** the third — same honesty, less noise. Needs a decision on what counts as "recovered".
 
-## 4. The temporary document diagnostics still in `static/js/document.js`
-
-- **What:** `_stackFrames` ("remove once the paths are named") and the `switchAway` trace (remove when the 30–35 cluster is done; item 34 still open). Plus `[doc-put-404]` in `routes/document/document_routes.py` for item 34.
-- **Evidence:** item 34's last measurement, 2026-08-01: 0 spontaneous `[doc-put-404]` in 7 document stream opens — "too small to close". Nobody has worked on naming the paths since.
-- **Options:** close item 34 as bounded by the 404 reaper and remove all three · keep measuring.
-- **Recommendation:** count `[doc-put-404]` in `app.log*` since 2026-08-01 first; if still zero, close 34 and remove them.
-- ✅ **Decided 2026-10-12 (maintainer: "do it").** Waiting on the count, which needs the M1's logs: `grep -c '\[doc-put-404\]' /Users/cedrik/odysseus/data/logs/app.log*; grep -c 'Doc streaming: open' /Users/cedrik/odysseus/data/logs/app.log*` (the one known hit, `doc=_streaming_1785484957239 len=500`, is item 34's own scripted repro and does not count). If zero beyond that: close 34 as bounded by the 404 reaper; remove `_stackFrames` and its three uses (keep the `[doc-save]` and `[doc-map]` lines, which CLAUDE.md §3 relies on), the `switchAway` trace block in `switchToDoc`, and the `logger.info("[doc-put-404] …")` block before the 404 raise in `update_document`.
-
 ## 5. The Ollama 32k model files
 
 - **What:** `models/qwen3.5-9b-32k.Modelfile` and `models/make-qwen3.5-9b-32k.sh` build `qwen3.5:9b-32k`, kept 2026-07-31 as the fallback "until 64k has run a week". The fallback has been `qwen3.5:9b-64k` since, and chat moved to LM Studio on 2026-10-02.
