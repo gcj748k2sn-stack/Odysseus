@@ -25,7 +25,8 @@ function topicCard(t, idx) {
   return '<div class="rt-card" data-idx="' + idx + '">'
     + '<div class="rt-row">'
     + '<input class="rt-name" type="text" maxlength="60" value="' + esc(t.name) + '" aria-label="Topic name">'
-    + '<label class="rt-enabled"><input type="checkbox" class="rt-on"' + (t.enabled ? ' checked' : '') + '> on</label>'
+    + '<label class="admin-switch" title="Use this topic"><input type="checkbox" class="rt-on" aria-label="Use this topic"'
+    + (t.enabled ? ' checked' : '') + ' /><span class="admin-slider"></span></label>'
     + '<button type="button" class="rt-del admin-btn-sm" title="Delete topic">Delete</button>'
     + '</div>'
     + '<textarea class="rt-examples" rows="4" aria-label="Example queries, one per line">' + esc((t.examples || []).join('\n')) + '</textarea>'
@@ -129,12 +130,11 @@ const STYLE = `
 .rt-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px; margin-bottom: 8px; }
 .rt-row { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .rt-name { flex: 1; min-width: 0; }
-.rt-enabled { font-size: 0.85em; white-space: nowrap; }
 .rt-examples { width: 100%; box-sizing: border-box; font-size: 0.85em; resize: vertical; }
 .rt-counts { font-size: 0.75em; opacity: 0.55; margin-top: 4px; }
 .rt-actions { display: flex; gap: 8px; align-items: center; margin-top: 6px; }
 .rt-status { font-size: 0.85em; opacity: 0.8; }
-#research-topics-modal input, #research-topics-modal textarea { background: var(--panel); color: var(--fg);
+#research-topics-modal input[type=text], #research-topics-modal input[type=number], #research-topics-modal textarea { background: var(--panel); color: var(--fg);
   border: 1px solid var(--border); border-radius: 4px; padding: 4px 6px; }
 `;
 
