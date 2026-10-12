@@ -52,6 +52,7 @@ REPORT
 Standard library only; Python 3.9+.
 """
 import argparse
+import atexit
 import datetime as dt
 import glob
 import http.cookiejar
@@ -178,6 +179,9 @@ class Api:
 
     def delete(self, path):
         return self.call("DELETE", path)
+
+    def put(self, path, js=None):
+        return self.call("PUT", path, js=js)
 
     def login(self):
         if not self.password and sys.stdin.isatty():
@@ -648,6 +652,17 @@ def cmd_preflight(args):
     print("ok" if not warn else f"{len(warn)} warning(s)")
 
 
+def set_web_filter(api, want):
+    """Switch Odysseus's web relevance filter (admin setting, live within 2 s);
+    returns the previous value. Exits if the change does not take."""
+    before = (api.get("/api/web-filter/settings") or {}).get("web_filter_enabled")
+    after = (api.put("/api/web-filter/settings", js={"web_filter_enabled": want}) or {}).get("web_filter_enabled")
+    if after is not want:
+        sys.exit(f"error: web filter still {'on' if after else 'off'} after asking for {'on' if want else 'off'}")
+    time.sleep(3)                       # settings cache TTL is 2 s (src/settings.py)
+    return before
+
+
 def cmd_run(args):
     tasks = select_tasks(args)
     suite = getattr(args, "suite", None) or "agent"
@@ -658,6 +673,14 @@ def cmd_run(args):
         target = (f"{target[0]}+{args.preset}", target[1])
     api = Api(args.url, args.user, os.environ.get("ODYSSEUS_PASSWORD", ""))
     api.login()
+    web_filter = getattr(args, "web_filter", None)
+    if web_filter:
+        # A separate name, so filter-on and filter-off runs never pool in a report.
+        target = (f"{target[0]}-filter{web_filter}", target[1])
+        previous = set_web_filter(api, web_filter == "on")
+        if previous is not None and previous is not (web_filter == "on"):
+            atexit.register(set_web_filter, api, previous)
+        print(f"web filter {web_filter} for this run (was {'on' if previous else 'off'}; restored on exit)")
     preset_effort = ""
     if args.preset:
         presets = api.get("/api/presets") or {}
@@ -670,6 +693,10 @@ def cmd_run(args):
         print(f"preset {args.preset}: temperature={p.get('temperature')} max_tokens={p.get('max_tokens')}"
               + (f" reasoning_effort={preset_effort}" if preset_effort else ""))
     env, warn = preflight(api, target, tasks)
+    try:
+        env["web_filter"] = api.get("/api/web-filter/settings")
+    except Exception as e:
+        env["web_filter"] = {"error": str(e)[:200]}
     base_name = target[0]
     if preset_effort and env.get("llamacpp") is not None:
         # Odysseus sends the preset's effort with every request, which
@@ -1193,6 +1220,9 @@ def main():
     r.add_argument("--resume", help="continue this run directory")
     r.add_argument("--preset", help="send this Odysseus preset_id with every turn (e.g. custom); "
                                     "the run is named TARGET+PRESET. Default: no preset, i.e. temp 1.0")
+    r.add_argument("--web-filter", choices=("on", "off"),
+                   help="switch Odysseus's web relevance filter for this run (admin login); the run is named "
+                        "TARGET-filteron/-filteroff and the setting is restored on exit")
     r.add_argument("--keep", action="store_true", help="keep sessions/notes/events/documents")
     r.add_argument("--no-warmup", action="store_true")
     r.add_argument("--approval", choices=["approve_task", "deny"], default="approve_task",

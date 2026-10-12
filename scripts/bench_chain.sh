@@ -8,6 +8,8 @@
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh full          # qwen-full bonsai-full, ~6–8 h
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh web           # research suite: Qwen LM Studio, Qwen Ollama, Bonsai
 #   (WEB_RUNS=2 for two runs per backend in the web phase; default 1)
+#   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh filter-ab     # research suite, filter off vs on, Qwen LM Studio
+#   (AB_ROUNDS=3 by default: off on | on off | off on, one research run each; the filter is restored after each run)
 #   BENCH_POWER=1 ...bench_chain.sh full      also records power in watts (asks for the Mac password once)
 #
 # While it runs, scripts/bench_sysmon.py samples CPU, GPU, memory, swap, thermal state and the
@@ -34,8 +36,8 @@ PHASES="$*"
 [ "$PHASES" = "--with-qwen" ] && PHASES="bonsai qwen"
 [ "$PHASES" = "full" ] && PHASES="qwen-full bonsai-full"
 for p in $PHASES; do
-  case "$p" in bonsai|bonsai-long|bonsai-check|bonsai-full|qwen|qwen-full|web) ;;
-    *) echo "unknown phase: $p (full, bonsai, bonsai-long, bonsai-check, bonsai-full, qwen, qwen-full, web)"; exit 2;; esac
+  case "$p" in bonsai|bonsai-long|bonsai-check|bonsai-full|qwen|qwen-full|web|filter-ab) ;;
+    *) echo "unknown phase: $p (full, bonsai, bonsai-long, bonsai-check, bonsai-full, qwen, qwen-full, web, filter-ab)"; exit 2;; esac
 done
 
 LMS=$(command -v lms || echo "$HOME/.lmstudio/bin/lms")
@@ -264,6 +266,25 @@ web_phase() {
   copy_logs
 }
 
+filter_ab_phase() {
+  # The research suite with the relevance filter off and on, alternating in an
+  # ABBA order so drift over the evening (web results, heat, swap) hits both arms.
+  # Runs are named qwen35lm-filteroff / qwen35lm-filteron; report pools each arm.
+  local rounds="${AB_ROUNDS:-3}" i=1
+  note "── Filter A/B phase ($rounds rounds, Qwen on LM Studio)"
+  if ! start_qwen; then note "  ✗ LM Studio / Qwen did not come up in 5 min — phase skipped"; return; fi
+  note "  Qwen up (LM Studio)"
+  while [ $i -le "$rounds" ]; do
+    if [ $((i % 2)) -eq 1 ]; then first=off; second=on; else first=on; second=off; fi
+    step "filter-$first-$i"  bench --target qwen35lm --suite research --runs 1 --web-filter "$first"
+    step "filter-$second-$i" bench --target qwen35lm --suite research --runs 1 --web-filter "$second"
+    i=$((i + 1))
+  done
+  stop_lmstudio
+  note "  LM Studio stopped"
+  copy_logs
+}
+
 note "chain started: $PHASES (logs: $LOGDIR)"
 odysseus_is_fresh || exit 1
 start_monitor
@@ -276,6 +297,7 @@ for p in $PHASES; do
     qwen) qwen_phase ;;
     qwen-full) qwen_full_phase ;;
     web) web_phase ;;
+    filter-ab) filter_ab_phase ;;
   esac
 done
 note "chain finished"
