@@ -18,6 +18,14 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-12 (late) — ratings bias the web filter: built, log-only (cloud session)
+
+- 🆕 `src/rating_bias.py`, call site in `filter_results`: ▲/▼ shift a site's reranker logit in its topic (±0.7 default, `min_keep` unchanged, notice on raw scores). Default mode **`log`**: computes and logs, changes nothing. Replay `run --ratings` (time-ordered, own and rated labels excluded) and `rating-speed`. Decisions and benchmarks in [items/82-web-relevance-filter.md](items/82-web-relevance-filter.md) (*Ratings feed back into the filter*).
+- ✅ Sandbox: 131 tests across six files, 10 mutations caught. **M1 suite owed; JS unverified** (panel setting).
+- ➡️ After a few days of ratings: `extract --from-decisions`, `run --ratings`, read the flips, then decide `apply`.
+
+---
+
 ## 2026-10-12 (evening) — notes repaired; item 64 decisions recorded (cloud session, notes only)
 
 - ✅ **Closed 13, 25, 52, 54, 55** (maintainer's decision, item 64): rows and conclusions moved to resolvedissues.md. ⚠️ Their files `notes/items/13-…`, `52-…`, `54-…` are **still in `items/`**: the move to `archive/items/` was refused by the session's permission classifier. Commands are in the hand-off.

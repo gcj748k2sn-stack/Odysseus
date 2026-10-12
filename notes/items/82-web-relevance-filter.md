@@ -261,6 +261,39 @@ Maintainer's feedback on the first version: panel and field colours were inverte
 
 Recommended **0.035**: the highest cut-off with no wrong flags in the replay; it would have caught the 16:08 Pink (singer) search (best 0.033). Caveats: catches only a fifth of all-junk searches; the 13:38 live search had relevant guides that all scored under 0.035 (exact best score not logged then), and live snippets are longer than the replay's 200 chars. A wrong notice costs one extra search, not a wrong answer. **Set to 0.035 by the maintainer 2026-10-12** in `data/settings.json` (`web_filter_notice_below`); **check the decision log's `"notice": true` lines after a few days.**
 
+## Ratings feed back into the filter (2026-10-12, built, log-only by default)
+
+**What it does:** a ▼ on a source moves that site's reranker score down on later searches *in the same topic*; a ▲ moves it up. `src/rating_bias.py` (standard library only, also imported by the replay), one call site in `filter_results` (`src/web_filter.py`); no upstream file touched.
+
+- **Bias per result**, from the current ratings of all users (latest click per user, search and URL wins; `clear` removes): site term `strength × (up − down) / (up + down + 2)` once the site has `web_filter_rating_min` (2) ratings in the topic, plus `±strength/2` for the exact URL, clamped to ±strength. A site's rating covers its subdomains (`webmd.com` → `m.webmd.com`, not `notwebmd.com`). Topic `other` or none: no bias.
+- **Added to the logit, not the 0–1 score.** Live scores sit near 0.035, so a 0–1 offset would make every rating an absolute keep/drop. **Reach at the default strength 0.7 (odds ×2): only raw scores between ~0.018 and ~0.068 can cross 0.035.** ⚠️ The settings ceiling 1.5 reaches ~0.008 to ~0.14, so a 0.01 result can be kept there (test pins it); keep strength ≤ 1.0 unless the replay says otherwise.
+- **Unchanged:** `min_keep` fail-open (decision 2), best-first order, `limit`.
+- **Modes** (`web_filter_rating_mode`): `off`; **`log` (default)**: computes everything, selection uses raw scores, nothing the model sees changes; `apply`: selection uses the biased scores. Settings in the Research topics panel's Settings tab (*Ratings*, *Rating strength*) and `PUT /api/web-filter/settings`.
+- **Off-topic notice:** always on raw scores (decision 3, option (a)); the decision log's `notice_either` records whether option (c) would also have fired.
+- **Logged:** `[web-filter] … ratings=log biased=N rating_changes=['near.com:kept→dropped']`; per result in `data/logs/web_filter.jsonl`: `bias`, `adjusted`, `rated_kept`; per search `rating_mode`, `notice_either`. Sources box data carries `rating_bias` (not shown by the JS yet).
+- **Cache:** the ratings file is re-read only when its mtime or size changes.
+
+### Decisions (maintainer, 2026-10-12)
+
+1. All users' ratings count, like the global topics.
+2. `min_keep` stays absolute: a down-rated site can still be kept by the fail-open; all-junk searches are the notice's job.
+3. Notice on raw scores; (c) "raw **or** adjusted below the cut-off" is logged, to be adopted only if the replay shows it adds no wrong flag on the searches with a relevant result. Never (b) adjusted only: a ▲ on a mixed site (`en.wikipedia.org`: 4 y / 32 n in the labels) could lift an all-junk search over the cut-off and silence the notice. *(The maintainer asked for the explanation and did not pick; (a)-then-(c) was Claude's proposal, built as proposed.)*
+4. Strength 0.7, `min_ratings` 2 (Claude's choice, at the maintainer's request).
+
+### Benchmarks
+
+- **Filter quality, replay:** `bench_web_filter.py run --dir … --ratings data/web_ratings.jsonl` adds a *Ratings* section at the live threshold (`--threshold`, default 0.035; `--notice-below` 0.035): per strength (0.3 / 0.7 / 1.0), searches with a bias, junk / relevant / unlabelled dropped, junk in the fetched top 5, the notice under (a) and (c), the change per chronological quarter (learning curve), and every flipped result with its URL and label. **Honesty rules, built in:** with `--rating-order time` (default) a search sees only ratings made before it (app.db's UTC converted to local time first), never ratings on its own `search_id`; `loo` uses later ratings too and the report says OPTIMISTIC. Labels whose query + URL match a rating are left out of the score (it says how many), so ratings are not graded against themselves. With no usable rating the report says so instead of reading 0 changes as safe. Topics: the logged one; searches recorded before topics existed get `assign_topic` (embedding model, loaded only if a rating could apply).
+- ⚠️ **What the replay can see:** every app.db search (07-17 → 10-05) predates every rating, so under `time` order only decision-log searches (since 10-12 13:38) can show an effect. Build that corpus with `extract --from-decisions data/logs/web_filter.jsonl`; it now keeps `search_id` and `topic`.
+- **Speed:** `bench_web_filter.py rating-speed [--lines 10000 --results 15]`, synthetic ratings in a temp dir, no model. Sandbox (Linux, 2026-10-12): 10,000 ratings (1.5 MB) re-read in 59 ms after each new rating, 0.002 ms per search with an unchanged file, 0.27 ms bias for 15 results — against ~2,350 ms for the reranker. M1 not measured.
+- **Answer quality end to end:** not built. Needs a provider that replays recorded results (live search is not repeatable) and ~20 runs per variant; worth it only if the replay shows the drops improve.
+
+### Verification
+
+- **Sandbox only (Linux venv from `requirements.txt`, `DATABASE_URL=sqlite:///:memory:`):** `tests/test_rating_bias.py` (27) plus the five filter/ratings files, 131 passed; `test_research_topics_and_ratings.py`'s settings-key test updated for the three new keys. Full suite in the sandbox (`-n auto`): 8,002 passed, 4 skipped, 1 failed — `test_integrations_url_join.py::test_api_call_root_path_has_no_trailing_slash`, which fails the same way without this change (the sandbox cannot resolve DNS). **M1 run owed.**
+- **Mutations (`test_rating_bias.py` failures):** clamp removed 1; `+2` removed 4; topic ignored 2; bias in 0–1 space 1; `log` mode acts 1; notice on adjusted scores 2; call site removed 7; replay sees later ratings 3; replay sees the search's own ratings 1; rated labels kept in the score 1.
+- **Replay smoke run** on a synthetic 8-search corpus (lexical scorer): section renders, 4 rated labels left out, time order respected. No real data run.
+- **JS unverified** (`node --check` only): manual step — open Research topics → Settings, set *Ratings* to *Apply*, confirm `"web_filter_rating_mode": "apply"` in `data/settings.json`, set it back to *Log only*.
+
 ## Verification
 
 - **M1, 2026-10-12:** the five test files, 104 passed (`test_web_filter.py`, `test_bench_web_filter.py`, `test_research_topics_and_ratings.py`, `test_source_ratings_js.py` (Node), `test_search_output_fit.py`); full suite later the same day 7,977 passed, 3 skipped. Mutation counts are in each section above.
@@ -274,4 +307,4 @@ Recommended **0.035**: the highest cut-off with no wrong flags in the replay; it
 3. **Spot-check 20–30 of Claude's 630 labels** (*Fourth run*).
 4. Whether the 132 truncated searches answered off-topic more often than the other 64 (*Search output cut*).
 5. Misspelled queries (*Pinatus*): the filter can only flag them; a separate item if it recurs.
-6. Not built, waiting for data: per-topic site adjustments from ratings; `[snippet cut]` marking; the notice slider in the Settings tab; the replay's `<search query>` placeholder bug (own item).
+6. **Ratings bias: built, log-only** (*Ratings feed back into the filter*). Next: after a few days with ratings, `extract --from-decisions` + `run --ratings`, read the flips and `notice_either`, then decide `apply`. M1 suite owed. Not built, waiting for data: `[snippet cut]` marking; the notice slider in the Settings tab; the replay's `<search query>` placeholder bug (own item).

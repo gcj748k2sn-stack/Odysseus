@@ -48,6 +48,9 @@ _FILTER_KEYS = {
     "web_filter_candidates": (5, 30),
     "web_filter_notice_below": (0.0, 1.0),
     "web_filter_decision_log": bool,
+    "web_filter_rating_mode": ("off", "log", "apply"),
+    "web_filter_rating_strength": (0.0, 1.5),
+    "web_filter_rating_min": (1, 20),
 }
 
 
@@ -63,6 +66,9 @@ def validate_filter_settings(body):
         if rule is bool:
             if not isinstance(val, bool):
                 raise ValueError(f"{key} must be true or false")
+        elif all(isinstance(c, str) for c in rule):
+            if val not in rule:
+                raise ValueError(f"{key} must be one of {', '.join(rule)}")
         else:
             lo, hi = rule
             kind = int if isinstance(lo, int) else float
