@@ -402,17 +402,24 @@ def score_corpus(searches, scorers, priors, reranker=None):
     return out
 
 
-def decide(scored, threshold, min_keep=MIN_KEEP):
+def decide(scored, threshold, min_keep=MIN_KEEP, limit=None):
     """Keep results scoring >= threshold; if that leaves fewer than min_keep,
     keep the min_keep best instead (fail-open: a filter must never be the
-    reason the model gets nothing). `scored` is [(key, score)] in display order.
-    Returns (kept keys in display order, fell_back)."""
+    reason the model gets nothing). `limit` (the live filter's result count,
+    recorded in the decision log) then keeps only the best that many, as
+    select() in src/web_filter.py does. `scored` is [(key, score)] in display
+    order. Returns (kept keys in display order, fell_back)."""
     kept = [k for k, v in scored if v >= threshold]
-    if len(kept) >= min(min_keep, len(scored)):
-        return kept, False
-    best = sorted(scored, key=lambda kv: kv[1], reverse=True)[:min_keep]
-    best_keys = {k for k, _ in best}
-    return [k for k, _ in scored if k in best_keys], True
+    fell_back = len(kept) < min(min_keep, len(scored))
+    if fell_back:
+        best = sorted(scored, key=lambda kv: kv[1], reverse=True)[:min_keep]
+        best_keys = {k for k, _ in best}
+        kept = [k for k, _ in scored if k in best_keys]
+    if limit and len(kept) > limit:
+        by_score = dict(scored)
+        top = set(sorted(kept, key=lambda k: by_score[k], reverse=True)[:limit])
+        kept = [k for k in kept if k in top]
+    return kept, fell_back
 
 
 # ------------------------------------------------------------------- labels ---
@@ -607,7 +614,7 @@ def evaluate(searches, scores, truth, threshold, min_keep=MIN_KEEP, top_n=FETCHE
     good_dropped = []
     for s in searches:
         scored = [((s["id"], r["url"]), scores[(s["id"], r["url"])]) for r in s["results"]]
-        kept, fell_back = decide(scored, threshold, min_keep)
+        kept, fell_back = decide(scored, threshold, min_keep, s.get("limit"))
         kept = set(kept)
         row["fell_back"] += fell_back
         reordered = sorted(scored, key=lambda kv: kv[1], reverse=True)[:top_n]
@@ -756,6 +763,7 @@ def read_decision_log(paths):
                 searches.append({"kind": "search", "id": f"wf:{path.name}:{n}", "session_id": "",
                                  "timestamp_utc": "", "timestamp_local": rec.get("ts_local", ""),
                                  "search_id": rec.get("search_id", ""), "topic": rec.get("topic", ""),
+                                 "limit": rec.get("limit"),
                                  "query": rec.get("query", ""), "user_message": "", "exit_code": 0,
                                  "results": results})
     return searches, stats
@@ -851,8 +859,8 @@ def flips(searches, raw, adjusted, truth, threshold, min_keep):
     out = []
     for s in searches:
         keys = [(s["id"], r["url"]) for r in s["results"]]
-        before, _ = decide([(k, raw[k]) for k in keys], threshold, min_keep)
-        after, _ = decide([(k, adjusted[k]) for k in keys], threshold, min_keep)
+        before, _ = decide([(k, raw[k]) for k in keys], threshold, min_keep, s.get("limit"))
+        after, _ = decide([(k, adjusted[k]) for k in keys], threshold, min_keep, s.get("limit"))
         before, after = set(before), set(after)
         for k in keys:
             if (k in before) != (k in after):

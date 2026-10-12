@@ -332,3 +332,28 @@ def test_notice_counts_either_rule_only_adds_firings():
     assert W.notice_counts([s], raw, lower, truth, 0.035) == {"raw": [0, 1, 0, 0], "either": [1, 1, 0, 0]}
     raw_low = {("x", "https://a.com/"): 0.03, ("x", "https://b.com/"): 0.01}
     assert W.notice_counts([s], raw_low, higher, truth, 0.035)["either"] == [1, 1, 0, 0]
+
+
+def test_replay_applies_the_live_result_limit_like_select():
+    # The 19:21 search: 10 candidates, limit 5, three dropped at 0.27-0.45 by the limit alone.
+    scored = [("a", 0.831), ("b", 0.824), ("c", 0.777), ("d", 0.770), ("e", 0.470),
+              ("f", 0.266), ("g", 0.297), ("h", 0.186), ("i", 0.447), ("j", 0.047)]
+    kept, fell_back = W.decide(scored, THRESHOLD, 3, limit=5)
+    assert kept == list("abcde") and fell_back is False
+    assert W.decide(scored, THRESHOLD, 3)[0] == list("abcdefghij")
+    live = F.select([v for _, v in scored], THRESHOLD, 3, 5)
+    assert sorted("abcdefghij"[i] for i in live) == kept
+
+
+def test_replay_sees_a_rating_flip_at_the_limit_cut_far_above_the_threshold():
+    s = _search("x", "2026-10-12T20:00:00", ["https://economictimes.indiatimes.com/a", "https://msn.com/b",
+                                             "https://good.com/", "https://fine.com/"], topic="finance")
+    s["limit"] = 3
+    raw = {("x", s["results"][0]["url"]): 0.470, ("x", s["results"][1]["url"]): 0.447,
+           ("x", "https://good.com/"): 0.8, ("x", "https://fine.com/"): 0.7}
+    recs = [_rec("https://economictimes.indiatimes.com/p1", "down", topic="finance", search_id="r1"),
+            _rec("https://economictimes.indiatimes.com/p2", "down", topic="finance", search_id="r2")]
+    biases, _ = W.rating_biases([s], recs, 0.7, 2)
+    adj = W.apply_biases(raw, biases)
+    moved = {(u, d) for _, u, _, _, _, d in W.flips([s], raw, adj, {}, THRESHOLD, 2)}
+    assert moved == {("https://economictimes.indiatimes.com/a", "kept→dropped"), ("https://msn.com/b", "dropped→kept")}
