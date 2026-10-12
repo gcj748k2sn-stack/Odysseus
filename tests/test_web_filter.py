@@ -83,7 +83,7 @@ def test_empty_query_or_results_pass_through():
 
 # ------------------------------------------------------------------ filtering
 
-def test_drops_off_topic_results_and_keeps_display_order(caplog):
+def test_drops_off_topic_results_best_score_first(caplog):
     with caplog.at_level(logging.INFO, logger="src.web_filter"):
         kept, notice = F.filter_results("pink oyster mushroom", RESULTS, settings=ON, model=Fake())
     assert [r["url"] for r in kept] == ["https://grocycle.com/pink", "https://www.out-grow.com/guide"]
@@ -126,16 +126,17 @@ def test_negative_control_all_relevant_nothing_dropped():
     assert F.filter_results("pink oyster mushroom", good, settings=ON, model=Fake()) == (good, "")
 
 
-def test_decide_never_returns_fewer_than_min_keep_for_random_scores():
+def test_select_never_returns_fewer_than_min_keep_or_more_than_limit():
     rng = random.Random(7)
     for _ in range(500):
-        n = rng.randint(1, 10)
+        n = rng.randint(1, 15)
         scores = [rng.random() for _ in range(n)]
-        min_keep = rng.randint(1, 5)
-        kept, all_low = F.decide(scores, rng.random(), min_keep)
-        assert len(kept) >= min(min_keep, n)
-        assert kept == sorted(set(kept))
-        assert all(0 <= i < n for i in kept)
+        min_keep, limit = rng.randint(1, 5), rng.choice([None, 3, 5, 8])
+        kept = F.select(scores, rng.random(), min_keep, limit)
+        assert len(kept) >= min(min_keep, limit or n, n)
+        assert limit is None or len(kept) <= limit
+        assert len(set(kept)) == len(kept) and all(0 <= i < n for i in kept)
+        assert [scores[i] for i in kept] == sorted((scores[i] for i in kept), reverse=True)
 
 
 def test_settings_from_the_settings_file_are_merged_over_the_defaults(monkeypatch):
@@ -148,6 +149,12 @@ def test_settings_from_the_settings_file_are_merged_over_the_defaults(monkeypatc
 
 
 # ----------------------------------------------------- end to end, real writer
+
+@pytest.fixture(autouse=True)
+def _no_decision_log(monkeypatch, tmp_path):
+    # Keep the decision log out of the suite's data dir unless a test asks for it.
+    monkeypatch.setattr(F, "_decision_log_path", lambda: str(tmp_path / "web_filter.jsonl"))
+
 
 @pytest.fixture
 def search_env(monkeypatch):
@@ -205,3 +212,100 @@ def test_the_on_off_state_is_logged_once_per_change(monkeypatch, caplog):
         F.filter_results("q oyster mushroom", RESULTS, settings=ON, model=model)
     states = [r.getMessage().split()[1] for r in caplog.records if r.getMessage().startswith("[web-filter] o")]
     assert states == ["off", "on"]
+
+
+# ------------------------------------------------- more candidates, decision log
+
+MORE = RESULTS + [
+    _r("Pink oyster mushroom growing temperatures", "https://mushroomalmanac.com/pink"),
+    _r("Oyster mushroom fruiting conditions chart", "https://fungilorious.com/chart"),
+    _r("Oyster card top-up", "https://oyster.tfl.gov.uk/"),
+]
+
+
+def test_candidate_count_grows_only_while_the_filter_is_on():
+    assert F.candidate_count(5, settings=dict(F.DEFAULTS)) == 5
+    assert F.candidate_count(5, settings={**ON, "web_filter_candidates": 15}) == 15
+    assert F.candidate_count(20, settings={**ON, "web_filter_candidates": 15}) == 20
+    assert F.candidate_count(5, settings={**ON, "web_filter_candidates": "x"}) == 5
+
+
+def test_disabled_or_failing_filter_cuts_extra_candidates_back_to_the_limit():
+    assert F.filter_results("q", MORE, settings=dict(F.DEFAULTS), limit=5) == (MORE[:5], "")
+    assert F.filter_results("q oyster mushroom", MORE, settings=ON, model=Boom(), limit=5) == (MORE[:5], "")
+
+
+def test_dropped_results_are_replaced_from_the_extra_candidates():
+    kept, _ = F.filter_results("pink oyster mushroom", MORE, settings=ON, model=Fake(), limit=5)
+    urls = [r["url"] for r in kept]
+    assert len(urls) == 4                        # 4 relevant of 8; the junk is not used to fill up to 5
+    assert "https://mushroomalmanac.com/pink" in urls and "https://fungilorious.com/chart" in urls
+    assert not any(j in u for u in urls for j in ("victoriassecret", "oyster.com", "tfl.gov.uk", "Pink_(singer)"))
+
+
+def test_decision_log_records_every_candidate_with_score_and_outcome(tmp_path):
+    import json
+    log = tmp_path / "decisions.jsonl"
+    F.filter_results("pink oyster mushroom", MORE, settings=ON, model=Fake(), limit=5, decision_log=str(log))
+    rec = json.loads(log.read_text(encoding="utf-8").splitlines()[0])
+    assert rec["query"] == "pink oyster mushroom" and rec["limit"] == 5
+    assert len(rec["results"]) == len(MORE)
+    by_url = {r["url"]: r for r in rec["results"]}
+    assert by_url["https://www.victoriassecret.com/pink"]["kept"] is False
+    assert by_url["https://www.victoriassecret.com/pink"]["position_out"] is None
+    assert by_url["https://grocycle.com/pink"]["kept"] is True and by_url["https://grocycle.com/pink"]["score"] > 0.9
+    assert sorted(r["position_out"] for r in rec["results"] if r["kept"]) == [1, 2, 3, 4]
+
+
+def test_decision_log_can_be_switched_off_and_a_write_failure_does_not_break_search(tmp_path, caplog):
+    log = tmp_path / "d.jsonl"
+    F.filter_results("pink oyster mushroom", MORE, settings={**ON, "web_filter_decision_log": False},
+                     model=Fake(), decision_log=str(log))
+    assert not log.exists()
+    blocked = tmp_path / "not_a_dir"
+    blocked.write_text("x")
+    with caplog.at_level(logging.WARNING, logger="src.web_filter"):
+        kept, _ = F.filter_results("pink oyster mushroom", MORE, settings=ON, model=Fake(),
+                                   decision_log=str(blocked / "d.jsonl"))
+    assert kept and "decision log not written" in caplog.text
+
+
+def test_decision_log_rotates_past_its_size_cap(tmp_path, monkeypatch):
+    log = tmp_path / "d.jsonl"
+    log.write_text("x" * 100)
+    monkeypatch.setattr(F, "DECISION_LOG_MAX_BYTES", 50)
+    F._write_decision({"a": 1}, str(log))
+    assert (tmp_path / "d.jsonl.1").read_text() == "x" * 100
+    assert log.read_text().strip() == '{"a": 1}'
+
+
+def test_comprehensive_search_asks_for_more_candidates_only_while_on(search_env, monkeypatch):
+    core, fetched = search_env
+    asked = []
+
+    def provider(name, query, count, time_filter=None):
+        asked.append(count)
+        return [dict(r) for r in MORE]
+    monkeypatch.setattr(core, "_call_provider", provider)
+    monkeypatch.setattr(F, "_load_model", lambda name: Fake())
+    monkeypatch.setattr(F, "_settings", lambda: dict(F.DEFAULTS))
+    _, sources_off = core.comprehensive_web_search("pink oyster mushroom", max_pages=5, return_sources=True)
+    monkeypatch.setattr(F, "_settings", lambda: {**ON, "web_filter_candidates": 15})
+    _, sources_on = core.comprehensive_web_search("pink oyster mushroom", max_pages=5, return_sources=True)
+    assert asked == [10, 15]                      # result count stub is 10
+    assert len(sources_off) == len(MORE)          # provider returned 8 < 10: nothing cut
+    assert {s["url"] for s in sources_on} == {r["url"] for r in MORE if "oyster mushroom" in _r_text(r)}
+
+
+def _r_text(r):
+    return f"{r['title']} {r['snippet']}".lower()
+
+
+def test_comprehensive_search_passes_on_no_more_than_the_normal_result_count(search_env, monkeypatch):
+    core, fetched = search_env
+    monkeypatch.setattr(core, "_get_result_count", lambda: 3)
+    monkeypatch.setattr(core, "_call_provider", lambda *a, **k: [dict(r) for r in MORE])
+    monkeypatch.setattr(F, "_load_model", lambda name: Fake())
+    monkeypatch.setattr(F, "_settings", lambda: {**ON, "web_filter_candidates": 15})
+    _, sources = core.comprehensive_web_search("pink oyster mushroom", max_pages=3, return_sources=True)
+    assert len(sources) == 3                      # 4 relevant candidates, 3 shown

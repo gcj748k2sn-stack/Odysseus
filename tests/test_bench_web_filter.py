@@ -434,3 +434,27 @@ def test_notice_rows_separate_all_junk_searches_from_ones_with_a_relevant_result
     assert rows[0.01] == (0, 1, 0, 1, [])          # best of "a" is 0.012
     assert rows[0.015] == (1, 1, 0, 1, [])
     assert rows[0.03] == (1, 1, 1, 1, ["has good"])
+
+
+def test_the_live_decision_log_reads_back_as_a_corpus(tmp_path, monkeypatch):
+    """Writer and reader meet: src/web_filter.py writes, the replay reads."""
+    from src import web_filter as F
+
+    class Fake:
+        def rerank(self, q, docs):
+            return [5.0 if "mushroom" in d.lower() else -5.0 for d in docs]
+    log = tmp_path / "web_filter.jsonl"
+    results = [{"title": "Pink (singer)", "url": "https://en.wikipedia.org/wiki/Pink_(singer)", "snippet": "singer"},
+               {"title": "Pink oyster mushroom guide", "url": "https://grocycle.com/pink", "snippet": "grow"}]
+    cfg = {**F.DEFAULTS, "web_filter_enabled": True, "web_filter_min_keep": 1}
+    F.filter_results("pink oyster mushroom", results, settings=cfg, model=Fake(), decision_log=str(log))
+    searches, stats = W.read_decision_log([log, tmp_path / "missing.jsonl"])
+    assert len(searches) == 1 and not stats
+    s = searches[0]
+    assert s["query"] == "pink oyster mushroom" and s["id"].startswith("wf:")
+    by_url = {r["url"]: r for r in s["results"]}
+    assert by_url["https://en.wikipedia.org/wiki/Pink_(singer)"]["live_kept"] is False
+    assert by_url["https://grocycle.com/pink"]["live_kept"] is True
+    out = tmp_path / "run"
+    W.main(["extract", "--from-decisions", str(log), "--out", str(out)])
+    assert len(W.read_corpus(out)[0]) == 1

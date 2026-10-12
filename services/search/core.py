@@ -275,6 +275,9 @@ def comprehensive_web_search(
 
     # Use configured result count (at least max_pages for content fetching)
     fetch_count = max(result_count, max_pages)
+    # Fork: relevance filter, off unless enabled (src/web_filter.py).
+    from src.web_filter import candidate_count, filter_results
+    shown_count, fetch_count = fetch_count, candidate_count(fetch_count)
 
     provider_chain = _build_provider_chain(search_provider)
 
@@ -316,9 +319,7 @@ def comprehensive_web_search(
         return (msg, []) if return_sources else msg
 
     search_results = rank_search_results(query, search_results)
-    # Fork: relevance filter, off unless enabled (src/web_filter.py).
-    from src.web_filter import filter_results
-    search_results, relevance_notice = filter_results(query, search_results)
+    search_results, relevance_notice = filter_results(query, search_results, limit=shown_count)
 
     # URL filter helper
     def url_passes_filters(url: str) -> bool:

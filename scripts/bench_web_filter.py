@@ -33,6 +33,9 @@ export   Writes the unlabelled rows of labels.csv to to_label.tsv (id, query,
          title, domain, snippet — no user messages) for labelling elsewhere.
 import   Applies a file of `id<TAB>y|n` lines back to labels.csv; labels already
          in the sheet are kept unless --overwrite. Leaves labels.csv.bak.
+extract --from-decisions data/logs/web_filter.jsonl
+         Builds the corpus from the live filter's own decisions instead: every
+         candidate it saw, dropped ones included, with its live score.
 pages    Splits recorded web_fetch pages into paragraphs, scores each against
          the user's message, and writes pages.md showing what a budgeted
          paragraph filter would keep and drop. For reading, not for a score.
@@ -720,9 +723,46 @@ def read_corpus(run_dir):
     return searches, fetches
 
 
+def read_decision_log(paths):
+    """Searches from the live filter's decision log (data/logs/web_filter.jsonl,
+    written by src/web_filter.py): every candidate, including the dropped ones,
+    with the live score and outcome. No user message is recorded there."""
+    searches, stats = [], Counter()
+    for path in paths:
+        path = Path(path)
+        if not path.is_file():
+            continue
+        for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            try:
+                rec = json.loads(line)
+                results = [{"rank": r["rank_in"], "title": r.get("title", ""), "url": r["url"],
+                            "snippet": r.get("snippet", ""), "age": "", "live_score": r.get("score"),
+                            "live_kept": r.get("kept")} for r in rec["results"] if r.get("url")]
+            except (json.JSONDecodeError, KeyError, TypeError):
+                stats["decision_lines_unreadable"] += 1
+                continue
+            if results:
+                searches.append({"kind": "search", "id": f"wf:{path.name}:{n}", "session_id": "",
+                                 "timestamp_utc": "", "timestamp_local": rec.get("ts_local", ""),
+                                 "query": rec.get("query", ""), "user_message": "", "exit_code": 0,
+                                 "results": results})
+    return searches, stats
+
+
 def cmd_extract(args):
     run_dir = Path(args.out) if args.out else OUT_ROOT / dt.datetime.now().strftime("%Y%m%d-%H%M%S")
     run_dir.mkdir(parents=True, exist_ok=True)
+    if args.from_decisions:
+        searches, stats = read_decision_log(args.from_decisions)
+        with open(run_dir / "corpus.jsonl", "w", encoding="utf-8") as f:
+            for row in searches:
+                f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        meta = {"source": [str(p) for p in args.from_decisions], "extracted_at_local": dt.datetime.now().isoformat(),
+                "searches": len(searches), "results": sum(len(s["results"]) for s in searches), **stats}
+        (run_dir / "meta.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+        print(json.dumps(meta, indent=2))
+        print(f"\ncorpus: {run_dir / 'corpus.jsonl'}")
+        return
     if Path(str(args.db) + "-journal").exists():
         print("note: app.db-journal exists — a write may be in progress; the hash check will tell.")
     with tempfile.TemporaryDirectory() as tmp:
@@ -920,6 +960,9 @@ def main(argv=None):
     e = sub.add_parser("extract", help="copy app.db and write corpus.jsonl")
     e.add_argument("--db", type=Path, default=DEFAULT_DB)
     e.add_argument("--out", help="run directory (default data/bench/web_filter/<timestamp>)")
+    e.add_argument("--from-decisions", nargs="+", type=Path, metavar="JSONL",
+                   help="build the corpus from the live filter's decision log instead of app.db, "
+                        "e.g. data/logs/web_filter.jsonl data/logs/web_filter.jsonl.1")
     lab = sub.add_parser("label", help="create/update the labels sheet")
     lab.add_argument("--dir", required=True)
     lab.add_argument("--labels", type=Path, default=LABELS_FILE)
