@@ -4,10 +4,12 @@ Open item, filed 2026-10-07. A parking list, not a defect: each entry is a choic
 
 ---
 
-## 5. The Ollama 32k model files
+## 5. The Ollama 32k model files — kept, parked 2026-10-12
 
-- **What:** `models/qwen3.5-9b-32k.Modelfile` and `models/make-qwen3.5-9b-32k.sh` build `qwen3.5:9b-32k`, kept 2026-07-31 as the fallback "until 64k has run a week". The fallback has been `qwen3.5:9b-64k` since, and chat moved to LM Studio on 2026-10-02.
-- **Decided 2026-10-12 (maintainer: "check"):** delete if nothing uses it. Checked in the tree: tests use the tag only as a fixture string; `scripts/bench_agent.py` has a preset `qwen35ol32k` pointing at it (goes with the files). **Still to check on the M1:** sessions pinning the tag (item 42 — a pinned tag Ollama no longer serves does not fall back) and whether Ollama still has it. Commands handed over 2026-10-12.
+- **What:** `models/qwen3.5-9b-32k.Modelfile` and `models/make-qwen3.5-9b-32k.sh` build `qwen3.5:9b-32k` (6.6 GB in Ollama). Chat moved to LM Studio on 2026-10-02; the Ollama fallback is `qwen3.5:9b-64k`.
+- **Checked 2026-10-12:** **72 sessions** pin `qwen3.5:9b-32k` and 3 pin `qwen3.5:4b-32k`, which Ollama no longer serves (those 3 already fail visibly, item 42). Tests use the tag only as a fixture string; `scripts/bench_agent.py` preset `qwen35ol32k` points at it.
+- **Decided (maintainer): keep for now (option A).** Nothing breaks; it costs disk only.
+- **Later option B, if the 6.6 GB is wanted back:** on a backed-up `app.db`, repoint the 75 sessions to `qwen3.5:9b-64k` (`update sessions set model='qwen3.5:9b-64k' where model in ('qwen3.5:9b-32k','qwen3.5:4b-32k')`, with the app stopped and `PRAGMA foreign_keys=ON`), check the count, then delete the two files, the bench preset and `ollama rm qwen3.5:9b-32k`.
 
 ## 6. `qwensetup.md` — trim the history?
 
