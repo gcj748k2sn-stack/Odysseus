@@ -36,6 +36,9 @@ import   Applies a file of `id<TAB>y|n` lines back to labels.csv; labels already
 extract --from-decisions data/logs/web_filter.jsonl
          Builds the corpus from the live filter's own decisions instead: every
          candidate it saw, dropped ones included, with its live score.
+import-ratings
+         Turns the ▲/▼ ratings from the chat's sources box (data/web_ratings.jsonl)
+         into labels for rows already in the sheet.
 pages    Splits recorded web_fetch pages into paragraphs, scores each against
          the user's message, and writes pages.md showing what a budgeted
          paragraph filter would keep and drop. For reading, not for a score.
@@ -921,6 +924,51 @@ def cmd_import(args):
           f"unknown id {counts['unknown_id']}, unreadable label {counts['bad_value']}. Backup: {path.name}.bak")
 
 
+RATINGS_FILE = REPO / "data" / "web_ratings.jsonl"
+
+
+def ratings_as_labels(lines, owner=None):
+    """{label_key(query, url): 'y'|'n'} from the chat's ▲/▼ ratings
+    (data/web_ratings.jsonl, written by src/web_ratings.py); latest click wins,
+    'clear' removes, up = y, down = n."""
+    latest = {}
+    for line in lines:
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(rec, dict) or (owner is not None and rec.get("owner") != owner):
+            continue
+        key = (rec.get("owner"), rec.get("search_id"), rec.get("url"))
+        latest[key] = rec
+    out = {}
+    for rec in latest.values():
+        if rec.get("rating") in ("up", "down") and rec.get("url"):
+            out[label_key(rec.get("query", ""), rec["url"])] = "y" if rec["rating"] == "up" else "n"
+    return out
+
+
+def cmd_import_ratings(args):
+    path = Path(args.labels)
+    rows = read_label_rows(path)
+    labels = ratings_as_labels(Path(args.ratings).read_text(encoding="utf-8").splitlines(), args.owner)
+    by_key = {label_key(r["query"], r["url"]): r for r in rows}
+    applied = kept = missing = 0
+    for key, val in labels.items():
+        row = by_key.get(key)
+        if row is None:
+            missing += 1
+        elif (row.get("label") or "").strip() and not args.overwrite:
+            kept += 1
+        else:
+            row["label"] = val
+            applied += 1
+    shutil.copy2(path, path.with_name(path.name + ".bak"))
+    save_label_rows(path, rows)
+    print(f"{path}: applied {applied}, kept existing {kept}, not in the sheet {missing} "
+          f"(run extract --from-decisions and label first for those). Backup: {path.name}.bak")
+
+
 def cmd_pages(args):
     _, fetches = read_corpus(args.dir)
     pages = [f for f in fetches if f["exit_code"] == 0 and f["text"]][: args.limit]
@@ -992,9 +1040,14 @@ def main(argv=None):
     im.add_argument("file", type=Path)
     im.add_argument("--labels", type=Path, default=LABELS_FILE)
     im.add_argument("--overwrite", action="store_true", help="also replace labels already in the sheet")
+    ir = sub.add_parser("import-ratings", help="turn the chat's source ratings into labels")
+    ir.add_argument("--ratings", type=Path, default=RATINGS_FILE)
+    ir.add_argument("--labels", type=Path, default=LABELS_FILE)
+    ir.add_argument("--owner", help="only this user's ratings")
+    ir.add_argument("--overwrite", action="store_true", help="also replace labels already in the sheet")
     args = ap.parse_args(argv)
     {"extract": cmd_extract, "label": cmd_label, "run": cmd_run, "pages": cmd_pages,
-     "export": cmd_export, "import": cmd_import}[args.cmd](args)
+     "export": cmd_export, "import": cmd_import, "import-ratings": cmd_import_ratings}[args.cmd](args)
 
 
 if __name__ == "__main__":

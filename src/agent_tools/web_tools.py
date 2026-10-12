@@ -75,7 +75,10 @@ class WebSearchTool:
             })
         output = text[:MAX_OUTPUT_CHARS] if len(text) > MAX_OUTPUT_CHARS else text
         if sources:
-            output += "\n\n<!-- SOURCES:" + json.dumps(sources) + " -->"
+            # "-->" inside a title would end the marker early; agent_loop's json.loads
+            # would then fail and leave the whole list, dropped results included,
+            # in the text the model reads. \u003e decodes back to ">".
+            output += "\n\n<!-- SOURCES:" + json.dumps(sources).replace("-->", "--\\u003e") + " -->"
         return {"output": output, "exit_code": 0}
 
 class WebFetchTool:

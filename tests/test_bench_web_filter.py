@@ -458,3 +458,25 @@ def test_the_live_decision_log_reads_back_as_a_corpus(tmp_path, monkeypatch):
     out = tmp_path / "run"
     W.main(["extract", "--from-decisions", str(log), "--out", str(out)])
     assert len(W.read_corpus(out)[0]) == 1
+
+
+def test_chat_ratings_become_labels_end_to_end(tmp_path):
+    """Writer (src/web_ratings.py) → reader (import-ratings): latest click wins,
+    clear removes, up = y, down = n, existing labels kept."""
+    from src import web_ratings as R
+    ratings = tmp_path / "web_ratings.jsonl"
+    base = {"search_id": "s1", "query": "pink oyster"}
+    R.add_rating("cedrik", {**base, "url": "https://junk", "rating": "up"}, path=str(ratings))
+    R.add_rating("cedrik", {**base, "url": "https://junk", "rating": "down"}, path=str(ratings))
+    R.add_rating("cedrik", {**base, "url": "https://good1", "rating": "up"}, path=str(ratings))
+    R.add_rating("cedrik", {**base, "url": "https://good2", "rating": "up"}, path=str(ratings))
+    R.add_rating("cedrik", {**base, "url": "https://good2", "rating": "clear"}, path=str(ratings))
+    R.add_rating("guest", {**base, "url": "https://unl", "rating": "down"}, path=str(ratings))
+    R.add_rating("cedrik", {**base, "query": "never extracted", "url": "https://x", "rating": "up"}, path=str(ratings))
+    sheet = tmp_path / "labels.csv"
+    W.write_label_sheet(_searches(), sheet)
+    W.main(["import-ratings", "--ratings", str(ratings), "--labels", str(sheet), "--owner", "cedrik"])
+    assert W.load_labels(sheet) == {W.label_key("pink oyster", "https://junk"): "n",
+                                    W.label_key("pink oyster", "https://good1"): "y"}
+    W.main(["import-ratings", "--ratings", str(ratings), "--labels", str(sheet)])   # all owners
+    assert W.load_labels(sheet)[W.label_key("pink oyster", "https://unl")] == "n"

@@ -147,8 +147,12 @@ def _write_decision(record, path=None):
         logger.warning("[web-filter] decision log not written: %s: %s", type(e).__name__, e)
 
 
-def filter_results(query, results, settings=None, model=None, limit=None, decision_log=None):
+def filter_results(query, results, settings=None, model=None, limit=None, decision_log=None, info=None):
     """Return (results to use, notice for the model or "").
+
+    `info` (optional dict): its "search_id" and "topic" go into the decision
+    log; the filter adds "scores" ({url: score}) and "dropped" (the candidates
+    not passed on), which annotate_sources() turns into the sources box data.
 
     With the filter on, results are returned best score first, at most `limit`
     of them. Never raises and never returns fewer than min(min_keep, limit,
@@ -176,6 +180,9 @@ def filter_results(query, results, settings=None, model=None, limit=None, decisi
         logger.warning("[web-filter] skipped, results unchanged: %s: %s", type(e).__name__, e)
         return unchanged, ""
     kept = select(scores, threshold, min_keep, limit)
+    if info is not None:
+        info["scores"] = {r.get("url"): round(scores[i], 5) for i, r in enumerate(results) if r.get("url")}
+        info["dropped"] = [results[i] for i in range(len(results)) if i not in set(kept)]
     all_low = not any(s >= threshold for s in scores)
     best = max(scores)
     notice = OFF_TOPIC_NOTICE if best < notice_below else ""
@@ -191,6 +198,7 @@ def filter_results(query, results, settings=None, model=None, limit=None, decisi
         position = {i: n for n, i in enumerate(kept, 1)}
         _write_decision({
             "ts_local": dt.datetime.now().isoformat(timespec="seconds"),
+            "search_id": (info or {}).get("search_id", ""), "topic": (info or {}).get("topic", ""),
             "query": query, "model": cfg.get("web_filter_model") or DEFAULTS["web_filter_model"],
             "threshold": threshold, "min_keep": min_keep, "limit": limit, "ms": ms, "notice": bool(notice),
             "results": [{
@@ -200,3 +208,23 @@ def filter_results(query, results, settings=None, model=None, limit=None, decisi
             } for i, r in enumerate(results)],
         }, decision_log)
     return [results[i] for i in kept], notice
+
+
+def annotate_sources(sources, query, info):
+    """Add search id, query, topic and score to each source for the sources box,
+    then append the filter's dropped candidates flagged `"filtered": true`.
+
+    The list is display data only (the model never sees it; agent_loop strips
+    the SOURCES marker), but from here on `web_sources` holds more than what
+    the model saw: test `filtered` before reading it as such."""
+    info = info or {}
+    scores = info.get("scores") or {}
+    meta = {"search_id": info.get("search_id", ""), "query": query, "topic": info.get("topic", "")}
+    out = []
+    for src in sources:
+        out.append({**src, **meta, "score": scores.get(src.get("url"))})
+    for r in info.get("dropped") or []:
+        if r.get("url"):
+            out.append({"url": r.get("url", ""), "title": r.get("title", ""), "engine": r.get("engine", ""),
+                        **meta, "score": scores.get(r.get("url")), "filtered": True})
+    return out

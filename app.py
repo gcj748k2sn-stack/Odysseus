@@ -825,6 +825,10 @@ app.include_router(setup_compare_routes(session_manager))
 from routes.prefs_routes import setup_prefs_routes
 app.include_router(setup_prefs_routes())
 
+# Fork: research topics and web source ratings (notes item 71)
+from routes.web_feedback_routes import setup_web_feedback_routes
+app.include_router(setup_web_feedback_routes())
+
 # Backup (export/import user data)
 from routes.backup_routes import setup_backup_routes
 app.include_router(setup_backup_routes(memory_manager, preset_manager, skills_manager))

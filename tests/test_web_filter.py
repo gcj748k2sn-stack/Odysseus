@@ -152,8 +152,11 @@ def test_settings_from_the_settings_file_are_merged_over_the_defaults(monkeypatc
 
 @pytest.fixture(autouse=True)
 def _no_decision_log(monkeypatch, tmp_path):
-    # Keep the decision log out of the suite's data dir unless a test asks for it.
+    # Keep the decision log out of the suite's data dir unless a test asks for it,
+    # and keep topic tagging off the real embedding model.
     monkeypatch.setattr(F, "_decision_log_path", lambda: str(tmp_path / "web_filter.jsonl"))
+    from src import research_topics as T
+    monkeypatch.setattr(T, "assign_topic", lambda query, *a, **k: ("finance" if "gold" in query else "other", 0.9))
 
 
 @pytest.fixture
@@ -185,8 +188,12 @@ def test_enabled_filter_removes_junk_from_sources_fetches_and_output(search_env,
     monkeypatch.setattr(F, "_settings", lambda: dict(ON))
     monkeypatch.setattr(F, "_load_model", lambda name: Fake())
     text, sources = core.comprehensive_web_search("pink oyster mushroom", max_pages=5, return_sources=True)
-    urls = {s["url"] for s in sources}
+    urls = {s["url"] for s in sources if not s.get("filtered")}
     assert urls == {"https://grocycle.com/pink", "https://www.out-grow.com/guide"}
+    dropped = {s["url"] for s in sources if s.get("filtered")}
+    assert dropped == {r["url"] for r in RESULTS} - urls
+    assert len({s["search_id"] for s in sources}) == 1 and all(s["query"] == "pink oyster mushroom" for s in sources)
+    assert all(isinstance(s["score"], float) for s in sources)
     assert set(fetched) == urls
     assert "victoriassecret" not in text and "Pink (singer)" not in text
     assert F.OFF_TOPIC_NOTICE not in text
@@ -198,7 +205,7 @@ def test_all_junk_search_reaches_the_model_with_the_notice(search_env, monkeypat
     monkeypatch.setattr(F, "_settings", lambda: {**ON, "web_filter_notice_below": 0.1})
     monkeypatch.setattr(F, "_load_model", lambda name: Fake())
     text, sources = core.comprehensive_web_search("pink oyster mushroom", max_pages=5, return_sources=True)
-    assert len(sources) == 2
+    assert len([s for s in sources if not s.get("filtered")]) == 2
     summary = text[text.index("SEARCH RESULTS SUMMARY:"):]
     assert F.OFF_TOPIC_NOTICE in summary
 
@@ -294,7 +301,8 @@ def test_comprehensive_search_asks_for_more_candidates_only_while_on(search_env,
     _, sources_on = core.comprehensive_web_search("pink oyster mushroom", max_pages=5, return_sources=True)
     assert asked == [10, 15]                      # result count stub is 10
     assert len(sources_off) == len(MORE)          # provider returned 8 < 10: nothing cut
-    assert {s["url"] for s in sources_on} == {r["url"] for r in MORE if "oyster mushroom" in _r_text(r)}
+    assert not any(s.get("filtered") for s in sources_off)
+    assert {s["url"] for s in sources_on if not s.get("filtered")} == {r["url"] for r in MORE if "oyster mushroom" in _r_text(r)}
 
 
 def _r_text(r):
@@ -308,4 +316,32 @@ def test_comprehensive_search_passes_on_no_more_than_the_normal_result_count(sea
     monkeypatch.setattr(F, "_load_model", lambda name: Fake())
     monkeypatch.setattr(F, "_settings", lambda: {**ON, "web_filter_candidates": 15})
     _, sources = core.comprehensive_web_search("pink oyster mushroom", max_pages=3, return_sources=True)
-    assert len(sources) == 3                      # 4 relevant candidates, 3 shown
+    assert len([s for s in sources if not s.get("filtered")]) == 3   # 4 relevant candidates, 3 shown
+
+
+def test_dropped_results_never_reach_the_model_text(search_env, monkeypatch):
+    """The dropped candidates ride in the sources list (display data) only."""
+    core, fetched = search_env
+    monkeypatch.setattr(F, "_settings", lambda: dict(ON))
+    monkeypatch.setattr(F, "_load_model", lambda name: Fake())
+    text, sources = core.comprehensive_web_search("pink oyster mushroom", max_pages=5, return_sources=True)
+    assert any(s.get("filtered") for s in sources)
+    for s in sources:
+        if s.get("filtered"):
+            assert s["url"] not in text and s["title"] not in text
+
+
+def test_agent_tool_marker_survives_a_title_containing_the_comment_end(monkeypatch):
+    """A '-->' in a title must not end the SOURCES marker early: agent_loop would
+    fail to strip it and the model would read the whole list."""
+    import asyncio
+    import json as _json
+    import src.search as S
+    from src.agent_tools.web_tools import WebSearchTool
+    srcs = [{"url": "https://a.example/x", "title": "Arrows --> everywhere", "filtered": True}]
+    monkeypatch.setattr(S, "comprehensive_web_search", lambda *a, **k: ("body text", srcs))
+    out = asyncio.run(WebSearchTool().execute("arrows", {}))["output"]
+    i = out.find("<!-- SOURCES:")
+    end = out.find(" -->", i)                          # agent_loop's own search
+    assert _json.loads(out[i + len("<!-- SOURCES:"):end]) == srcs
+    assert out[:i].rstrip() == "body text"

@@ -276,7 +276,8 @@ def comprehensive_web_search(
     # Use configured result count (at least max_pages for content fetching)
     fetch_count = max(result_count, max_pages)
     # Fork: relevance filter, off unless enabled (src/web_filter.py).
-    from src.web_filter import candidate_count, filter_results
+    from src.web_filter import annotate_sources, candidate_count, filter_results
+    from src.research_topics import tag_search
     shown_count, fetch_count = fetch_count, candidate_count(fetch_count)
 
     provider_chain = _build_provider_chain(search_provider)
@@ -319,7 +320,9 @@ def comprehensive_web_search(
         return (msg, []) if return_sources else msg
 
     search_results = rank_search_results(query, search_results)
-    search_results, relevance_notice = filter_results(query, search_results, limit=shown_count)
+    search_id, topic = tag_search(query)
+    filter_info = {"search_id": search_id, "topic": topic}
+    search_results, relevance_notice = filter_results(query, search_results, limit=shown_count, info=filter_info)
 
     # URL filter helper
     def url_passes_filters(url: str) -> bool:
@@ -361,6 +364,7 @@ def comprehensive_web_search(
         {"url": r.get("url", ""), "title": r.get("title", ""), "engine": r.get("engine", "")}
         for r in search_results if r.get("url")
     ]
+    _source_list = annotate_sources(_source_list, query, filter_info)
 
     # Map each URL to its [i] number in the sources list so fetched content
     # blocks can be labeled with the SAME index the model cites.
