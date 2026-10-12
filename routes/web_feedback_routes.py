@@ -8,7 +8,7 @@ GET  /api/web-filter/settings  the relevance filter's settings (any signed-in us
 PUT  /api/web-filter/settings  change them (admin); written into data/settings.json
 
 Ratings are per user; topics are global (the search layer has no user).
-Storage: src/research_topics.py, src/web_ratings.py. Notes item 71.
+Storage: src/research_topics.py, src/web_ratings.py. Notes entry "A relevance filter for web results".
 """
 import json
 import os

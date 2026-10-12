@@ -825,7 +825,7 @@ app.include_router(setup_compare_routes(session_manager))
 from routes.prefs_routes import setup_prefs_routes
 app.include_router(setup_prefs_routes())
 
-# Fork: research topics and web source ratings (notes item 71)
+# Fork: research topics and web source ratings (notes entry "A relevance filter for web results")
 from routes.web_feedback_routes import setup_web_feedback_routes
 app.include_router(setup_web_feedback_routes())
 

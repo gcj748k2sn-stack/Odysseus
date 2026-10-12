@@ -1,4 +1,4 @@
-"""Research topics, per-source ratings and their API (fork: notes item 71).
+"""Research topics, per-source ratings and their API (fork: notes entry "A relevance filter for web results").
 
 Topics are global and admin-edited; ratings are per user and must never leak
 between users. Topic assignment never raises: a broken embedding model means

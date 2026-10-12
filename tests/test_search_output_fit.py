@@ -1,5 +1,5 @@
 """src/search_output_fit.py: a web_search result that is too long loses page
-text, never its closing instructions (fork; notes item 71).
+text, never its closing instructions (fork; notes entry "A relevance filter for web results").
 
 Built against the real writer (comprehensive_web_search with providers and
 fetches stubbed), because the fitter finds head, pages and tail by the

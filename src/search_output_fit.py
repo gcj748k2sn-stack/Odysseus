@@ -6,7 +6,7 @@ fetched page blocks "[CONTENT n] From: …" (middle), and an end marker plus
 "IMPORTANT INSTRUCTIONS … answer the user's question" (tail). A plain
 `text[:limit]` cut the tail off whenever the pages were long, so the model got
 a result that ended mid-sentence with no instruction to answer the question —
-and a 9B model then "completed" a snippet instead of answering (notes item 71,
+and a 9B model then "completed" a snippet instead of answering (notes entry "A relevance filter for web results",
 "Search output cut at 10,000 characters").
 
 Here the page blocks are shortened evenly at line or sentence boundaries and

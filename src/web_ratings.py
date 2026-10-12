@@ -4,7 +4,7 @@ The sources box under an answer lets the user mark each result useful (up) or
 not (down). Each click appends one JSON line to data/web_ratings.jsonl; the
 latest line per (owner, search id, url) wins, and "clear" removes the rating.
 Ratings feed the replay (scripts/bench_web_filter.py import-ratings) as labels;
-they do not change the live filter. Notes item 71 has the design.
+they do not change the live filter. The notes entry "A relevance filter for web results" has the design.
 """
 import datetime as dt
 import json

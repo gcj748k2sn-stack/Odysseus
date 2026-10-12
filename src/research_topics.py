@@ -7,7 +7,7 @@ when nothing reaches `min_similarity`. Stored in data/research_topics.json;
 global, edited by an admin, readable by every user — the search layer has no
 user, so per-user topics could not be applied there.
 
-Notes item 71 ("A relevance filter for web results") has the design.
+The notes entry "A relevance filter for web results" has the design.
 """
 import json
 import logging
