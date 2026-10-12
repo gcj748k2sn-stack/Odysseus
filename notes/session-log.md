@@ -20,6 +20,7 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🆕 `scripts/bench_web_filter.py` (extract → label → run → pages) + `tests/test_bench_web_filter.py` (22 passed in a Linux venv; 9 of 10 mutations caught). No change to Odysseus itself.
 - Shown with constructed inputs: `rank_search_results` ranks *"Pink (singer) – Wikipedia"* above a pink-oyster growing guide (.org bonus, long-snippet bonus, no stemming).
 - **Unverified:** the reranker path (no model download in the sandbox). **Owed on the M1:** the test file, `extract`, labels, `run`; steps in [items/71-web-relevance-filter.md](items/71-web-relevance-filter.md).
+- 🔧 Later the same day: corpus replayed on the M1 with every result labelled (y=522, n=366); the multilingual reranker on the search query drops 71–120 of 366 junk results for 0–3 relevant ones. **Built** `src/web_filter.py` + one hook in `services/search/core.py`, **off by default**; `tests/test_web_filter.py` (14), 8 mutations caught, 426 existing search tests pass. **Owed:** enable on the M1 and read the `[web-filter]` lines (steps in item 71).
 
 ---
 

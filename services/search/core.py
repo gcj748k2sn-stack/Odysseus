@@ -316,6 +316,9 @@ def comprehensive_web_search(
         return (msg, []) if return_sources else msg
 
     search_results = rank_search_results(query, search_results)
+    # Fork: relevance filter, off unless enabled (src/web_filter.py).
+    from src.web_filter import filter_results
+    search_results, relevance_notice = filter_results(query, search_results)
 
     # URL filter helper
     def url_passes_filters(url: str) -> bool:
@@ -408,6 +411,8 @@ def comprehensive_web_search(
 
     output_parts.append("SEARCH RESULTS SUMMARY:")
     output_parts.append("-" * 50)
+    if relevance_notice:
+        output_parts.append(relevance_notice)
     for i, result in enumerate(search_results, 1):
         output_parts.append(f"\n[{i}] {result['title']}")
         output_parts.append(f"    URL: {result['url']}")

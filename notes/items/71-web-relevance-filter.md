@@ -6,7 +6,7 @@ Open item. Its row in the [todo.md](../todo.md) index carries the current status
 
 **Idea (maintainer, 2026-10-12):** a small "decision" model between web retrieval and the thinking model (Qwen 3.5 / Bonsai 2) that decides what reaches it. **Proposed shape:** a cross-encoder reranker (fastembed, already a dependency), not a generative model. It scores (question, passage) pairs in milliseconds and does not compete with the chat model for LM Studio. Two levels: (1) the search result list (title/URL/snippet), where *"Web search derails on ambiguous common nouns"* and *"today/latest routes web_search to the news category"* happen; (2) paragraphs of fetched pages, where most of the context, and so most of the prefill time, goes.
 
-**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (33 tests).
+**Built 2026-10-12, off by default:** `src/web_filter.py`, called once in `services/search/core.py` after `rank_search_results`; tests `tests/test_web_filter.py` (14). The offline replay that chose its settings: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (33 tests).
 
 ## How results are ranked today
 
@@ -177,6 +177,16 @@ Multilingual reranker (`jinaai/jina-reranker-v2-base-multilingual`), fail-open a
 - **Ceiling:** 24 searches have only junk; fail-open keeps 3 of each, so junk in the top 5 never falls below ~175 for any scorer. Those need the "results look off-topic" notice, not a stricter threshold.
 - **Domains (labelled):** `en.wikipedia.org` 4 y / 32 n, `youtube.com` 0/19, `economictimes.indiatimes.com` 0/12, `victoriassecret.com` 0/29, `oyster.tfl.gov.uk` 0/10, `oyster.com` 0/7, `instagram.com` 0/6, `zhihu.com` 0/5, `seekingalpha.com` 0/5. Candidates for negative priors.
 - **Proposed shape for Odysseus (not built):** rerank the result list against the search query with the multilingual reranker; drop below ~0.03–0.04; keep at least 3; when every result scores below the threshold, keep them and tell the model they look off-topic. Off by default, every decision logged.
+
+## Built into Odysseus (2026-10-12, off by default)
+
+- **What it does:** after `rank_search_results`, scores each result (title, snippet, domain) against the search query with `jinaai/jina-reranker-v2-base-multilingual`. It drops results below 0.035 (between the 0.0258 and 0.0409 rows above) but keeps at least 3, so the fetch slots and the model's list go to what is left. When nothing scores above the threshold, the results are kept and one line goes into the model's *SEARCH RESULTS SUMMARY*: "Relevance check: none of these results scored as relevant…". It covers every `comprehensive_web_search` caller: agent `web_search`, chat-mode web search, deep research and the search route.
+- **Settings:** keys in `data/settings.json`, merged over the module's `DEFAULTS`: `web_filter_enabled` (false), `web_filter_threshold` (0.035), `web_filter_min_keep` (3), `web_filter_model`. They aren't in `DEFAULT_SETTINGS`, so the admin API can't set them, but a UI settings save keeps them (`set_settings` starts from the loaded file). Picked up within 2 s (settings cache), no restart.
+- **Fail-open:** disabled, empty query, missing fastembed, failed model download, model error or a wrong score count all return the results unchanged and log `[web-filter] skipped …`.
+- **Log line per search:** `[web-filter] query=… kept=N/M threshold=… all_low=… ms=… dropped=[domain:score, …]`.
+- **Tests:** `tests/test_web_filter.py` (14, of which 3 run the real `comprehensive_web_search` with providers and fetches stubbed). Eight mutations, all caught: on by default, errors propagate, no min_keep, notice never set, notice always set, result ignored at the call site, notice not written, keeps everything. The 41 existing search test files pass unchanged (426 tests, Linux venv, Python 3.13).
+- **Unverified (sandbox can't download the model):** the real reranker inside Odysseus, its load time on the first search and its memory next to Qwen/Bonsai. Owed on the M1: enable, run three searches including one ambiguous one, read the `[web-filter]` lines and the `ms=` figure.
+- **Not done, deliberately:** domain priors (no live data on their effect yet), and the replay's `<search query>` placeholder bug — that's a separate item.
 
 ## Verification
 
