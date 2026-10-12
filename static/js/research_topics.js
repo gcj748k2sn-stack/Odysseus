@@ -9,6 +9,9 @@
 //                 log) and the topic-matching similarity.
 // Reads GET /api/research-topics and /api/web-filter/settings; saving is admin only.
 
+import { makeWindowDraggable } from './windowDrag.js';
+import { snapModalToZone } from './tileManager.js';
+
 function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -94,11 +97,11 @@ function topicsPanel() {
     + '</div></div><span class="admin-toggle-sub rt-status" style="display:block;margin-top:6px"></span></div>';
 }
 
-function settingRow(title, sub, control, dependent) {
-  return '<div class="admin-card' + (dependent ? ' rt-dep' : '') + '">'
+function settingRow(title, sub, control) {
+  return '<div class="admin-card">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">'
     + '<h2 style="margin:0;display:inline-flex;align-items:center;gap:6px">' + esc(title) + '</h2>' + control + '</div>'
-    + '<span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">' + sub + '</span></div>';
+    + '<span class="admin-toggle-sub rt-sub" style="display:block;margin-top:6px;opacity:0.6">' + sub + '</span></div>';
 }
 
 function slider(key, value, min, max, step, fmt) {
@@ -130,32 +133,28 @@ function settingsPanel() {
     + settingRow('Cut-off',
       'Results scoring below this are dropped. Measured on 888 labelled results: 0.026–0.041 dropped a fifth to a third '
       + 'of the junk and almost nothing relevant.',
-      slider('web_filter_threshold', f.web_filter_threshold, 0.005, 0.2, 0.005, FMT.web_filter_threshold), true)
+      slider('web_filter_threshold', f.web_filter_threshold, 0.005, 0.2, 0.005, FMT.web_filter_threshold))
     + settingRow('Candidates per search',
       'How many results to request and score; the best of them (up to the usual count) reach the model. More costs time.',
-      slider('web_filter_candidates', f.web_filter_candidates, 5, 30, 1, FMT.web_filter_candidates), true)
+      slider('web_filter_candidates', f.web_filter_candidates, 5, 30, 1, FMT.web_filter_candidates))
     + settingRow('Always keep',
       'Never pass on fewer results than this, even if they score below the cut-off.',
-      slider('web_filter_min_keep', f.web_filter_min_keep, 1, 10, 1, FMT.web_filter_min_keep), true)
+      slider('web_filter_min_keep', f.web_filter_min_keep, 1, 10, 1, FMT.web_filter_min_keep))
     + settingRow('Decision log',
       'Write every search\'s candidates, scores and outcome to data/logs/web_filter.jsonl, for the replay and ratings.',
-      sw('web_filter_decision_log', f.web_filter_decision_log), true)
+      sw('web_filter_decision_log', f.web_filter_decision_log))
     + settingRow('Topic matching',
       'How similar a search must be to a topic\'s examples to be assigned to it; below this it goes to "other".',
-      slider('min_similarity', _data.min_similarity, 0.1, 0.9, 0.05, FMT.min_similarity), true)
-    + '<div class="admin-card" style="display:flex;align-items:center;gap:8px">'
-    + '<button type="button" class="memory-toolbar-btn rt-save-settings">Save settings</button>'
-    + '<span class="admin-toggle-sub rt-status" style="margin:0"></span></div>';
+      slider('min_similarity', _data.min_similarity, 0.1, 0.9, 0.05, FMT.min_similarity))
+    + '<span class="admin-toggle-sub rt-status" style="display:block"></span>';
 }
 
-// Like the Brain panel's settings: options under a switched-off parent are
-// greyed out and not clickable.
+// Like Brain's settings: a switched-off setting greys out its own
+// description; the other settings stay as they are.
 function applyDim() {
-  const filterOn = _modal.querySelector('.rt-flag[data-key="web_filter_enabled"]');
-  _modal.querySelectorAll('.rt-dep').forEach(card => {
-    const off = filterOn && !filterOn.checked;
-    card.style.opacity = off ? '0.35' : '';
-    card.style.pointerEvents = off ? 'none' : '';
+  _modal.querySelectorAll('.rt-flag').forEach(sw => {
+    const sub = sw.closest('.admin-card')?.querySelector('.rt-sub');
+    if (sub) sub.style.opacity = sw.checked ? '0.6' : '0.35';
   });
 }
 
@@ -259,7 +258,6 @@ function onClick(ev) {
     else topics[idx] = { ...topics[idx], name, examples };
     return saveTopics(topics);
   }
-  if (t.closest('.rt-save-settings')) return saveSettings();
 }
 
 function onChange(ev) {
@@ -275,6 +273,9 @@ function onChange(ev) {
     saveTopics(plainTopics(), t.checked);
   } else if (t.classList.contains('rt-flag')) {
     applyDim();
+    saveSetting(t.dataset.key, t.checked);
+  } else if (t.classList.contains('rt-range')) {
+    saveSetting(t.dataset.key, Number(t.value));
   }
 }
 
@@ -285,24 +286,20 @@ function onInput(ev) {
   if (label) label.textContent = (FMT[t.dataset.key] || String)(t.value);
 }
 
-async function saveSettings() {
-  const body = {};
-  _modal.querySelectorAll('.rt-flag').forEach(el => { body[el.dataset.key] = el.checked; });
-  let minSim = _data.min_similarity;
-  _modal.querySelectorAll('.rt-range').forEach(el => {
-    if (el.dataset.key === 'min_similarity') minSim = Number(el.value);
-    else body[el.dataset.key] = Number(el.value);
-  });
-  status('Saving…');
+// Settings save as soon as they change (like Brain's settings): switches on
+// click, sliders when released.
+async function saveSetting(key, value) {
+  status('');
   try {
-    _filter = await put('/api/web-filter/settings', body);
-    if (minSim !== _data.min_similarity) {
-      await put('/api/research-topics', { enabled: _data.enabled !== false, min_similarity: minSim, topics: plainTopics() });
+    if (key === 'min_similarity') {
+      await put('/api/research-topics', { enabled: _data.enabled !== false, min_similarity: value, topics: plainTopics() });
+      _data.min_similarity = value;
+    } else {
+      _filter = await put('/api/web-filter/settings', { [key]: value });
     }
-    await load();
-    status('Saved.');
   } catch (e) {
     status(e.message, true);
+    await load();
   }
 }
 
@@ -343,6 +340,21 @@ function build() {
     + '<div class="memory-tab-panel" data-rt-panel="topics"></div>'
     + '<div class="memory-tab-panel hidden" data-rt-panel="settings"></div>'
     + '</div></div>';
+  const content = _modal.querySelector('.modal-content');
+  const header = _modal.querySelector('.modal-header');
+  // Draggable and snap-to-fullscreen like the Brain panel (memory.js).
+  makeWindowDraggable(_modal, {
+    content, header,
+    skipSelector: 'button, input, select, label',
+    enableDock: true,
+    enableLeftDock: true,
+    onEnterFullscreen: () => snapModalToZone(_modal, {
+      name: 'fullscreen',
+      rect: { left: 0, top: 0,
+              width: window.innerWidth || document.documentElement.clientWidth || 0,
+              height: window.innerHeight || document.documentElement.clientHeight || 0 },
+    }),
+  });
   _modal.addEventListener('click', onClick);
   _modal.addEventListener('change', onChange);
   _modal.addEventListener('input', onInput);
