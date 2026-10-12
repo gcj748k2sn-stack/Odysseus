@@ -160,6 +160,8 @@ Worth having, but as a prior on top of the content score, not as the filter. Aut
 
 ## Fourth run: every result labelled (2026-10-12, same corpus, y=522, n=366)
 
+**Who labelled:** 258 results by the maintainer, 630 by Claude (2026-10-12, at the maintainer's request; recorded in item 71 with the maintainer's agreement). The numbers below therefore partly measure agreement with Claude's judgement; a spot-check of 20–30 of Claude's labels is owed.
+
 Multilingual reranker (`jinaai/jina-reranker-v2-base-multilingual`), fail-open at 3.
 
 | scorer | threshold | junk dropped | relevant dropped | fail-open | junk in top 5 after |
