@@ -6,6 +6,8 @@
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh bonsai qwen     # phases in order
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh qwen-full bonsai-check   # ~4–5 h
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh full          # qwen-full bonsai-full, ~6–8 h
+#   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh web           # research suite: Qwen LM Studio, Qwen Ollama, Bonsai
+#   (WEB_RUNS=2 for two runs per backend in the web phase; default 1)
 #   BENCH_POWER=1 ...bench_chain.sh full      also records power in watts (asks for the Mac password once)
 #
 # While it runs, scripts/bench_sysmon.py samples CPU, GPU, memory, swap, thermal state and the
@@ -32,8 +34,8 @@ PHASES="$*"
 [ "$PHASES" = "--with-qwen" ] && PHASES="bonsai qwen"
 [ "$PHASES" = "full" ] && PHASES="qwen-full bonsai-full"
 for p in $PHASES; do
-  case "$p" in bonsai|bonsai-long|bonsai-check|bonsai-full|qwen|qwen-full) ;;
-    *) echo "unknown phase: $p (full, bonsai, bonsai-long, bonsai-check, bonsai-full, qwen, qwen-full)"; exit 2;; esac
+  case "$p" in bonsai|bonsai-long|bonsai-check|bonsai-full|qwen|qwen-full|web) ;;
+    *) echo "unknown phase: $p (full, bonsai, bonsai-long, bonsai-check, bonsai-full, qwen, qwen-full, web)"; exit 2;; esac
 done
 
 LMS=$(command -v lms || echo "$HOME/.lmstudio/bin/lms")
@@ -41,6 +43,9 @@ BONSAI_START="$HOME/BonsaiDemo/start_bonsai2.sh"
 BONSAI_URL="http://127.0.0.1:8090"
 LMSTUDIO_URL="http://127.0.0.1:1234"
 QWEN_MODEL="qwen/qwen3.5-9b"
+OLLAMA=$(command -v ollama || echo /usr/local/bin/ollama)
+OLLAMA_URL="http://127.0.0.1:11434"
+OLLAMA_MODEL="qwen3.5:9b-64k"   # bench_agent.py preset qwen35ol64k, Odysseus's Ollama fallback
 
 if [ -z "${ODYSSEUS_PASSWORD:-}" ]; then
   read -r -s -p "Odysseus password: " ODYSSEUS_PASSWORD; echo
@@ -81,9 +86,20 @@ stop_bonsai() {                # the server, not a probe; wait until the port is
   while curl -sf "$BONSAI_URL/v1/models" > /dev/null 2>&1 && [ $i -lt 10 ]; do sleep 3; i=$((i + 1)); done
 }
 
+stop_ollama() { "$OLLAMA" stop "$OLLAMA_MODEL" > /dev/null 2>&1; sleep 3; }
+
+start_ollama() {              # the server may already run (the app); the model loads on a first request
+  stop_bonsai
+  stop_lmstudio
+  curl -sf "$OLLAMA_URL/api/tags" > /dev/null 2>&1 || { nohup "$OLLAMA" serve > /dev/null 2>&1 & }
+  wait_for "$OLLAMA_URL" 120 || return 1
+  curl -sf "$OLLAMA_URL/api/generate" -d "{\"model\":\"$OLLAMA_MODEL\",\"keep_alive\":\"30m\"}" > /dev/null 2>&1
+}
+
 start_bonsai() {               # start_bonsai [extra llama-server flags, appended last so they win]
   stop_bonsai                 # a Bonsai left running would mean two 27B models in 16 GB
   stop_lmstudio
+  stop_ollama
   mkdir -p "$HOME/BonsaiDemo/logs"
   nohup "$BONSAI_START" "$@" >> "$HOME/BonsaiDemo/logs/bonsai-$STAMP-chain.log" 2>&1 &
   wait_for "$BONSAI_URL" 300
@@ -91,6 +107,7 @@ start_bonsai() {               # start_bonsai [extra llama-server flags, appende
 
 start_qwen() {
   stop_bonsai
+  stop_ollama
   "$LMS" server start > /dev/null 2>&1
   "$LMS" unload --all > /dev/null 2>&1
   "$LMS" load "$QWEN_MODEL" > /dev/null 2>&1
@@ -207,9 +224,9 @@ qwen_full_phase() {
   note "── Qwen full phase"
   if ! start_qwen; then note "  ✗ LM Studio / Qwen did not come up in 5 min — phase skipped"; return; fi
   note "  Qwen up"
-  step qwen-agent-full       bench --target qwen35 --runs 2
-  step qwen-knowledge-full   bench --target qwen35 --suite knowledge --runs 2
-  step qwen-research         bench --target qwen35 --suite research --runs 2
+  step qwen-agent-full       bench --target qwen35lm --runs 2
+  step qwen-knowledge-full   bench --target qwen35lm --suite knowledge --runs 2
+  step qwen-research         bench --target qwen35lm --suite research --runs 2
   stop_lmstudio
   note "  LM Studio stopped"
   copy_logs
@@ -219,8 +236,32 @@ qwen_phase() {
   note "── Qwen phase"
   if ! start_qwen; then note "  ✗ LM Studio / Qwen did not come up in 5 min — phase skipped"; return; fi
   note "  Qwen up"
-  step qwen-knowledge-full   bench --target qwen35 --suite knowledge --runs 2
-  step qwen-research         bench --target qwen35 --suite research --runs 2
+  step qwen-knowledge-full   bench --target qwen35lm --suite knowledge --runs 2
+  step qwen-research         bench --target qwen35lm --suite research --runs 2
+}
+
+web_phase() {
+  # The research suite (5 web tasks) on each backend in turn, slowest last, so a
+  # long Bonsai run cannot cost the other two. A backend that does not come up is skipped.
+  local runs="${WEB_RUNS:-1}"
+  note "── Web phase (research suite ×$runs per backend)"
+  if start_qwen; then
+    note "  Qwen up (LM Studio)"
+    step qwen-lms-research bench --target qwen35lm --suite research --runs "$runs"
+  else note "  ✗ LM Studio / Qwen did not come up in 5 min — skipped"; fi
+  stop_lmstudio
+  if start_ollama; then
+    note "  Qwen up (Ollama, $OLLAMA_MODEL)"
+    step qwen-ollama-research bench --target qwen35ol64k --suite research --runs "$runs"
+  else note "  ✗ Ollama or $OLLAMA_MODEL not available within 2 min — skipped"; fi
+  stop_ollama
+  if start_bonsai; then
+    note "  Bonsai up (medium)"
+    step bonsai-research bench --target bonsai2 --suite research --runs "$runs"
+  else note "  ✗ Bonsai server did not come up in 5 min — skipped"; fi
+  stop_bonsai
+  note "  web phase done, model servers stopped"
+  copy_logs
 }
 
 note "chain started: $PHASES (logs: $LOGDIR)"
@@ -234,6 +275,7 @@ for p in $PHASES; do
     bonsai-full) bonsai_full_phase ;;
     qwen) qwen_phase ;;
     qwen-full) qwen_full_phase ;;
+    web) web_phase ;;
   esac
 done
 note "chain finished"

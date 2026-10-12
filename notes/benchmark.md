@@ -20,7 +20,7 @@ The steps, in order: `cleanup` removes leftovers from earlier runs, `preflight` 
 - **Reasoning effort is part of the run name (since 2026-10-09):** preflight reads the llama-server's command line (`ps`) and names the run `bonsai2@medium`, `bonsai2@xhigh`, …; with `--preset` the preset's own effort wins (Odysseus sends it on every request), marked *from the preset*. `default` = no flag, i.e. the template's own default (`xhigh` for Bonsai 2). The report labels older runs from `meta.json`; the four valid Bonsai runs before this were backfilled as `medium` (`start_bonsai2.sh` since 2026-10-05 22:41). A resume at a different effort stops instead of mixing. Bonsai 2's template accepts exactly `xhigh` (default) / `medium` / `low` and **raises on anything else**; PrismML calls `low` unsupported (*"behave close to `xhigh`"*), measured here as no different from `medium`.
 - **An approval answer carries the message's `allow_bash` / `allow_web_search`** (since 2026-10-09), as the browser does. Earlier runs re-read the whole prompt after most approval cards (~11 min of a Bonsai full run), so compare time on approval tasks only between runs on the same side of that fix.
 - Asks for the Odysseus password unless `ODYSSEUS_PASSWORD` is set. Odysseus runs on **:7860** (7000 is macOS AirPlay).
-- Targets: `bonsai2` (endpoint `ed1cd41c`, llama.cpp :8090) and `qwen35` (`a5179555`, LM Studio :1234), or `NAME=ENDPOINT_ID:MODEL_ID`.
+- Targets: `bonsai2` (endpoint `ed1cd41c`, llama.cpp :8090) `qwen35lm` (`a5179555`, LM Studio :1234), `qwen35ol64k` (`f9264875`, Ollama, `qwen3.5:9b-64k`), or `NAME=ENDPOINT_ID:MODEL_ID` (`bench_agent.py targets` lists them). The preset was `qwen35` until `191e474` (2026-10-12) renamed it; `bench_chain.sh` kept the old name, so its Qwen steps would have exited at once until 2026-10-12 evening.
 - An interrupted run continues with `--resume <run dir>`. Results go to `data/bench/agent/<run-id>/` (gitignored); task fixtures go to `~/odysseus-bench/<run-id>/` (`BENCH_WS_ROOT` overrides) and can be deleted any time.
 - Time: Qwen ~43 s per task, Bonsai 2 ~110–150 s; full suite ×2 ≈ 30 min (Qwen) vs ≈ 1 h 45 min (Bonsai, measured 2026-10-09 before the approval fix).
 - **Switched-off tools (since 2026-10-08):** a task whose every usable tool is switched off in Settings → Agent Tools is skipped, not failed (`calendar_create` while `manage_calendar` is off). Preflight prints `⏭ skipping …`; the report shows *⏭ tool off*. Earlier runs include it, so their full-suite totals are out of 18 per run (36 at `--runs 2`) and new ones out of 17 (34); compare per task, or on the report's *only tasks every model ran* row.
@@ -49,17 +49,17 @@ lms unload --all && lms server stop
 
 **Quick check, Qwen** — 8 tasks once, ~6 min:
 ```
-cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --quick --yes
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35lm --quick --yes
 ```
 
 **Short run, Qwen** — 8 tasks ×2, ~12 min:
 ```
-cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --quick --runs 2 --yes
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35lm --quick --runs 2 --yes
 ```
 
 **Full run, Qwen** — 17 tasks ×2, ~30 min:
 ```
-cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --runs 2 --yes
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35lm --runs 2 --yes
 ```
 
 **Short run, Bonsai 2** — 8 tasks ×2, ~55 min:
@@ -74,17 +74,17 @@ cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinat
 
 **With the custom preset** (currently temp 1.0 / 8192 / effort medium — check `data/presets.json`) — add `--preset custom` to any `run`; the run is named `qwen35+custom` / `bonsai2+custom`. It stops at once if the preset is disabled (the chip's × disables it):
 ```
-cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --quick --runs 2 --preset custom --yes
+cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35lm --quick --runs 2 --preset custom --yes
 ```
 
 **A few tasks only** — task ids from `python3 scripts/bench_agent.py tasks`:
 ```
-cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --tasks calendar_create,json_output --runs 2 --yes
+cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35lm --tasks calendar_create,json_output --runs 2 --yes
 ```
 
 **Continue an interrupted run** — same target (and preset) as the original. Since 2026-10-09 the resume keeps the original run's `--runs`; before that it fell back to 1 and silently skipped every missing r2:
 ```
-cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --preset custom --resume data/bench/agent/20261008-144530-qwen35+custom --yes
+cd /Users/cedrik/odysseus && caffeinate -i python3 scripts/bench_agent.py run --target qwen35lm --preset custom --resume data/bench/agent/20261008-144530-qwen35+custom --yes
 ```
 
 **Preflight only** — what would distort a run, without running anything:
@@ -118,14 +118,14 @@ What a model **knows and can work out** in three topics, next to the agent suite
 
 **Quick knowledge run** (one model server up, as for the agent suite):
 ```
-cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --suite knowledge --quick --runs 2 --yes
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35lm --suite knowledge --quick --runs 2 --yes
 ```
 ```
 cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target bonsai2 --suite knowledge --quick --runs 2 --yes
 ```
 **Full knowledge run** — replace `--quick` by nothing:
 ```
-cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35 --suite knowledge --runs 2 --yes
+cd /Users/cedrik/odysseus && python3 scripts/bench_agent.py cleanup && caffeinate -i python3 scripts/bench_agent.py run --target qwen35lm --suite knowledge --runs 2 --yes
 ```
 **Report over all knowledge runs:**
 ```
@@ -143,6 +143,7 @@ Phases, run in the order given (`bench_chain.sh bonsai-long qwen`):
 - `qwen-full`: agent full ×2 → knowledge full ×2 → research ×2, then LM Studio is stopped.
 - `bonsai-check`: research ×1 at medium, then Bonsai restarted with `--chat-template-kwargs '{"enable_thinking":false}'` (runs labelled `bonsai2@nothink`) → knowledge full ×2.
 
+- `web`: the research suite on Qwen via LM Studio (`qwen35lm`), Qwen via Ollama (`qwen35ol64k`), then Bonsai at medium, ×1 each (`WEB_RUNS=2` for two); a backend that does not come up is skipped. Added 2026-10-12, not yet run.
 - `full` = `qwen-full bonsai-full`. `bonsai-full`: agent full ×2 → knowledge full ×2 → research ×2 at medium, then thinking off → knowledge full ×2 (~6–8 h for `full`, estimate).
 
 **System load (since 2026-10-10).** Every chain runs `scripts/bench_sysmon.py`: `env.json` (macOS, chip, RAM, GPU wired limit, power source, swap at start) and every 10 s one line in `sysmon.jsonl` — CPU busy/user/sys (`top`), GPU busy and GPU memory (`ioreg` `IOAccelerator`, no root), `kern.memorystatus_level` (free %), wired/compressed memory, swap, cumulative page-outs/swap-outs (`vm_stat`), thermal state 0–3 (`NSProcessInfo.thermalState` via `osascript`), `pmset` power source and battery, and RSS/CPU of llama-server, LM Studio, Odysseus, Chroma, SearXNG, Ollama. Each sample carries the running step (`current_step`), so it joins with a run's `start`/`end` per task. `summary.txt` ends with one row per step; `bench_sysmon.py summary <chain dir>` rebuilds it. `BENCH_POWER=1` adds `powermetrics` (CPU/GPU/ANE watts, thermal pressure; one sudo prompt at start, a root watcher stops it with the chain). After each phase `app.log*` and the Bonsai server log are copied to `<chain dir>/logs/` (app.log rotates at 5 MB). The macOS parsers are tested against captured output shapes only; the first real chain is their live check.
