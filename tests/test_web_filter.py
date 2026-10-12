@@ -88,8 +88,9 @@ def test_drops_off_topic_results_and_keeps_display_order(caplog):
         kept, notice = F.filter_results("pink oyster mushroom", RESULTS, settings=ON, model=Fake())
     assert [r["url"] for r in kept] == ["https://grocycle.com/pink", "https://www.out-grow.com/guide"]
     assert notice == ""
-    line = [r.getMessage() for r in caplog.records if "[web-filter]" in r.getMessage()][0]
+    line = [r.getMessage() for r in caplog.records if "kept=" in r.getMessage()][0]
     assert "kept=2/5" in line and "victoriassecret.com:" in line and "oyster.com:" in line
+    assert "best=0.993" in line and "grocycle.com:0.993" in line
 
 
 def test_min_keep_tops_up_with_the_best_scores():
@@ -99,11 +100,25 @@ def test_min_keep_tops_up_with_the_best_scores():
     assert {"https://grocycle.com/pink", "https://www.out-grow.com/guide"} <= {r["url"] for r in kept}
 
 
-def test_nothing_relevant_keeps_results_and_returns_a_notice():
+def test_nothing_relevant_keeps_results_and_the_notice_is_off_by_default():
     junk = [RESULTS[0], RESULTS[2], RESULTS[4]]
+    assert F.DEFAULTS["web_filter_notice_below"] == 0.0
     kept, notice = F.filter_results("pink oyster mushroom", junk, settings=ON, model=Fake())
     assert len(kept) == 2                       # min_keep, not zero
-    assert notice == F.OFF_TOPIC_NOTICE
+    assert notice == ""
+
+
+def test_notice_fires_only_when_the_best_score_is_below_its_own_cut_off():
+    junk = [RESULTS[0], RESULTS[2], RESULTS[4]]
+    cfg = {**ON, "web_filter_notice_below": 0.1}
+    assert F.filter_results("pink oyster mushroom", junk, settings=cfg, model=Fake())[1] == F.OFF_TOPIC_NOTICE
+    # all results below the drop threshold, but the best one above the notice cut-off: no notice
+    class Low:
+        def rerank(self, q, docs):
+            return [-2.0, -4.0, -6.0]            # sigmoid ~0.12, 0.018, 0.0025
+    cfg = {**ON, "web_filter_threshold": 0.5, "web_filter_notice_below": 0.05}
+    kept, notice = F.filter_results("q", junk, settings=cfg, model=Low())
+    assert notice == "" and len(kept) == 2
 
 
 def test_negative_control_all_relevant_nothing_dropped():
@@ -173,7 +188,7 @@ def test_enabled_filter_removes_junk_from_sources_fetches_and_output(search_env,
 def test_all_junk_search_reaches_the_model_with_the_notice(search_env, monkeypatch):
     core, fetched = search_env
     monkeypatch.setattr(core, "_call_provider", lambda *a, **k: [dict(RESULTS[i]) for i in (0, 2, 4)])
-    monkeypatch.setattr(F, "_settings", lambda: dict(ON))
+    monkeypatch.setattr(F, "_settings", lambda: {**ON, "web_filter_notice_below": 0.1})
     monkeypatch.setattr(F, "_load_model", lambda name: Fake())
     text, sources = core.comprehensive_web_search("pink oyster mushroom", max_pages=5, return_sources=True)
     assert len(sources) == 2

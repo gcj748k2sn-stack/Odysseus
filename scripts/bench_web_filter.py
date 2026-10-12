@@ -625,6 +625,28 @@ def all_junk_searches(searches, truth, min_labelled=MIN_KEEP):
     return n
 
 
+NOTICE_CUTS = (0.005, 0.01, 0.015, 0.02, 0.025, 0.03, 0.035, 0.05)
+
+
+def notice_rows(searches, scores, truth, cuts=NOTICE_CUTS):
+    """For each cut-off: how many all-junk searches the off-topic notice would
+    flag (wanted) and how many searches with a relevant result (wrong).
+    The notice fires when the best score in a search is below the cut-off."""
+    junk_best, good_best = [], []
+    for s in searches:
+        labs = [truth.get((s["id"], r["url"])) for r in s["results"]]
+        best = max(scores[(s["id"], r["url"])] for r in s["results"])
+        if "y" in labs:
+            good_best.append((best, s["query"]))
+        elif labs and all(lab == "n" for lab in labs):
+            junk_best.append(best)
+    rows = []
+    for c in cuts:
+        wrong = [q for b, q in good_best if b < c]
+        rows.append((c, sum(b < c for b in junk_best), len(junk_best), len(wrong), len(good_best), wrong))
+    return rows
+
+
 def junk_in_current_top(searches, truth, top_n=FETCHED_TOP_N):
     return sum(1 for s in searches for r in s["results"][:top_n] if truth.get((s["id"], r["url"])) == "n")
 
@@ -792,6 +814,18 @@ def cmd_run(args):
             lines += ["Relevant results dropped, by the threshold that first drops them (the cost side — "
                       "read these; a wrong label shows up here too):", ""]
             lines += [f"- from {thr:.3g}: score {sc:.3g} · {q[:70]} → {u}" for thr, q, u, sc in first_dropped[:25]]
+            lines.append("")
+        if any(v == "y" for v in truth.values()):
+            lines += ["Off-topic notice (fires when a search's best score is below the cut-off; "
+                      "`web_filter_notice_below`):", "",
+                      "| cut-off | all-junk searches flagged | searches with a relevant result flagged (wrong) |",
+                      "|---:|---:|---:|"]
+            nrows = notice_rows(searches, scores, truth)
+            lines += [f"| {c:g} | {fj}/{tj} | {fw}/{tw} |" for c, fj, tj, fw, tw, _ in nrows]
+            first_wrong = next((r for r in nrows if r[3]), None)
+            if first_wrong:
+                lines += ["", f"Wrongly flagged from {first_wrong[0]:g}: "
+                          + "; ".join(q[:60] for q in first_wrong[5][:5])]
             lines.append("")
         if best and any(v == "y" for v in truth.values()):
             lines += [f"Highest threshold in the grid that drops no labelled-relevant result: **{best[0]:.3g}** "

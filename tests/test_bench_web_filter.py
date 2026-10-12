@@ -420,3 +420,17 @@ def test_export_import_round_trip_through_the_sheet(tmp_path):
     labels = W.load_labels(sheet)
     assert sorted(labels.values()) == ["n", "y", "y", "y"]
     assert (tmp_path / "labels.csv.bak").is_file()
+
+
+def test_notice_rows_separate_all_junk_searches_from_ones_with_a_relevant_result():
+    searches = [
+        {"id": "a", "query": "junk only", "results": [{"url": "u1"}, {"url": "u2"}]},
+        {"id": "b", "query": "has good", "results": [{"url": "u3"}, {"url": "u4"}]},
+        {"id": "c", "query": "unlabelled", "results": [{"url": "u5"}]},
+    ]
+    scores = {("a", "u1"): 0.004, ("a", "u2"): 0.012, ("b", "u3"): 0.02, ("b", "u4"): 0.001, ("c", "u5"): 0.0}
+    truth = {("a", "u1"): "n", ("a", "u2"): "n", ("b", "u3"): "y", ("b", "u4"): "n"}
+    rows = {c: (fj, tj, fw, tw, wrong) for c, fj, tj, fw, tw, wrong in W.notice_rows(searches, scores, truth, cuts=(0.01, 0.015, 0.03))}
+    assert rows[0.01] == (0, 1, 0, 1, [])          # best of "a" is 0.012
+    assert rows[0.015] == (1, 1, 0, 1, [])
+    assert rows[0.03] == (1, 1, 1, 1, ["has good"])

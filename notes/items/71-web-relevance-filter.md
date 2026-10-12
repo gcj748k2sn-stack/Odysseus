@@ -188,6 +188,14 @@ Multilingual reranker (`jinaai/jina-reranker-v2-base-multilingual`), fail-open a
 - **Unverified (sandbox can't download the model):** the real reranker inside Odysseus, its load time on the first search and its memory next to Qwen/Bonsai. Owed on the M1: enable, run three searches including one ambiguous one, read the `[web-filter]` lines and the `ms=` figure.
 - **Not done, deliberately:** domain priors (no live data on their effect yet), and the replay's `<search query>` placeholder bug — that's a separate item.
 
+## First live check (M1, 2026-10-12 13:38–13:43, local time)
+
+- `[web-filter] on` logged at the first search after a restart (13:37). Searches before that (13:25–13:30) ran the old code: Odysseus had last started at 08:10 and the file changed at 13:24.
+- *"pink oyster mushroom optimal fruiting temperature Celsius"*: **kept 3/5**, dropped `victoriassecret.com` 0.026 and `youtube.com` 0.024 (both labelled junk in the replay), **2109 ms** including the first model load. **`all_low=True`: the 3 kept results also scored below 0.035**, so the off-topic notice reached the model on a search that very likely had relevant guides. **Wrong notice.**
+- Two gold-price searches: kept 5/5, ~345 ms each.
+- **Cause:** one cut-off (0.035) served both as the drop threshold and the notice trigger. The drop threshold was measured on the labels; the notice's false-positive rate was never measured before shipping (CLAUDE.md §3: a guard that makes the model act).
+- **Fixed:** the notice has its own cut-off, `web_filter_notice_below`, **default 0 = never**; it fires only when a search's best score is below it. The log line now has `best=`, `notice=` and the kept results with their scores. The replay report gets an *Off-topic notice* table per scorer (all-junk searches flagged vs searches with a relevant result flagged) to choose the cut-off from.
+
 ## Verification
 
 - 2026-10-12, cloud sandbox (Linux, Python 3.13, `requirements.txt` in a fresh venv): `tests/test_bench_web_filter.py` 22 passed; 26 after the 11:19 fixes (grid, seed rules, score column), four more mutations, all caught. Ten mutations, nine caught: fail-open removed; snippet dots kept; substring domain match; user message taken from after the search; parser not stopping at page content; chunk order; stopwords counted; budget keeping nothing; no seed fallback. Not caught: a URL-less result kept when the next `[i]` line starts. The writer always writes the URL line, so this is not reachable from recorded data.

@@ -7,8 +7,9 @@ comprehensive_web_search picks pages to fetch and hands the list to the model.
 Off by default (`web_filter_enabled` in data/settings.json). Fail-open by
 construction: any error returns the results unchanged, and at least
 `web_filter_min_keep` results always survive. When every result scores below
-the threshold the results are kept and a notice is returned for the model
-instead, since dropping can't help a search that found nothing relevant.
+`web_filter_notice_below` (off by default) the results are kept and a notice is
+returned for the model instead; that cut-off is separate from the drop
+threshold and needs its own measurement (scripts/bench_web_filter.py run).
 
 Measured offline in notes item 71 ("A relevance filter for web results") with
 scripts/bench_web_filter.py; the defaults below come from that replay.
@@ -27,6 +28,10 @@ DEFAULTS = {
     "web_filter_model": "jinaai/jina-reranker-v2-base-multilingual",
     "web_filter_threshold": 0.035,
     "web_filter_min_keep": 3,
+    # Notice to the model when the best result scores below this. 0 = never.
+    # Kept separate from the drop threshold: relevant results often score
+    # near it, so the same cut-off flagged good searches as off-topic.
+    "web_filter_notice_below": 0.0,
 }
 
 OFF_TOPIC_NOTICE = (
@@ -123,16 +128,20 @@ def filter_results(query, results, settings=None, model=None):
         threshold = float(cfg.get("web_filter_threshold", DEFAULTS["web_filter_threshold"]))
         min_keep = max(1, int(cfg.get("web_filter_min_keep", DEFAULTS["web_filter_min_keep"])))
         model = model or _load_model(cfg.get("web_filter_model") or DEFAULTS["web_filter_model"])
+        notice_below = float(cfg.get("web_filter_notice_below", DEFAULTS["web_filter_notice_below"]))
         scores = score_results(query, results, model)
     except Exception as e:
         logger.warning("[web-filter] skipped, results unchanged: %s: %s", type(e).__name__, e)
         return results, ""
     kept, all_low = decide(scores, threshold, min_keep)
-    dropped = [i for i in range(len(results)) if i not in set(kept)]
+    best = max(scores)
+    notice = OFF_TOPIC_NOTICE if best < notice_below else ""
+    kept_set = set(kept)
     ms = int((time.monotonic() - started) * 1000)
     logger.info(
-        "[web-filter] query=%r kept=%d/%d threshold=%.3g all_low=%s ms=%d dropped=%s",
-        query[:120], len(kept), len(results), threshold, all_low, ms,
-        [f"{_domain(results[i].get('url'))}:{scores[i]:.3f}" for i in dropped],
+        "[web-filter] query=%r kept=%d/%d threshold=%.3g best=%.3f all_low=%s notice=%s ms=%d kept=%s dropped=%s",
+        query[:120], len(kept), len(results), threshold, best, all_low, bool(notice), ms,
+        [f"{_domain(results[i].get('url'))}:{scores[i]:.3f}" for i in kept],
+        [f"{_domain(results[i].get('url'))}:{scores[i]:.3f}" for i in range(len(results)) if i not in kept_set],
     )
-    return [results[i] for i in kept], (OFF_TOPIC_NOTICE if all_low else "")
+    return [results[i] for i in kept], notice
