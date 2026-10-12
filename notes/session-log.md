@@ -15,6 +15,14 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-12 — item 71 filed: offline replay for a web relevance filter (cloud session)
+
+- 🆕 `scripts/bench_web_filter.py` (extract → label → run → pages) + `tests/test_bench_web_filter.py` (22 passed in a Linux venv; 9 of 10 mutations caught). No change to Odysseus itself.
+- Shown with constructed inputs: `rank_search_results` ranks *"Pink (singer) – Wikipedia"* above a pink-oyster growing guide (.org bonus, long-snippet bonus, no stemming).
+- **Unverified:** the reranker path (no model download in the sandbox). **Owed on the M1:** the test file, `extract`, labels, `run`; steps in [items/71-web-relevance-filter.md](items/71-web-relevance-filter.md).
+
+---
+
 ## 2026-10-08 (17:00) – 2026-10-09 (01:40) — item 57 built and verified live; tool selection reviewed; item 70 filed
 
 - ✅ **Item 57 done:** prefix probe `2778b2be`; sticky tools `6dd7aaeb`; follow-up fix `fa0a3ba1` after the first live check (21:35) still missed. **Live 21:54 (chat `01492028`, Bonsai):** a low-signal follow-up reused the set, `first_diff=3/7`, **6.3 s instead of ~80 s**. A message that adds tools still re-reads the whole prompt once.
