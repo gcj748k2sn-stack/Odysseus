@@ -248,6 +248,19 @@ Maintainer's feedback on the first version: panel and field colours were inverte
 - **But the answer was about Pink the singer.** The model searched *"pink oyster mushrooms Pinatus djamor pinning temperature range fruiting"* (it misspelled *Pleurotus*). All 10 candidates were junk (Victoria's Secret, Pink (singer), TMZ, discography, Instagram, YouTube…). None reached 0.035, so always-keep passed on the 3 best junk results (0.025–0.033). The off-topic notice is off, so nothing told the model, and it answered about the singer. **This is the all-junk case the notice exists for**, and the first live search (13:38) showed the other side: good guides that also all scored under 0.035. A notice at the drop threshold would have misfired then, so the notice cut-off must come from the replay table (`run … | grep -A 13 "Off-topic notice"`), not a guess.
 - **Display bug, fixed:** the filtered-out list was a `<details>` element, and `style.css` shrinks every `details .source-link` to small inline tags (tiny text, title and domain run together). Now a plain block with its own toggle; Node test added.
 
+## Off-topic notice cut-off measured (2026-10-12, replay, 888 labelled results)
+
+`rerank:query` (the live scorer): notice fires when a search's best score is below the cut-off.
+
+| cut-off | all-junk searches flagged | searches with a relevant result flagged |
+|---:|---:|---:|
+| 0.025 | 1/29 | 0/161 |
+| 0.03 | 2/29 | 0/161 |
+| **0.035** | **6/29** | **0/161** |
+| 0.05 | 12/29 | 3/161 (all `<search query>` placeholder searches) |
+
+Recommended **0.035**: the highest cut-off with no wrong flags in the replay; it would have caught the 16:08 Pink (singer) search (best 0.033). Caveats: catches only a fifth of all-junk searches; the 13:38 live search had relevant guides that all scored under 0.035 (exact best score not logged then), and live snippets are longer than the replay's 200 chars. A wrong notice costs one extra search, not a wrong answer. To set by the maintainer in `data/settings.json` (`web_filter_notice_below`); **check the decision log's `"notice": true` lines after a few days.**
+
 ## Verification
 
 - 2026-10-12, cloud sandbox (Linux, Python 3.13, `requirements.txt` in a fresh venv): `tests/test_bench_web_filter.py` 22 passed; 26 after the 11:19 fixes (grid, seed rules, score column), four more mutations, all caught. Ten mutations, nine caught: fail-open removed; snippet dots kept; substring domain match; user message taken from after the search; parser not stopping at page content; chunk order; stopwords counted; budget keeping nothing; no seed fallback. Not caught: a URL-less result kept when the next `[i]` line starts. The writer always writes the URL line, so this is not reachable from recorded data.
