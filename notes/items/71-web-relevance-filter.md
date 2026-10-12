@@ -37,27 +37,29 @@ All commands from `/Users/cedrik/odysseus`. `extract` copies `app.db` itself (ha
    cd /Users/cedrik/odysseus
    ./venv/bin/python -m pytest -n auto tests/test_bench_web_filter.py
    ```
-2. Extract the corpus (writes `data/bench/web_filter/<timestamp>/corpus.jsonl` and `meta.json`):
+2. Extract the corpus (writes `data/bench/web_filter/<YYYYmmdd-HHMMSS>/corpus.jsonl` and `meta.json`), then point `RUN` at the newest run folder (set it again in a new terminal window):
    ```
    ./venv/bin/python scripts/bench_web_filter.py extract
+   RUN=$(ls -d data/bench/web_filter/2*/ | tail -1)
+   echo $RUN
    ```
 3. Labels sheet (`data/bench/web_filter/labels.csv`, one row per query + URL; known junk from notes is hinted `seed:n`):
    ```
-   ./venv/bin/python scripts/bench_web_filter.py label --dir data/bench/web_filter/<timestamp>
+   ./venv/bin/python scripts/bench_web_filter.py label --dir $RUN
    ```
    Open it in Numbers/Excel and put `y` (relevant) or `n` (junk) in the `label` column. Unlabelled rows are ignored. Labels are keyed on query + URL, so a later `extract` keeps them. 50–100 labelled rows across a dozen searches already give a usable first reading; label some relevant ones too, otherwise the report cannot show the cost.
 4. Score and report. The first run downloads the reranker into `data/fastembed_cache` (80 MB):
    ```
-   ./venv/bin/python scripts/bench_web_filter.py run --dir data/bench/web_filter/<timestamp>
+   ./venv/bin/python scripts/bench_web_filter.py run --dir $RUN
    ```
    For German queries, also try the multilingual model (1.1 GB):
    ```
-   ./venv/bin/python scripts/bench_web_filter.py run --dir data/bench/web_filter/<timestamp> --model jinaai/jina-reranker-v2-base-multilingual
+   ./venv/bin/python scripts/bench_web_filter.py run --dir $RUN --model jinaai/jina-reranker-v2-base-multilingual
    ```
    Without a download: `--scorers lexical:query`.
 5. Paragraph preview of recorded `web_fetch` pages (what a 2,000-char budget per page would keep):
    ```
-   ./venv/bin/python scripts/bench_web_filter.py pages --dir data/bench/web_filter/<timestamp>
+   ./venv/bin/python scripts/bench_web_filter.py pages --dir $RUN
    ```
 6. Read `report.md`, `pages.md` and `domains_seen.csv` in the run directory.
 
