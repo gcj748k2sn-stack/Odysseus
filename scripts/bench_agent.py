@@ -893,6 +893,28 @@ def fmt(x, nd=0, suf=""):
     return f"{x:.{nd}f}{suf}"
 
 
+def regrade_research(recs):
+    """Re-run today's checks on saved research answers (their checks read only
+    the answer text, never the workspace), so runs graded with an older check
+    compare fairly. Other suites keep their saved grade."""
+    by_id = {t["id"]: t for t in T.TASKS}
+    done = changed = 0
+    for r in recs:
+        task = by_id.get(r.get("task"))
+        if not task or task.get("suite") != "research":
+            continue
+        try:
+            results = task["checks"](r, {})
+        except Exception as e:
+            results = [("checker crashed", False, f"{type(e).__name__}: {e}")]
+        r["checks"] = [{"name": n, "ok": ok, "detail": det if not ok else ""} for n, ok, det in results]
+        passed = r.get("status") == "ok" and all(c["ok"] for c in r["checks"]) and "fallback" not in r.get("flags", [])
+        changed += passed != r.get("passed")
+        r["passed"] = passed
+        done += 1
+    print(f"regraded {done} research task runs with today's checks; {changed} changed", file=sys.stderr)
+
+
 def cmd_report(args):
     recs, metas = [], {}
     for d in args.dirs:
@@ -901,6 +923,7 @@ def cmd_report(args):
             print(f"skip {d}: no results.jsonl", file=sys.stderr)
             continue
         rs = [json.loads(l) for l in p.read_text().splitlines() if l.strip()]
+        m = None
         try:
             m = json.loads((Path(d) / "meta.json").read_text())
             # Runs from before the @effort name: label them from meta, so a
@@ -913,9 +936,24 @@ def cmd_report(args):
             metas.setdefault(m["target"], []).append(m)
         except (OSError, ValueError, KeyError):
             pass
+        if getattr(args, "split_runs", False) and rs:
+            # One column per run folder: two runs of one target stay apart (before/after).
+            old = rs[0].get("target")
+            label = f"{old} {Path(d).name[:13]}"
+            for r in rs:
+                r["target"] = label
+            mine = metas.get(old) or []
+            if mine and mine[-1] is m:
+                mine.pop()
+                if not mine:
+                    metas.pop(old)
+                m["target"] = label
+                metas.setdefault(label, []).append(m)
         recs += rs
     if not recs:
         sys.exit("no results")
+    if getattr(args, "regrade", False):
+        regrade_research(recs)
     log = load_log(args.log)
     task_tools = {t["id"]: t["tools"] for t in T.TASKS}
 
@@ -992,7 +1030,7 @@ def cmd_report(args):
         lo, hi = wilson(k, n)
         return f"**{k}/{n}** ({100 * k / n:.0f} %, 95 % CI {100 * lo:.0f}–{100 * hi:.0f})"
 
-    env_re = re.compile(r"timed out|HTTP [45]\d\d|Cannot reach|Connection (refused|reset)", re.I)
+    env_re = re.compile(r"timed out|HTTP [45]\d\d|Rate limit hit|Cannot reach|Connection (refused|reset)", re.I)
 
     def env_hit(r):
         return any(str(x.get("exit_code")) not in ("0", "None") and env_re.search(x.get("output") or "")
@@ -1168,6 +1206,10 @@ def main():
     p.add_argument("dirs", nargs="+")
     p.add_argument("--log", default=str(REPO / "data" / "logs" / "app.log*"))
     p.add_argument("--out", help="also write the markdown here")
+    p.add_argument("--split-runs", action="store_true",
+                   help="one column per run folder (target + start time), e.g. before/after one target")
+    p.add_argument("--regrade", action="store_true",
+                   help="re-run today's checks on saved research answers (other suites keep their grade)")
     p.set_defaults(func=cmd_report)
 
     pf = sub.add_parser("preflight", help="check the serving setup for a run without running it")
