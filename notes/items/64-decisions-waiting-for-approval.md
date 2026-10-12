@@ -50,7 +50,6 @@ Open item, filed 2026-10-07. A parking list, not a defect: each entry is a choic
 
 ## 10. Small housekeeping
 
-- **`.env.bak.before-lmstudio`** (2026-08-07) in the repo root: a copy of secrets, gitignored but readable by the agent's bash, which runs from the repo root. Move it out of the repo. **2026-10-12:** location and commands given to the maintainer (diff against `.env`; delete if nothing in it is still needed, otherwise move to `~/odysseus-secrets/` with `chmod 700`). Delete this line once done.
 - **`scripts/bench_agent_tasks.py`** keeps a hand-copied `WEB_INTENT_RE`; a five-line test comparing it with `routes/chat_routes.py` would catch drift.
 - **`tests/test_static_js_block_scope.py`** is a 576-line hand-written JS scanner; ESLint `no-undef` would do the same with a real parser, at the cost of an npm devDependency and a globals list. Optional.
 
