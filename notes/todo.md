@@ -45,9 +45,9 @@ Items whose record is longer than a screen live in [`items/`](items/), one file 
 | 64 | Decisions waiting for the maintainer's approval (lints, closable items, diagnostics, 32k model, …) | — | XS | filed 2026-10-07 — **12 decisions listed**, each with evidence and a recommendation | n/a |
 | 68 | A turn that claims an action and called no tool is saved as if it happened — *"Created 'Switch check' document"*, no document | S1 | S | filed 2026-10-07 20:40 — **seen live once**, guard not built | **live** — session `0ca639d6` 20:38:55: `0 native calls, 0 tool blocks`; no such document in `app.db` |
 | 70 | Similarity search adds random tools that sticky tools then keep for the whole chat; keywords + topic detection cover nearly everything | S4 | S | ⬆️ **high priority, next** — measured 2026-10-08 by offline replay (263 turns); keyword-only for local models proposed, not built | **replay** — similarity search needed in 1 of 263 turns |
-| 71 | Relevance filter for web results (reranker between retrieval and the thinking model) | S3 | M | **built 2026-10-12, off by default** — `src/web_filter.py`, hook in `services/search/core.py`; replay with every result labelled: 0.035 drops ~20–33 % of junk, relevant losses only on broken queries | **replay** (888 labelled results) · **tests (14 + 37 replay)** · 8 mutations · **live check owed** on the M1 |
+| 71 | Relevance filter for web results (reranker between retrieval and the thinking model), with research topics and per-source ratings | S3 | M | **built and on, 2026-10-12** — `src/web_filter.py`; search output fit (`src/search_output_fit.py`) fixed lost instructions on 132 of 196 past searches. Open: notice firings, speed (2.35 s/search at 15 candidates) | **live** (M1, 2026-10-12 13:38–16:11) · **replay** (888 labelled results) · **tests** (104 across 5 files) · mutations per part |
 
-**28 open as of 2026-10-09**; the 40 closed or retired rows are indexed at the top of [resolvedissues.md](resolvedissues.md). **Numbers are never reused** — a closed item keeps its number in that index, and new items continue after the highest number in either table. Renumbering has silently rotted cross-references four times (see *Notes & constraints*); item 2 split into 2a/2b, and 9 into 9/9b, rather than taking new numbers, for the same reason.
+**29 open as of 2026-10-12**; the 40 closed or retired rows are indexed at the top of [resolvedissues.md](resolvedissues.md). **Numbers are never reused** — a closed item keeps its number in that index, and new items continue after the highest number in either table. Renumbering has silently rotted cross-references four times (see *Notes & constraints*); item 2 split into 2a/2b, and 9 into 9/9b, rather than taking new numbers, for the same reason.
 
 > ⚠️ **Item 23 changes how item 8's evidence should be read**, and the pair is reciprocal (#8↔#23) so neither can be renumbered quietly. A turn that reports *"stopped without producing an answer"* may have produced one — in the reasoning channel. **Compare `thinking` against `content` before filing another item 8.**
 
@@ -215,8 +215,8 @@ Recurring, and **it feeds item 2b** — the wrong-species drift there is partly 
 - Similarity picks are what put noise in (`manage_mcp` for "what is 10-4"), and sticky tools keep them for the whole chat.
 - **Next (high priority, maintainer 2026-10-09):** keyword-only for local endpoints, plus tool-name and German keywords (the keyword lists and the topic classifier are English-only). Decision and benchmark pending. Replay script: session scratch (`sel_sim.py`), not in the repo.
 
-### 71. Relevance filter for web results — measure offline first
-A cross-encoder reranker scoring search results and fetched-page paragraphs before the thinking model sees them, fail-open (at least 3 results kept). How ranking works today, the setup steps and how to read the report are in the full record.
+### 71. Relevance filter for web results
+A cross-encoder reranker scores search results before the thinking model sees them, fail-open (at least 3 results kept); research topics group searches, and ▲/▼ on each source collects ratings. Built and switched on 2026-10-12. Measurements, live checks and the open list are in the full record.
 
 → Full record: [items/71-web-relevance-filter.md](items/71-web-relevance-filter.md)
 

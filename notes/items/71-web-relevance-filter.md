@@ -6,7 +6,7 @@ Open item. Its row in the [todo.md](../todo.md) index carries the current status
 
 **Idea (maintainer, 2026-10-12):** a small "decision" model between web retrieval and the thinking model (Qwen 3.5 / Bonsai 2) that decides what reaches it. **Proposed shape:** a cross-encoder reranker (fastembed, already a dependency), not a generative model. It scores (question, passage) pairs in milliseconds and does not compete with the chat model for LM Studio. Two levels: (1) the search result list (title/URL/snippet), where *"Web search derails on ambiguous common nouns"* and *"today/latest routes web_search to the news category"* happen; (2) paragraphs of fetched pages, where most of the context, and so most of the prefill time, goes.
 
-**Built 2026-10-12, off by default:** `src/web_filter.py`, called once in `services/search/core.py` after `rank_search_results`; tests `tests/test_web_filter.py` (14). The offline replay that chose its settings: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (33 tests).
+**Built 2026-10-12 (off by default) and switched on by the maintainer the same day:** `src/web_filter.py`, called once in `services/search/core.py`; research topics, per-source ratings and the search output fit came after. The offline replay that chose its settings: `scripts/bench_web_filter.py`. Tests: 104 across five files (see *Verification*).
 
 ## How results are ranked today
 
@@ -183,11 +183,11 @@ Multilingual reranker (`jinaai/jina-reranker-v2-base-multilingual`), fail-open a
 ## Built into Odysseus (2026-10-12, off by default)
 
 - **What it does:** after `rank_search_results`, scores each result (title, snippet, domain) against the search query with `jinaai/jina-reranker-v2-base-multilingual`. It drops results below 0.035 (between the 0.0258 and 0.0409 rows above) but keeps at least 3, so the fetch slots and the model's list go to what is left. When nothing scores above the threshold, the results are kept and one line goes into the model's *SEARCH RESULTS SUMMARY*: "Relevance check: none of these results scored as relevant…". It covers every `comprehensive_web_search` caller: agent `web_search`, chat-mode web search, deep research and the search route.
-- **Settings:** keys in `data/settings.json`, merged over the module's `DEFAULTS`: `web_filter_enabled` (false), `web_filter_threshold` (0.035), `web_filter_min_keep` (3), `web_filter_model`. They aren't in `DEFAULT_SETTINGS`, so the admin API can't set them, but a UI settings save keeps them (`set_settings` starts from the loaded file). Picked up within 2 s (settings cache), no restart.
+- **Settings:** keys in `data/settings.json`, merged over the module's `DEFAULTS`: `web_filter_enabled` (false), `web_filter_threshold` (0.035), `web_filter_min_keep` (3), `web_filter_model`. They aren't in `DEFAULT_SETTINGS`; the Research topics panel's Settings tab sets six of them through `/api/web-filter/settings` (not `web_filter_notice_below`), and a UI settings save keeps them (`set_settings` starts from the loaded file). Picked up within 2 s (settings cache), no restart.
 - **Fail-open:** disabled, empty query, missing fastembed, failed model download, model error or a wrong score count all return the results unchanged and log `[web-filter] skipped …`.
 - **Log line per search:** `[web-filter] query=… kept=N/M threshold=… all_low=… ms=… dropped=[domain:score, …]`.
 - **Tests:** `tests/test_web_filter.py` (14, of which 3 run the real `comprehensive_web_search` with providers and fetches stubbed). Eight mutations, all caught: on by default, errors propagate, no min_keep, notice never set, notice always set, result ignored at the call site, notice not written, keeps everything. The 41 existing search test files pass unchanged (426 tests, Linux venv, Python 3.13).
-- **Unverified (sandbox can't download the model):** the real reranker inside Odysseus, its load time on the first search and its memory next to Qwen/Bonsai. Owed on the M1: enable, run three searches including one ambiguous one, read the `[web-filter]` lines and the `ms=` figure.
+- **Verified live on the M1** (sections below): first search with model load 2.1 s. Memory next to Qwen/Bonsai not measured.
 - **Not done, deliberately:** domain priors (no live data on their effect yet), and the replay's `<search query>` placeholder bug — that's a separate item.
 
 ## First live check (M1, 2026-10-12 13:38–13:43, local time)
@@ -200,12 +200,12 @@ Multilingual reranker (`jinaai/jina-reranker-v2-base-multilingual`), fail-open a
 
 ## More candidates and a decision log (2026-10-12, after the first live check)
 
-- **More candidates:** while the filter is on, `comprehensive_web_search` asks the provider for `web_filter_candidates` (15) results instead of the normal count (5), scores all of them, and passes on the best — threshold and min_keep as before, **best score first, at most the normal count**. Junk is no longer replaced by nothing; it is replaced by the next relevant candidate. SearXNG returns 20–30 results per request and the code used to cut to 5, so the extra candidates cost no extra request there; key-based providers (Brave, Tavily, Serper) are asked for a larger page. Expected cost: scoring 15 instead of 5, estimated ~0.8–1 s per search on the M1 — **predicted, not measured**. With the filter off nothing changes: the provider is asked for the normal count.
+- **More candidates:** while the filter is on, `comprehensive_web_search` asks the provider for `web_filter_candidates` (15) results instead of the normal count (5), scores all of them, and passes on the best — threshold and min_keep as before, **best score first, at most the normal count**. Junk is no longer replaced by nothing; it is replaced by the next relevant candidate. SearXNG returns 20–30 results per request and the code used to cut to 5, so the extra candidates cost no extra request there; key-based providers (Brave, Tavily, Serper) are asked for a larger page. Expected cost: scoring 15 instead of 5, estimated ~0.8–1 s per search on the M1 — predicted. **Measured: median 2,353 ms, max 2,610 ms** (3 searches, M1), more than twice the prediction; 10 candidates not tried yet. With the filter off nothing changes: the provider is asked for the normal count.
 - **Order change while on:** results reach the model ordered by reranker score, not by `rank_search_results`.
 - **Decision log:** one JSON line per filtered search in `data/logs/web_filter.jsonl` (all candidates: URL, title, snippet ≤500 chars, engine, score, kept, position), rotated to `.1` past 20 MB, switchable with `web_filter_decision_log`. Dropped results are recorded nowhere else (`app.db` only holds what the model saw). `bench_web_filter.py extract --from-decisions data/logs/web_filter.jsonl` turns it into a corpus for `label` / `run`.
 - Tests: `tests/test_web_filter.py` 24, `tests/test_bench_web_filter.py` 35 (one runs writer → reader). Nine mutations, all caught (one only after adding a test where relevant candidates exceed the limit). 436 tests across the existing search test files pass.
 
-## Research topics and per-source ratings (2026-10-12, built, UI unverified)
+## Research topics and per-source ratings (2026-10-12, built, used live 16:08)
 
 Maintainer's choices: a **Research topics** button in the left icon bar and the sidebar tools list, right below Deep Research; **per-source** ratings with up/down **arrows** (SVG chevrons, no emoji); dropped results listed for rating too; starting topics **Biology, Finance, Cooking**.
 
@@ -216,10 +216,7 @@ Maintainer's choices: a **Research topics** button in the left icon bar and the 
 - **UI:** `static/js/research_topics.js` (panel), `static/js/source_ratings.js` (arrows, a collapsed "N filtered out by relevance" block with scores, ratings restored on render), hooked into `buildSourcesBox` in `chatRenderer.js`. Dropped results are kept out of the numbered list, so `[n]` still matches the model's citations. Sources without a search id (older chats, research sources) render as before.
 - **Replay:** `bench_web_filter.py import-ratings [--owner cedrik]` turns the ratings into labels for rows already in the sheet; `extract --from-decisions` first for new searches.
 - **Tests:** `tests/test_research_topics_and_ratings.py` (35, incl. the API with per-user isolation), `tests/test_source_ratings_js.py` (4, Node: split, escaping, unchanged old sources, filtered block; 5 mutations caught after one test was tightened), plus additions to the filter and replay tests: 97 across the five files. 593 existing tests that touch `index.html`, `chatRenderer`, the left bar or `app.py`, and 462 search tests, pass.
-- **Unverified (needs a browser):** the panel, clicks, restoring ratings after a reload, the look in light and dark themes. Manual check:
-  1. Restart. The tag icon sits below Deep Research in the left bar, and "Research topics" below Deep Research in the sidebar list. Click it: Biology, Finance and Cooking with their counts. Change an example query, Save → "Saved."; close and reopen → the change is still there.
-  2. With the filter on, ask a web question. Each source has an up and a down arrow, and below the list there's "N filtered out by relevance" with scores. Click up on one → it stays highlighted; reload the page → still highlighted; click it again → cleared.
-  3. `tail -3 data/web_ratings.jsonl` shows the clicks; `tail -1 data/logs/web_filter.jsonl` has `search_id` and `topic`.
+- **Seen live** 16:08–16:11 (section below): arrows, the filtered-out block, clicks stored; the panel in use. **Not reported:** ratings restored after a reload, the light theme.
 
 ## Search output cut at 10,000 characters (2026-10-12 15:00, M1, agent mode, Qwen 3.5 9B)
 
@@ -240,6 +237,7 @@ Maintainer's feedback on the first version: panel and field colours were inverte
 - **Settings tab:** relevance filter on/off, cut-off (slider 0.005–0.2), candidates (5–30), always keep (1–10), decision log on/off, topic-matching similarity (0.1–0.9), one Save button. Backed by new `GET/PUT /api/web-filter/settings` (PUT admin only; only the six `web_filter_*` keys, range-checked; written into `data/settings.json`, other settings untouched). The off-topic notice cut-off is deliberately not in the panel until it has been measured.
 - Tests: settings validation and API (admin only, unknown keys refused, other settings untouched); two mutations caught. **The panel itself is unverified in a browser.**
 - **Third pass (maintainer's feedback):** title icon in the accent colour and a topic count after "Topics", like "Memories"; a master switch at the top right with the Enabled/Disabled label, stored as `enabled` in `data/research_topics.json` (off = no topic matching at all, list greyed out at 30 %); "+ Add topic" on the left between the description and the list; per-topic switches at the top right of each card; switched-off topics greyed out instead of an `off` badge; no "Topic on/off" messages; in Settings, every filter option and the topic matching are greyed out and not clickable while the relevance filter is off (like Brain's settings). Test for the master switch (no model call while off).
+- **Fourth pass:** the panel drags like Brain (`makeWindowDraggable`, `snapModalToZone`); settings save on change, no Save button; with Topics off the whole Topics tab greys like Skills; each switched-off setting greys only its own description.
 
 ## Live check of output fit and ratings (2026-10-12 16:08–16:11, M1, Qwen 3.5 9B, agent mode)
 
@@ -259,11 +257,19 @@ Maintainer's feedback on the first version: panel and field colours were inverte
 | **0.035** | **6/29** | **0/161** |
 | 0.05 | 12/29 | 3/161 (all `<search query>` placeholder searches) |
 
-Recommended **0.035**: the highest cut-off with no wrong flags in the replay; it would have caught the 16:08 Pink (singer) search (best 0.033). Caveats: catches only a fifth of all-junk searches; the 13:38 live search had relevant guides that all scored under 0.035 (exact best score not logged then), and live snippets are longer than the replay's 200 chars. A wrong notice costs one extra search, not a wrong answer. To set by the maintainer in `data/settings.json` (`web_filter_notice_below`); **check the decision log's `"notice": true` lines after a few days.**
+Recommended **0.035**: the highest cut-off with no wrong flags in the replay; it would have caught the 16:08 Pink (singer) search (best 0.033). Caveats: catches only a fifth of all-junk searches; the 13:38 live search had relevant guides that all scored under 0.035 (exact best score not logged then), and live snippets are longer than the replay's 200 chars. A wrong notice costs one extra search, not a wrong answer. **Set to 0.035 by the maintainer 2026-10-12** in `data/settings.json` (`web_filter_notice_below`); **check the decision log's `"notice": true` lines after a few days.**
 
 ## Verification
 
-- 2026-10-12, cloud sandbox (Linux, Python 3.13, `requirements.txt` in a fresh venv): `tests/test_bench_web_filter.py` 22 passed; 26 after the 11:19 fixes (grid, seed rules, score column), four more mutations, all caught. Ten mutations, nine caught: fail-open removed; snippet dots kept; substring domain match; user message taken from after the search; parser not stopping at page content; chunk order; stopwords counted; budget keeping nothing; no seed fallback. Not caught: a URL-less result kept when the next `[i]` line starts. The writer always writes the URL line, so this is not reachable from recorded data.
-- End-to-end `extract → label → run (lexical) → pages --lexical` ran on a small database built from the real writer's output.
-- **The reranker path is unverified:** the sandbox could not download fastembed models. The adapter is tested with a fake model (logit order, sigmoid, length check). Owed: step 4 on the M1.
-- **Not yet measured on the real corpus:** everything. Next step: steps 2–4 on the M1, label, read the report.
+- **M1, 2026-10-12:** the five test files, 104 passed (`test_web_filter.py`, `test_bench_web_filter.py`, `test_research_topics_and_ratings.py`, `test_source_ratings_js.py` (Node), `test_search_output_fit.py`); full suite later the same day 7,977 passed, 3 skipped. Mutation counts are in each section above.
+- **Live, M1, 2026-10-12 13:38–16:11:** filter drops, `[web-filter]` lines, decision log, output fit, ratings, panel (sections above).
+- **Cloud sandbox:** the replay and every test above except the real reranker (no model download there).
+
+## Open
+
+1. **Notice firings:** after a few days, read the decision log's `"notice": true` lines — right searches flagged? (`grep '"notice": true' data/logs/web_filter.jsonl | wc -l`, then read the queries).
+2. **Speed:** try `web_filter_candidates` 10 and compare the `ms=` figures with 15.
+3. **Spot-check 20–30 of Claude's 630 labels** (*Fourth run*).
+4. Whether the 132 truncated searches answered off-topic more often than the other 64 (*Search output cut*).
+5. Misspelled queries (*Pinatus*): the filter can only flag them; a separate item if it recurs.
+6. Not built, waiting for data: per-topic site adjustments from ratings; `[snippet cut]` marking; the notice slider in the Settings tab; the replay's `<search query>` placeholder bug (own item).
