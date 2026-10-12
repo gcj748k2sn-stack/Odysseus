@@ -299,12 +299,12 @@ Recommended **0.035**: the highest cut-off with no wrong flags in the replay; it
 - **Failing case first:** each behaviour test fails with the call site removed. Mutations to run and write down with scores: drop the clamp; drop the `+2`; ignore topic; apply in 0–1 space; let `"log"` act.
 - JS (panel counts, if added): `node --check` only; unverified, manual step named in the commit.
 
-### Decisions for the maintainer
+### Decisions (maintainer, 2026-10-12)
 
-1. **Whose ratings count:** the search layer has no user (`src/research_topics.py` docstring). Proposed: all users' ratings, like the global topics. Alternative: a setting naming one owner.
-2. **Should a down-rated site be removable in the fail-open top-up?** Proposed no: `min_keep` stays absolute. The all-junk case (*Pinatus*, 16:08) is the notice's job; see 3.
-3. **Notice on raw or adjusted best score?** The 0.035 cut-off was measured on raw scores (0/161 wrong flags). Proposed: raw, until the replay measures the adjusted version.
-4. Defaults: `strength` 0.7, `min_ratings` 2 for the domain term.
+1. **Whose ratings count:** all users' ratings, like the global topics. ✅ decided.
+2. **Down-rated sites in the fail-open top-up:** no, `min_keep` stays absolute; all-junk searches are the notice's job. ✅ decided.
+3. **Notice on raw or adjusted best score:** open, explained to the maintainer. Options: (a) raw only, the measured behaviour; (b) adjusted only, needs the 0.035 cut-off re-measured; (c) *either*: fire if the raw **or** the adjusted best is below the cut-off, so ratings can add notices but never suppress one. The risk in (b) is a ▲ on a mixed site (`en.wikipedia.org`: 4 y / 32 n in the labels) lifting an all-junk search over the cut-off and silencing the notice. Proposed: (a) live in both phases until the replay shows (c) adds no wrong flag on the 161 searches with a relevant result; the decision log records `notice_adjusted` from the start so (c) can be read without a replay.
+4. **Defaults:** `strength` 0.7 logit, `min_ratings` 2 for the domain term (maintainer: Claude's choice). ✅ decided.
 
 **Effort:** S–M. Module and tests ~1 session; replay flag and report ~half a session; Phase 2 is a setting change after the data is read.
 
@@ -321,4 +321,4 @@ Recommended **0.035**: the highest cut-off with no wrong flags in the replay; it
 3. **Spot-check 20–30 of Claude's 630 labels** (*Fourth run*).
 4. Whether the 132 truncated searches answered off-topic more often than the other 64 (*Search output cut*).
 5. Misspelled queries (*Pinatus*): the filter can only flag them; a separate item if it recurs.
-6. Per-topic site adjustments from ratings: **planned** (*Plan: ratings feed back into the filter*), waiting for the maintainer's decisions and more ratings. Not built, waiting for data: `[snippet cut]` marking; the notice slider in the Settings tab; the replay's `<search query>` placeholder bug (own item).
+6. Per-topic site adjustments from ratings: **planned** (*Plan: ratings feed back into the filter*), decisions 1, 2, 4 made, 3 open; waiting for more ratings. Not built, waiting for data: `[snippet cut]` marking; the notice slider in the Settings tab; the replay's `<search query>` placeholder bug (own item).
