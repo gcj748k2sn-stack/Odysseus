@@ -11,7 +11,7 @@ construction: any error returns the results unchanged, and at least
 returned for the model instead; that cut-off is separate from the drop
 threshold and needs its own measurement (scripts/bench_web_filter.py run).
 
-Measured offline in notes item 71 ("A relevance filter for web results") with
+Measured offline in the notes entry "A relevance filter for web results" with
 scripts/bench_web_filter.py; the defaults below come from that replay.
 """
 import datetime as dt

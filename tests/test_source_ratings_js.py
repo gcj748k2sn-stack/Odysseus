@@ -1,10 +1,10 @@
-"""Node-driven tests for static/js/source_ratings.js (fork: notes item 71).
+"""Node-driven tests for static/js/source_ratings.js (fork: notes entry "A relevance filter for web results").
 
 The rendering helpers decide what the sources box shows: dropped results stay
 out of the numbered list (so [n] keeps matching the model's citations), old
 sources without a search id render exactly as before, and everything that goes
 into HTML attributes is escaped. Click handling and restoring saved ratings
-need a browser and are checked by hand (steps in notes item 71).
+need a browser and are checked by hand (steps in the notes entry "A relevance filter for web results").
 """
 import json
 import shutil

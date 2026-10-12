@@ -1,4 +1,4 @@
-// Per-source ratings in the web sources box (fork module; notes item 71).
+// Per-source ratings in the web sources box (fork module; notes entry "A relevance filter for web results").
 //
 // buildSourcesBox (chatRenderer.js) calls splitSources() and decorateSource()
 // for sources that carry a search_id (set by services/search/core.py). Each

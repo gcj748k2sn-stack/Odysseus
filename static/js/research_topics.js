@@ -1,4 +1,4 @@
-// Research topics panel (fork module; notes item 71).
+// Research topics panel (fork module; notes entry "A relevance filter for web results").
 //
 // Opened from the left icon bar and the sidebar tools list (below Deep
 // Research). Built from the Brain panel's own classes (memory-modal-content,
