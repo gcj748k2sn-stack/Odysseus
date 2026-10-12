@@ -6,7 +6,7 @@ Open item. Its row in the [todo.md](../todo.md) index carries the current status
 
 **Idea (maintainer, 2026-10-12):** a small "decision" model between web retrieval and the thinking model (Qwen 3.5 / Bonsai 2) that decides what reaches it. **Proposed shape:** a cross-encoder reranker (fastembed, already a dependency), not a generative model. It scores (question, passage) pairs in milliseconds and does not compete with the chat model for LM Studio. Two levels: (1) the search result list (title/URL/snippet), where *"Web search derails on ambiguous common nouns"* and *"today/latest routes web_search to the news category"* happen; (2) paragraphs of fetched pages, where most of the context, and so most of the prefill time, goes.
 
-**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (26 tests).
+**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (28 tests).
 
 ## How results are ranked today
 
@@ -106,6 +106,23 @@ Worth having, but as a prior on top of the content score, not as the filter. Aut
 - **New collisions in the domain table** (the *ambiguous common nouns* mechanism, not filed before): `oyster.tfl.gov.uk` (London's Oyster card, 10 appearances) and `oyster.com` (hotel reviews, 7), plus `victoriassecret.com` (29). Now a seed rule for mushroom queries.
 - `rerank:user` collapsing is probably the English-only model on user messages (many are German) — unmeasured. Run the multilingual model before reading anything into it.
 - Fetch failures worth a look: `researchgate.net` 3/3, `forbes.com` 2/2, `msn.com` 2/2, `mushroomexpert.com` 2/2, `thesporedepot.com` 4/8.
+
+## Second run: multilingual reranker, new seed rules (2026-10-12, same corpus)
+
+`jinaai/jina-reranker-v2-base-multilingual`. The new seed rules raise the proxy junk from 32 to **78**, all 78 in the fetched top 5 today. Still no hand labels: "relevant dropped" is 0/0 by construction.
+
+| scorer | threshold | junk dropped | unlabelled dropped | fail-open | junk in top 5 after re-sort |
+|---|---:|---:|---:|---:|---:|
+| lexical:query | 0.125 | 55/78 | 111 | 58/190 | 23 |
+| rerank:query | 0.0409 | 51/78 | 72 | 35/190 | 27 |
+| rerank:query | 0.0773 | 57/78 | 118 | 56/190 | 21 |
+| rerank:both | 0.101 | 59/78 | 111 | 55/190 | 19 |
+| rerank:user | 0.0393 | 38/78 | 179 | 95/190 | 40 |
+
+- **Against this proxy, word matching does about as well as the reranker**, because the new junk (Victoria's Secret, TfL, oyster.com) shares almost no words with the query. That says the proxy is easy, not that word matching is enough: hand labels decide.
+- **The user's message is a worse target than the search query** with this model too (38/78 at the most aggressive cut point). The model's own query is already the distilled question.
+- The MiniLM and multilingual runs are not comparable here: the seed rules changed between them (32 vs 78 junk).
+- `label --scores-from` crashed with `KeyError: 'query'` on the M1's `labels.csv`: the reader assumed the comma-separated UTF-8 file the script writes. **Fixed:** the sheet is read with BOM, `;`/tab separators and Windows-1252 accepted; an unreadable sheet is refused with its header shown and never rewritten; every rewrite leaves `labels.csv.bak`.
 
 ## Verification
 

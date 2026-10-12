@@ -403,16 +403,43 @@ def label_key(query, url):
     return (" ".join((query or "").lower().split()), url.strip())
 
 
+_LABEL_VALUES = {"y": "y", "yes": "y", "j": "y", "ja": "y", "n": "n", "no": "n", "nein": "n"}
+
+
+def read_label_rows(path):
+    """Rows of the label sheet as dicts with lower-case column names.
+
+    The sheet is edited by hand, so it may come back from Numbers or Excel with
+    a BOM, `;` or tab separators (German locale) or Windows-1252 encoding.
+    Refuses — rather than guesses — when the needed columns are missing, so a
+    sheet it cannot read is never rewritten and its labels never lost."""
+    raw = Path(path).read_bytes()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        text = raw.decode("cp1252")
+    header = text.split("\n", 1)[0]
+    delim = max((",", ";", "\t"), key=header.count)
+    reader = csv.DictReader(text.splitlines(), delimiter=delim)
+    reader.fieldnames = [(n or "").strip().lower() for n in (reader.fieldnames or [])]
+    missing = {"label", "query", "url"} - set(reader.fieldnames)
+    if missing:
+        raise SystemExit(
+            f"{path}: cannot read the label sheet — missing column(s) {sorted(missing)}; "
+            f"header read as {reader.fieldnames[:6]} with separator {delim!r}. Nothing was changed."
+        )
+    return [row for row in reader if (row.get("url") or "").strip()]
+
+
 def load_labels(path=LABELS_FILE):
     labels = {}
     path = Path(path)
     if not path.is_file():
         return labels
-    with open(path, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            val = (row.get("label") or "").strip().lower()
-            if val in ("y", "n"):
-                labels[label_key(row["query"], row["url"])] = val
+    for row in read_label_rows(path):
+        val = _LABEL_VALUES.get((row.get("label") or "").strip().lower())
+        if val:
+            labels[label_key(row["query"], row["url"])] = val
     return labels
 
 
@@ -443,10 +470,10 @@ def write_label_sheet(searches, path=LABELS_FILE, scores=None):
     path = Path(path)
     existing, rows = set(), []
     if path.is_file():
-        with open(path, newline="", encoding="utf-8") as f:
-            for row in csv.DictReader(f):
-                rows.append(row)
-                existing.add(label_key(row["query"], row["url"]))
+        for row in read_label_rows(path):
+            rows.append(row)
+            existing.add(label_key(row["query"], row["url"]))
+        shutil.copy2(path, path.with_name(path.name + ".bak"))
     added = 0
     for s in searches:
         for r in s["results"]:

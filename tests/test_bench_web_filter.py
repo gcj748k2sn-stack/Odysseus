@@ -319,3 +319,31 @@ def test_label_sheet_gets_a_sortable_score_column_and_refreshed_hints(tmp_path):
     W.write_label_sheet(s, sheet)
     rows = {r["url"]: r for r in _csv.DictReader(open(sheet, encoding="utf-8"))}
     assert rows["https://junk"]["hint"] == "seed:n"
+
+
+def test_a_sheet_saved_by_a_german_spreadsheet_app_is_read(tmp_path):
+    sheet = tmp_path / "labels.csv"
+    text = ("Label;score;hint;Query;rank;domain;title;snippet;URL;user_message\n"
+            "n;0.01;seed:n;pink oyster;1;x;Pink (singer);;https://junk;Züchtung\n"
+            "ja;0.9;;pink oyster;2;x;Grow guide;;https://good1;\n")
+    sheet.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
+    assert W.load_labels(sheet) == {W.label_key("pink oyster", "https://junk"): "n",
+                                    W.label_key("pink oyster", "https://good1"): "y"}
+    sheet.write_bytes(text.replace("\n", "\r\n").encode("cp1252"))
+    assert len(W.load_labels(sheet)) == 2
+    added, total = W.write_label_sheet(_searches(), sheet)
+    assert (added, total) == (2, 4)                      # the two labelled rows were recognised
+    assert len(W.load_labels(sheet)) == 2                # and their labels kept
+    assert (tmp_path / "labels.csv.bak").is_file()
+
+
+def test_an_unreadable_sheet_is_refused_and_left_untouched(tmp_path):
+    sheet = tmp_path / "labels.csv"
+    original = "Spalte1;Spalte2\nn;https://junk\n"
+    sheet.write_text(original, encoding="utf-8")
+    with pytest.raises(SystemExit) as exc:
+        W.write_label_sheet(_searches(), sheet)
+    assert "Nothing was changed" in str(exc.value)
+    assert sheet.read_text(encoding="utf-8") == original
+    with pytest.raises(SystemExit):
+        W.load_labels(sheet)
