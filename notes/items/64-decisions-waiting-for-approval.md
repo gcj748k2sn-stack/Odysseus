@@ -4,24 +4,10 @@ Open item, filed 2026-10-07. A parking list, not a defect: each entry is a choic
 
 ---
 
-## 1. Keep or remove the two document lints — `known_facts` and `document_fidelity` (items 2a, 2b)
-
-- **What:** `src/known_facts.py` + `config/known_facts.json` check generated documents against recorded pink-oyster cultivation facts; `src/document_fidelity.py` + `config/field_semantics.json` check a document against the data it was built from. Report-only; ~890 lines with tests for known_facts.
-- **Evidence (2026-10-07):** 36 known-facts warnings in `app.log*`, all 2026-07-28…31, none since. Fidelity: never seen firing live. Of 86 documents created in July, 56 were about pink oyster; of 16 created in August and October, none. 0 check errors in any log. Cost ≈ 2.4 ms per document tool call on an oyster document, ≈ 0.2 ms on anything else.
-- **Options:** keep both · remove both (one call site in `src/turn_report.py`, two modules, two configs, four test files, fixtures). They stand or fall together.
-- **Recommendation: keep.** Dormant, not obsolete; practically free; isolated in fork modules since 2026-10-07; and they are the deterministic trigger for the planned benchmark checks of items 21 and 2a. Add a subject only after a real failure.
-
-## 3. The closing report flags tool failures the model already recovered from
-
-- **What:** `_side_effect_tool_summary` in `src/turn_report.py` appends *"⚠️ `python` failed — …"* for any failed side-effecting tool, even when the model retried and succeeded later in the turn. Seen in the 2026-10-07 Qwen benchmark (`json_output`); the benchmark now scores without the report.
-- **Options:** keep (every failure reported, by design — a confident summary must not bury one) · report only failures not followed by a successful call of the same tool · keep them but phrase recovered ones as such.
-- **Recommendation:** the third — same honesty, less noise. Needs a decision on what counts as "recovered".
-
 ## 5. The Ollama 32k model files
 
 - **What:** `models/qwen3.5-9b-32k.Modelfile` and `models/make-qwen3.5-9b-32k.sh` build `qwen3.5:9b-32k`, kept 2026-07-31 as the fallback "until 64k has run a week". The fallback has been `qwen3.5:9b-64k` since, and chat moved to LM Studio on 2026-10-02.
-- **Check first:** whether any session row still pins the 32k tag (item 42 — a pinned tag Ollama no longer serves does not fall back).
-- **Recommendation:** if none does, delete the two files and the Ollama tag.
+- **Decided 2026-10-12 (maintainer: "check"):** delete if nothing uses it. Checked in the tree: tests use the tag only as a fixture string; `scripts/bench_agent.py` has a preset `qwen35ol32k` pointing at it (goes with the files). **Still to check on the M1:** sessions pinning the tag (item 42 — a pinned tag Ollama no longer serves does not fall back) and whether Ollama still has it. Commands handed over 2026-10-12.
 
 ## 6. `qwensetup.md` — trim the history?
 
@@ -35,12 +21,6 @@ Open item, filed 2026-10-07. A parking list, not a defect: each entry is a choic
 - **Recommendation:** keep upstream's policy; decide again only when skills are back in use.
 - **Related, decided 2026-10-07 22:48 (maintainer: "do two"):** the user's own **memories** and **documents** no longer arm the gate — `src/user_content_trust.py`; record in [session-log.md](../session-log.md), 2026-10-07 21:20 entry. Skills are untouched by that change.
 
-## 8. Test fast lane on the M1
-
-- **What:** `pytest-xdist` is not in the M1 venv, so every run is single-process (~3 min). `-n 4 -m "not slow"` passed cleanly on Linux.
-- **Command:** `/Users/cedrik/odysseus/venv/bin/python -m pip install pytest-xdist`, then `./venv/bin/python -m pytest -n 4 -m "not slow" -q` while working; a plain full run before "done" (CLAUDE.md §4).
-- **Recommendation:** install.
-
 ## 9. Offer the fork's generic fixes upstream
 
 - **What:** several fork fixes would help any Odysseus user and, once taken upstream, leave the fork's diff: document data-loss fixes (closing a tab, the editor-buffer flush, tidy archives instead of deleting), the `chat.js` ReferenceErrors, `<main>` extraction for Wikipedia, the negative cache for permanently failing URLs, LM Studio context discovery, `trigger_research` reporting a dead model.
@@ -50,7 +30,6 @@ Open item, filed 2026-10-07. A parking list, not a defect: each entry is a choic
 
 ## 10. Small housekeeping
 
-- **`scripts/bench_agent_tasks.py`** keeps a hand-copied `WEB_INTENT_RE`; a five-line test comparing it with `routes/chat_routes.py` would catch drift.
 - **`tests/test_static_js_block_scope.py`** is a 576-line hand-written JS scanner; ESLint `no-undef` would do the same with a real parser, at the cost of an npm devDependency and a globals list. Optional.
 
 ## 11. Live test of the AI document tidy's archive branch (item 44) — parked 2026-10-08

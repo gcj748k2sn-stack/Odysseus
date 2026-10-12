@@ -234,3 +234,65 @@ def test_long_tool_output_is_truncated_in_the_report():
     out = _side_effect_tool_summary([ev("bash", "y" * 500, 1)])
     assert len(out) < 260
     assert "…" in out
+
+
+# ── A failure the model recovered from ──────────────────────────────────────
+
+def test_a_recovered_failure_is_still_reported_and_says_a_retry_worked():
+    """2026-10-07 Qwen json_output: `python` failed, the retry worked.
+
+    The failure stays on screen (a confident summary must not bury it), with
+    the fact that a later call of the same tool succeeded.
+    """
+    events = [
+        ev("python", "SyntaxError: invalid syntax", 1),
+        ev("python", "[{\"node\": \"climalog-1\"}]", 0),
+    ]
+    out = _side_effect_tool_summary(events, failures_only=True)
+    assert "`python` failed" in out
+    assert "SyntaxError" in out
+    assert "a later `python` call this turn succeeded" in out
+
+
+def test_negative_control_a_failure_with_no_later_success_has_no_note():
+    events = [ev("python", "ok", 0), ev("python", "SyntaxError", 1)]
+    out = _side_effect_tool_summary(events, failures_only=True)
+    assert "`python` failed" in out
+    assert "later" not in out
+
+
+def test_negative_control_a_later_success_of_another_tool_is_no_recovery():
+    events = [ev("python", "SyntaxError", 1), ev("bash", "ok", 0)]
+    assert "later" not in _side_effect_tool_summary(events, failures_only=True)
+
+
+def test_negative_control_later_calls_without_a_clean_exit_are_no_recovery():
+    """Failed again, waiting on an approval card, or no verdict at all."""
+    card = {"kind": "tool_approval"}
+    for later in (
+        ev("python", "SyntaxError", 1),
+        ev("python", "Waiting for approval", 0, ask_user=card),
+        ev("python", "", None),
+    ):
+        out = _side_effect_tool_summary([ev("python", "boom", 1), later], failures_only=True)
+        assert "later" not in out, later
+
+
+def test_the_benchmark_still_recognises_a_recovered_failure_line():
+    """scripts/bench_agent_tasks.py strips report lines by their prefix."""
+    import importlib.util
+    import sys
+    from pathlib import Path
+    scripts = Path(__file__).resolve().parents[1] / "scripts"
+    if str(scripts) not in sys.path:
+        sys.path.insert(0, str(scripts))  # its sibling imports, as bench_agent.py runs it
+    spec = importlib.util.spec_from_file_location(
+        "bench_agent_tasks_under_test", scripts / "bench_agent_tasks.py")
+    tasks = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tasks)
+    split_turn_report = tasks.split_turn_report
+    report = _side_effect_tool_summary(
+        [ev("python", "SyntaxError", 1), ev("python", "ok", 0)], failures_only=True)
+    model_text, tail = split_turn_report("The table is ready.\n\n" + report)
+    assert model_text == "The table is ready."
+    assert tail == report

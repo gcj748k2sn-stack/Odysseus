@@ -137,6 +137,20 @@ def _first_line(text: Any, limit: int = 180) -> str:
     return ""
 
 
+def _later_call_succeeded(events: list, idx: int, name: str) -> bool:
+    """True when a call of ``name`` after ``events[idx]`` ran with exit code 0.
+
+    ``None`` is no verdict, so it does not count as a success here.
+    """
+    for later in events[idx + 1:]:
+        if _resolved_tool_event_name(later) != name or _awaiting_approval(later):
+            continue
+        code = later.get("exit_code")
+        if code == 0 and not isinstance(code, bool):
+            return True
+    return False
+
+
 def _side_effect_tool_summary(tool_events: list, failures_only: bool = False) -> str:
     """Closing report for a turn that ran a side-effecting NON-document tool.
 
@@ -158,7 +172,8 @@ def _side_effect_tool_summary(tool_events: list, failures_only: bool = False) ->
     in stream_agent_loop).
     """
     lines = []
-    for event in tool_events or []:
+    events = list(tool_events or [])
+    for idx, event in enumerate(events):
         name = _resolved_tool_event_name(event)
         if not name:
             continue
@@ -169,9 +184,13 @@ def _side_effect_tool_summary(tool_events: list, failures_only: bool = False) ->
             continue
         detail = _first_line(event.get("output"))
         if _tool_event_failed(event):
-            lines.append(
-                f"⚠️ **`{name}` failed** — {detail or 'no reason was returned'}"
-            )
+            line = f"⚠️ **`{name}` failed** — {detail or 'no reason was returned'}"
+            # A failure stays reported even when a retry worked. The note says
+            # only that a later call of the same tool succeeded, not that it
+            # redid the same thing (a write_file to another path also counts).
+            if _later_call_succeeded(events, idx, name):
+                line += f" *(a later `{name}` call this turn succeeded)*"
+            lines.append(line)
         elif failures_only:
             continue
         elif name == "write_file":
