@@ -6,7 +6,7 @@ Open item. Its row in the [todo.md](../todo.md) index carries the current status
 
 **Idea (maintainer, 2026-10-12):** a small "decision" model between web retrieval and the thinking model (Qwen 3.5 / Bonsai 2) that decides what reaches it. **Proposed shape:** a cross-encoder reranker (fastembed, already a dependency), not a generative model. It scores (question, passage) pairs in milliseconds and does not compete with the chat model for LM Studio. Two levels: (1) the search result list (title/URL/snippet), where *"Web search derails on ambiguous common nouns"* and *"today/latest routes web_search to the news category"* happen; (2) paragraphs of fetched pages, where most of the context, and so most of the prefill time, goes.
 
-**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (30 tests).
+**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (33 tests).
 
 ## How results are ranked today
 
@@ -52,6 +52,11 @@ All commands from `/Users/cedrik/odysseus`. `extract` copies `app.db` itself (ha
    ./venv/bin/python scripts/bench_web_filter.py label --dir $RUN --scores-from rerank:query
    ```
    Open it in Numbers/Excel and put `y` (relevant) or `n` (junk) in the `label` column. Unlabelled rows are ignored. Labels are keyed on query + URL, so a later `extract` keeps them. 50–100 labelled rows across a dozen searches already give a usable first reading; label some relevant ones too, otherwise the report cannot show the cost.
+   To label elsewhere: `export` writes the unlabelled rows (id, query, title, domain, snippet; no user messages) to `data/bench/web_filter/to_label.tsv`; `import FILE` applies `id<TAB>y|n` lines back, keeping labels already in the sheet:
+   ```
+   ./venv/bin/python scripts/bench_web_filter.py export
+   ./venv/bin/python scripts/bench_web_filter.py import data/bench/web_filter/labels_in.tsv
+   ```
 4. Score and report. The first run downloads the reranker into `data/fastembed_cache` (80 MB):
    ```
    ./venv/bin/python scripts/bench_web_filter.py run --dir $RUN

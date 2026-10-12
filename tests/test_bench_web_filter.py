@@ -369,3 +369,54 @@ def test_all_junk_searches_counts_only_fully_labelled_junk():
     assert W.all_junk_searches(s, {k: "n" for k in keys}) == 1
     assert W.all_junk_searches(s, {k: "n" for k in keys[:3]}) == 0      # one result unlabelled
     assert W.all_junk_searches(s, {**{k: "n" for k in keys}, keys[1]: "y"}) == 0
+
+
+def _sheet_rows(tmp_path):
+    sheet = tmp_path / "labels.csv"
+    W.write_label_sheet(_searches(), sheet)
+    rows = W.read_label_rows(sheet)
+    rows[0]["label"] = "n"                        # one row already labelled
+    rows[1]["user_message"] = "private\tchat"
+    rows[1]["title"] = "tab\there\nnewline"
+    return sheet, rows
+
+
+def test_export_lists_only_unlabelled_rows_without_user_messages(tmp_path):
+    _, rows = _sheet_rows(tmp_path)
+    lines = W.export_unlabelled(rows)
+    assert lines[0] == "id\tquery\ttitle\tdomain\tsnippet"
+    assert len(lines) == 1 + 3
+    assert all(len(l.split("\t")) == 5 for l in lines)       # tabs/newlines inside fields flattened
+    assert not any("private" in l for l in lines)
+    ids = [l.split("\t")[0] for l in lines[1:]]
+    assert len(set(ids)) == 3
+    assert W.export_unlabelled(rows, limit=2, offset=1)[1:] == lines[2:4]
+
+
+def test_import_applies_labels_and_keeps_existing_ones(tmp_path):
+    sheet, rows = _sheet_rows(tmp_path)
+    rid = {r["url"]: W.row_id(r["query"], r["url"]) for r in rows}
+    lines = ["id\tlabel",
+             f"{rid['https://junk']}\ty",          # already labelled n: kept
+             f"{rid['https://good1']}\ty",
+             f"{rid['https://good2']} n",
+             f"{rid['https://unl']}\tmaybe",
+             "0123456789\tn"]
+    counts = W.apply_label_lines(rows, lines)
+    assert counts == {"applied": 2, "already_labelled": 1, "bad_value": 1, "unknown_id": 1}
+    by_url = {r["url"]: r["label"] for r in rows}
+    assert by_url == {"https://junk": "n", "https://good1": "y", "https://good2": "n", "https://unl": ""}
+    assert W.apply_label_lines(rows, [f"{rid['https://junk']}\ty"], overwrite=True)["applied"] == 1
+
+
+def test_export_import_round_trip_through_the_sheet(tmp_path):
+    sheet, rows = _sheet_rows(tmp_path)
+    W.save_label_rows(sheet, rows)
+    out = tmp_path / "to_label.tsv"
+    W.main(["export", "--labels", str(sheet), "--out", str(out)])
+    answers = tmp_path / "answers.tsv"
+    answers.write_text("\n".join(l.split("\t")[0] + "\ty" for l in out.read_text().splitlines()[1:]), encoding="utf-8")
+    W.main(["import", str(answers), "--labels", str(sheet)])
+    labels = W.load_labels(sheet)
+    assert sorted(labels.values()) == ["n", "y", "y", "y"]
+    assert (tmp_path / "labels.csv.bak").is_file()

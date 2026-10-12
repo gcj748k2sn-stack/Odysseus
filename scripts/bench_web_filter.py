@@ -29,6 +29,10 @@ run      Scores every result with each scorer, applies a keep/drop threshold at
          dropped (the cost), searches where the fail-open kicked in, and junk
          left in the fetched top 5. Without labels it falls back to SEED_RULES
          (a handful of known-bad cases from notes/) and says so.
+export   Writes the unlabelled rows of labels.csv to to_label.tsv (id, query,
+         title, domain, snippet — no user messages) for labelling elsewhere.
+import   Applies a file of `id<TAB>y|n` lines back to labels.csv; labels already
+         in the sheet are kept unless --overwrite. Leaves labels.csv.bak.
 pages    Splits recorded web_fetch pages into paragraphs, scores each against
          the user's message, and writes pages.md showing what a budgeted
          paragraph filter would keep and drop. For reading, not for a score.
@@ -502,13 +506,67 @@ def write_label_sheet(searches, path=LABELS_FILE, scores=None):
             sc = row.get("score")
             return (labelled, sc == "", float(sc) if sc else 0.0)
         rows.sort(key=_order)
+    save_label_rows(path, rows)
+    return added, len(rows)
+
+
+LABEL_FIELDS = ["label", "score", "hint", "query", "rank", "domain", "title", "snippet", "url", "user_message"]
+
+
+def save_label_rows(path, rows):
+    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    fields = ["label", "score", "hint", "query", "rank", "domain", "title", "snippet", "url", "user_message"]
     with open(path, "w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
+        w = csv.DictWriter(f, fieldnames=LABEL_FIELDS, extrasaction="ignore")
         w.writeheader()
         w.writerows(rows)
-    return added, len(rows)
+
+
+def row_id(query, url):
+    """Short stable id for a sheet row, used by export/import."""
+    return hashlib.sha256("\x1f".join(label_key(query, url)).encode("utf-8")).hexdigest()[:10]
+
+
+def _flat(text, limit):
+    return " ".join((text or "").split())[:limit]
+
+
+def export_unlabelled(rows, limit=None, offset=0):
+    """Tab-separated lines `id, query, title, domain, snippet` for rows without a
+    label. No user messages: the export is meant to be shared."""
+    todo = [r for r in rows if not (r.get("label") or "").strip()]
+    todo = todo[offset:offset + limit] if limit else todo[offset:]
+    lines = ["id\tquery\ttitle\tdomain\tsnippet"]
+    for r in todo:
+        lines.append("\t".join((row_id(r["query"], r["url"]), _flat(r["query"], 120), _flat(r.get("title"), 120),
+                                _flat(r.get("domain"), 60), _flat(r.get("snippet"), 160))))
+    return lines
+
+
+_IMPORT_LINE_RE = re.compile(r"^\s*([0-9a-f]{10})\s*[\t,; ]\s*(\S+)")
+
+
+def apply_label_lines(rows, lines, overwrite=False):
+    """Apply `id<sep>label` lines to sheet rows. Existing labels are kept unless
+    overwrite. Returns counts: applied, already_labelled, unknown_id, bad_value."""
+    by_id = {row_id(r["query"], r["url"]): r for r in rows}
+    counts = Counter()
+    for line in lines:
+        m = _IMPORT_LINE_RE.match(line)
+        if not m:
+            continue
+        rid, val = m.group(1), _LABEL_VALUES.get(m.group(2).strip().lower())
+        row = by_id.get(rid)
+        if row is None:
+            counts["unknown_id"] += 1
+        elif val is None:
+            counts["bad_value"] += 1
+        elif (row.get("label") or "").strip() and not overwrite:
+            counts["already_labelled"] += 1
+        else:
+            row["label"] = val
+            counts["applied"] += 1
+    return counts
 
 
 def labels_for(searches, labels):
@@ -770,6 +828,25 @@ def cmd_run(args):
     print(f"\nwritten: {out / 'report.md'}, {out / 'scores.jsonl'}, {out / 'domains_seen.csv'}")
 
 
+def cmd_export(args):
+    rows = read_label_rows(args.labels)
+    lines = export_unlabelled(rows, args.limit, args.offset)
+    Path(args.out).write_text("\n".join(lines) + "\n", encoding="utf-8")
+    left = sum(1 for r in rows if not (r.get("label") or "").strip())
+    print(f"{args.out}: {len(lines) - 1} rows (of {left} unlabelled), offset {args.offset}.")
+
+
+def cmd_import(args):
+    path = Path(args.labels)
+    rows = read_label_rows(path)
+    lines = Path(args.file).read_text(encoding="utf-8-sig").splitlines()
+    counts = apply_label_lines(rows, lines, args.overwrite)
+    shutil.copy2(path, path.with_name(path.name + ".bak"))
+    save_label_rows(path, rows)
+    print(f"{path}: applied {counts['applied']}, kept existing {counts['already_labelled']}, "
+          f"unknown id {counts['unknown_id']}, unreadable label {counts['bad_value']}. Backup: {path.name}.bak")
+
+
 def cmd_pages(args):
     _, fetches = read_corpus(args.dir)
     pages = [f for f in fetches if f["exit_code"] == 0 and f["text"]][: args.limit]
@@ -829,8 +906,18 @@ def main(argv=None):
     p.add_argument("--budget", type=int, default=2000)
     p.add_argument("--limit", type=int, default=20)
     p.add_argument("--lexical", action="store_true", help="word matching instead of the reranker (no download)")
+    ex = sub.add_parser("export", help="write unlabelled rows to a compact file for labelling elsewhere")
+    ex.add_argument("--labels", type=Path, default=LABELS_FILE)
+    ex.add_argument("--out", type=Path, default=OUT_ROOT / "to_label.tsv")
+    ex.add_argument("--limit", type=int)
+    ex.add_argument("--offset", type=int, default=0)
+    im = sub.add_parser("import", help="apply `id<TAB>y|n` lines to the label sheet")
+    im.add_argument("file", type=Path)
+    im.add_argument("--labels", type=Path, default=LABELS_FILE)
+    im.add_argument("--overwrite", action="store_true", help="also replace labels already in the sheet")
     args = ap.parse_args(argv)
-    {"extract": cmd_extract, "label": cmd_label, "run": cmd_run, "pages": cmd_pages}[args.cmd](args)
+    {"extract": cmd_extract, "label": cmd_label, "run": cmd_run, "pages": cmd_pages,
+     "export": cmd_export, "import": cmd_import}[args.cmd](args)
 
 
 if __name__ == "__main__":
