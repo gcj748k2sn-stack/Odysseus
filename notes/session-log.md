@@ -25,7 +25,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - **Item 64:** §4 decided (remove the document diagnostics if `[doc-put-404]` count is zero). The removal was **not made**: the count needs the M1's logs, and the classifier refused the edit. §9 parked; §10 `.env.bak.before-lmstudio` deleted by the maintainer (it differed from `.env` only by a missing `LM_STUDIO_URL` line).
 - 📦 Session-log entries of 10-09 and 10-10 moved to the archive.
 - ✅ **Later: item 34 closed, diagnostics removed.** Maintainer's count: one `[doc-put-404]` (the 07-31 repro) in logs from 07-12, 64 stream opens. Removed `[doc-put-404]`, `_stackFrames`, `switchAway`; `node --check` and `py_compile` only — **JS unverified**: manual step, open a document, type one character, confirm one `[doc-save] target=… stamp=… len=…` console line with no `via` lines. M1 suite owed.
-- ➡️ **Next:** the *Next* list in todo.md.
+- 🐞🔧 **Item 83 found and fixed (17:53–18:10):** typing into an empty editor saved only the first character (server `"h"` for editor "hi", confirmed by the maintainer). One-line stamp in `_autoCreateFromInput`; `node --check` only, live check owed (steps in todo.md).
+- ➡️ **Next:** item 83's live check; then the *Next* list in todo.md.
 
 ---
 

@@ -4790,6 +4790,11 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
       const textarea = document.getElementById('doc-editor-textarea');
       if (textarea) {
         textarea.placeholder = 'Document content...';
+        // Stamp the buffer as this document's. Unstamped, saveCurrentToMap
+        // refuses every later keystroke and autosave re-sends the first
+        // character only (todo: "Typing into an empty editor saves only the
+        // first character").
+        if (!textarea.dataset.docId) textarea.dataset.docId = doc.id;
       }
       syncHighlighting();
       renderTabs();
