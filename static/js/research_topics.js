@@ -16,6 +16,8 @@ function esc(s) {
 }
 
 const ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:6px"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>';
+// Title icon in the accent colour, like the Brain panel's "Memories" heading.
+const H2_ICON = ICON.replace('style="vertical-align:-2px;margin-right:6px"', 'style="color:var(--accent, var(--red));flex-shrink:0;"');
 const LIST_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>';
 const GEAR_ICON = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:5px"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
@@ -33,13 +35,12 @@ function badge(text, title) {
 function metaFor(t) {
   const r = t.ratings || { up: 0, down: 0 };
   return badge((t.searches || 0) + ' searches', 'Web searches assigned to this topic (from the decision log)')
-    + badge(r.up + ' up · ' + r.down + ' down', 'Your source ratings in this topic')
-    + (t.enabled === false ? badge('off') : '');
+    + badge(r.up + ' up · ' + r.down + ' down', 'Your source ratings in this topic');
 }
 
 function topicItem(t, idx) {
   if (_editing === idx) return editItem(t, idx);
-  return '<div class="memory-item rt-item" data-idx="' + idx + '">'
+  return '<div class="memory-item rt-item' + (t.enabled === false ? ' rt-off' : '') + '" data-idx="' + idx + '">'
     + '<div class="memory-item-content">'
     + '<span class="memory-item-text rt-name">' + esc(t.name) + '</span>'
     + '<span class="rt-examples">' + esc((t.examples || []).join(' · ')) + '</span>'
@@ -70,23 +71,30 @@ function topicsPanel() {
   const items = _data.topics.map(topicItem).join('')
     + (_editing === 'new' ? editItem({ name: '', examples: [] }, 'new') : '');
   const other = _data.other || {};
+  const n = _data.topics.length;
+  const on = _data.enabled !== false;
   return '<div class="admin-card" style="display:flex;flex-direction:column;min-height:0;">'
     + '<div style="display:flex;align-items:center;gap:8px;margin-bottom:2px;">'
-    + '<h2 style="display:flex;align-items:center;gap:6px;margin:0;padding:0;line-height:1;">' + ICON + 'Topics</h2>'
+    + '<h2 style="display:flex;align-items:center;gap:6px;margin:0;padding:0;line-height:1;">' + H2_ICON + 'Topics '
+    + '<span class="memory-count" style="font-size:0.6em;opacity:0.6;font-weight:normal">' + n + (n === 1 ? ' topic' : ' topics') + '</span></h2>'
     + '<span style="flex:1"></span>'
-    + '<button type="button" class="memory-toolbar-btn rt-add" title="Add a topic">+ Add topic</button>'
+    + '<span class="admin-toggle-state"></span>'
+    + '<label class="admin-switch" title="Match web searches to topics"><input type="checkbox" class="rt-master"'
+    + (on ? ' checked' : '') + ' /><span class="admin-slider"></span></label>'
     + '</div>'
+    + '<div class="rt-body"' + (on ? '' : ' style="opacity:0.3"') + '>'
     + '<p class="memory-desc doclib-desc" style="margin-top:6px;">Web searches are matched to the topic whose example queries are closest '
     + '(while the relevance filter is on). Your up/down ratings in the sources box are counted per topic.</p>'
+    + '<div class="rt-toolbar"><button type="button" class="memory-toolbar-btn rt-add" title="Add a topic">+ Add topic</button></div>'
     + '<div class="memory-list rt-list">' + items
     + '<div class="memory-item rt-other"><div class="memory-item-content">'
     + '<span class="memory-item-text">other</span><span class="rt-examples">Searches that matched no topic</span>'
     + '<div class="memory-item-meta">' + metaFor({ ...other, enabled: true }) + '</div></div></div>'
-    + '</div><span class="admin-toggle-sub rt-status" style="display:block;margin-top:6px"></span></div>';
+    + '</div></div><span class="admin-toggle-sub rt-status" style="display:block;margin-top:6px"></span></div>';
 }
 
-function settingRow(title, sub, control) {
-  return '<div class="admin-card">'
+function settingRow(title, sub, control, dependent) {
+  return '<div class="admin-card' + (dependent ? ' rt-dep' : '') + '">'
     + '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:32px">'
     + '<h2 style="margin:0;display:inline-flex;align-items:center;gap:6px">' + esc(title) + '</h2>' + control + '</div>'
     + '<span class="admin-toggle-sub" style="display:block;margin-top:6px;opacity:0.6">' + sub + '</span></div>';
@@ -121,22 +129,33 @@ function settingsPanel() {
     + settingRow('Cut-off',
       'Results scoring below this are dropped. Measured on 888 labelled results: 0.026–0.041 dropped a fifth to a third '
       + 'of the junk and almost nothing relevant.',
-      slider('web_filter_threshold', f.web_filter_threshold, 0.005, 0.2, 0.005, FMT.web_filter_threshold))
+      slider('web_filter_threshold', f.web_filter_threshold, 0.005, 0.2, 0.005, FMT.web_filter_threshold), true)
     + settingRow('Candidates per search',
       'How many results to request and score; the best of them (up to the usual count) reach the model. More costs time.',
-      slider('web_filter_candidates', f.web_filter_candidates, 5, 30, 1, FMT.web_filter_candidates))
+      slider('web_filter_candidates', f.web_filter_candidates, 5, 30, 1, FMT.web_filter_candidates), true)
     + settingRow('Always keep',
       'Never pass on fewer results than this, even if they score below the cut-off.',
-      slider('web_filter_min_keep', f.web_filter_min_keep, 1, 10, 1, FMT.web_filter_min_keep))
+      slider('web_filter_min_keep', f.web_filter_min_keep, 1, 10, 1, FMT.web_filter_min_keep), true)
     + settingRow('Decision log',
       'Write every search\'s candidates, scores and outcome to data/logs/web_filter.jsonl, for the replay and ratings.',
-      sw('web_filter_decision_log', f.web_filter_decision_log))
+      sw('web_filter_decision_log', f.web_filter_decision_log), true)
     + settingRow('Topic matching',
       'How similar a search must be to a topic\'s examples to be assigned to it; below this it goes to "other".',
-      slider('min_similarity', _data.min_similarity, 0.1, 0.9, 0.05, FMT.min_similarity))
+      slider('min_similarity', _data.min_similarity, 0.1, 0.9, 0.05, FMT.min_similarity), true)
     + '<div class="admin-card" style="display:flex;align-items:center;gap:8px">'
     + '<button type="button" class="memory-toolbar-btn rt-save-settings">Save settings</button>'
     + '<span class="admin-toggle-sub rt-status" style="margin:0"></span></div>';
+}
+
+// Like the Brain panel's settings: options under a switched-off parent are
+// greyed out and not clickable.
+function applyDim() {
+  const filterOn = _modal.querySelector('.rt-flag[data-key="web_filter_enabled"]');
+  _modal.querySelectorAll('.rt-dep').forEach(card => {
+    const off = filterOn && !filterOn.checked;
+    card.style.opacity = off ? '0.35' : '';
+    card.style.pointerEvents = off ? 'none' : '';
+  });
 }
 
 function render() {
@@ -145,6 +164,7 @@ function render() {
   _modal.querySelectorAll('[data-rt-panel]').forEach(p => p.classList.toggle('hidden', p.dataset.rtPanel !== tab));
   _modal.querySelector('[data-rt-panel="topics"]').innerHTML = topicsPanel();
   _modal.querySelector('[data-rt-panel="settings"]').innerHTML = settingsPanel();
+  applyDim();
 }
 
 function status(text, bad) {
@@ -184,14 +204,17 @@ async function put(url, body) {
   return data;
 }
 
-async function saveTopics(topics, okText) {
-  status('Saving…');
+async function saveTopics(topics, enabled) {
+  status('');
   try {
-    await put('/api/research-topics', { min_similarity: _data.min_similarity, topics });
+    await put('/api/research-topics', {
+      enabled: enabled === undefined ? _data.enabled !== false : enabled,
+      min_similarity: _data.min_similarity, topics,
+    });
     _editing = null;
     await load();
-    status(okText || 'Saved.');
   } catch (e) {
+    await load();
     status(e.message, true);
   }
 }
@@ -216,7 +239,7 @@ function onClick(ev) {
   if (t.closest('.rt-del')) {
     const name = _data.topics[idx]?.name || 'this topic';
     if (!window.confirm('Delete "' + name + '"? Searches already assigned keep their topic in the log.')) return;
-    return saveTopics(plainTopics().filter((_, i) => i !== idx), 'Deleted.');
+    return saveTopics(plainTopics().filter((_, i) => i !== idx));
   }
   if (t.closest('.rt-save-item')) {
     const name = item.querySelector('.rt-name-in').value;
@@ -235,7 +258,14 @@ function onChange(ev) {
     const idx = Number(t.closest('.rt-item').dataset.idx);
     const topics = plainTopics();
     topics[idx].enabled = t.checked;
-    saveTopics(topics, t.checked ? 'Topic on.' : 'Topic off.');
+    t.closest('.rt-item').classList.toggle('rt-off', !t.checked);
+    saveTopics(topics);
+  } else if (t.classList.contains('rt-master')) {
+    const body = _modal.querySelector('.rt-body');
+    if (body) body.style.opacity = t.checked ? '' : '0.3';
+    saveTopics(plainTopics(), t.checked);
+  } else if (t.classList.contains('rt-flag')) {
+    applyDim();
   }
 }
 
@@ -258,7 +288,7 @@ async function saveSettings() {
   try {
     _filter = await put('/api/web-filter/settings', body);
     if (minSim !== _data.min_similarity) {
-      await put('/api/research-topics', { min_similarity: minSim, topics: plainTopics() });
+      await put('/api/research-topics', { enabled: _data.enabled !== false, min_similarity: minSim, topics: plainTopics() });
     }
     await load();
     status('Saved.');
@@ -278,6 +308,9 @@ const STYLE = `
 #research-topics-modal .rt-item-side { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
 #research-topics-modal .rt-edit-col textarea { resize: vertical; width: 100%; box-sizing: border-box; }
 #research-topics-modal .rt-other { opacity: 0.75; }
+#research-topics-modal .rt-toolbar { display: flex; justify-content: flex-start; margin: 2px 0 0; }
+#research-topics-modal .rt-item { align-items: flex-start; }
+#research-topics-modal .rt-off .memory-item-content { opacity: 0.4; }
 `;
 
 function build() {

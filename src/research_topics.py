@@ -24,6 +24,7 @@ MAX_EXAMPLES = 10
 
 DEFAULT_TOPICS = {
     "version": 1,
+    "enabled": True,
     "min_similarity": 0.35,
     "topics": [
         {"id": "biology", "name": "Biology", "enabled": True, "examples": [
@@ -98,7 +99,7 @@ def validate(data):
             tid = _slug(name, taken)
         taken.add(tid)
         out.append({"id": tid, "name": name, "enabled": bool(t.get("enabled", True)), "examples": examples})
-    return {"version": 1, "min_similarity": min_sim, "topics": out}
+    return {"version": 1, "enabled": bool(data.get("enabled", True)), "min_similarity": min_sim, "topics": out}
 
 
 def load_topics(path=None):
@@ -146,6 +147,8 @@ def assign_topic(query, data=None, encoder=None):
     """(topic id or "other", best similarity). Never raises."""
     try:
         data = data or load_topics()
+        if not data.get("enabled", True):
+            return OTHER, 0.0
         topics = [t for t in data["topics"] if t["enabled"]]
         if not topics or not (query or "").strip():
             return OTHER, 0.0

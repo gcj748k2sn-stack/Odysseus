@@ -257,3 +257,14 @@ def test_api_filter_settings_read_by_anyone_written_by_admin_only(client, monkey
     assert client.put("/api/web-filter/settings", json={"search_provider": "duckduckgo"},
                       headers={"x-user": "cedrik"}).status_code == 400
     assert store["search_provider"] == "searxng"
+
+
+def test_the_master_switch_turns_topic_matching_off():
+    data = T.validate({"enabled": False, "topics": [{"name": "Finance", "examples": ["gold price"]}]})
+    assert data["enabled"] is False
+    enc = FakeEncoder()
+    assert T.assign_topic("gold price today", data, enc) == ("other", 0.0)
+    assert enc.calls == 0                                    # no model call while off
+    assert T.validate({"topics": []})["enabled"] is True     # on unless switched off
+    saved = T.save_topics({"enabled": False, "topics": [{"name": "A", "examples": ["a"]}]})
+    assert T.load_topics()["enabled"] is False and saved["enabled"] is False
