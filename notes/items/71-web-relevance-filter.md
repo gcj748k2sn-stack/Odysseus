@@ -6,7 +6,7 @@ Open item. Its row in the [todo.md](../todo.md) index carries the current status
 
 **Idea (maintainer, 2026-10-12):** a small "decision" model between web retrieval and the thinking model (Qwen 3.5 / Bonsai 2) that decides what reaches it. **Proposed shape:** a cross-encoder reranker (fastembed, already a dependency), not a generative model. It scores (question, passage) pairs in milliseconds and does not compete with the chat model for LM Studio. Two levels: (1) the search result list (title/URL/snippet), where *"Web search derails on ambiguous common nouns"* and *"today/latest routes web_search to the news category"* happen; (2) paragraphs of fetched pages, where most of the context, and so most of the prefill time, goes.
 
-**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (29 tests).
+**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (30 tests).
 
 ## How results are ranked today
 
@@ -135,6 +135,23 @@ Worth having, but as a prior on top of the content score, not as the filter. Aut
 - **The user's message is a worse target than the search query** with this model too (38/78 at the most aggressive cut point). The model's own query is already the distilled question.
 - The MiniLM and multilingual runs are not comparable here: the seed rules changed between them (32 vs 78 junk).
 - `label --scores-from` crashed with `KeyError: 'query'` on the M1's `labels.csv`: the reader assumed the comma-separated UTF-8 file the script writes. **Fixed:** the sheet is read with BOM, `;`/tab separators and Windows-1252 accepted; an unreadable sheet is refused with its header shown and never rewritten; every rewrite leaves `labels.csv.bak`.
+
+## Third run: first hand labels (2026-10-12, same corpus, y=18, n=234)
+
+| model, scorer | threshold | junk dropped | relevant dropped | unlabelled dropped | junk in top 5 after |
+|---|---:|---:|---:|---:|---:|
+| jina, rerank:query | 0.0258 | 71/234 | **0/18** | 0 | 163 |
+| jina, rerank:query | 0.0409 | 118/234 | 4/18 | 1 | 116 |
+| jina, rerank:both | 0.046 | 109/234 | 1/18 | 2 | 125 |
+| MiniLM, rerank:query | 1.13e-05 | 65/234 | 2/18 | 3 | 169 |
+| lexical:query | 0.125 | 125/234 | 4/18 | 37 | 109 |
+
+- **The multilingual reranker is the only scorer with a zero-cost row** (0.0258: 71 junk dropped, nothing relevant, nothing unlabelled). MiniLM's scores sit at 1e-5 and it drops relevant results from its first row; it is out.
+- **0/18 is weak evidence:** with 18 relevant labels, a true drop rate up to ~17 % is consistent with seeing none (rule of three). More `y` labels are needed before choosing a threshold.
+- **Suspected wrong labels** in the "relevant dropped" lists: `en.wikipedia.org/wiki/Pink_(singer)` and `en.wikipedia.org/wiki/Oyster` (the shellfish) labelled `y` for mushroom queries. If they are mislabels, part of the 4/18 at 0.0409 is not a cost. Maintainer to check.
+- **The ceiling is fail-open, not the scorer:** junk dropped stops near 136/234 for every scorer, and "junk in top 5 after" near 98. Searches return ~4.7 results, and when most of them are junk, fail-open still keeps 3. The report now counts these all-junk searches. Proposed: when every result scores below the threshold, keep them but **tell the model the results look off-topic** (a reporting guard, which can't remove anything) instead of handing them over silently.
+- **Queries the scorer cannot judge:** a search whose query is literally `<search query>` (the model sent a template placeholder — an Odysseus/model bug, not counted yet), and the *Lactarius procera / Macrolepiota procera / giant milk cap* searches, where the model mixed up species names and the relevant results don't match the query. Scoring against query + user message (`rerank:both`) ranks those higher.
+- Report change after this run: relevant drops are listed per threshold (where each is first dropped), not only at the strictest one.
 
 ## Verification
 

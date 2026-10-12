@@ -361,3 +361,11 @@ def test_scored_sheet_puts_unlabelled_drop_candidates_on_top(tmp_path):
     import csv as _csv
     order = [r["url"] for r in _csv.DictReader(open(sheet, encoding="utf-8"))]
     assert order == ["https://good2", "https://good1", "https://unl", "https://junk"]
+
+
+def test_all_junk_searches_counts_only_fully_labelled_junk():
+    s = _searches()
+    keys = [("s1", r["url"]) for r in s[0]["results"]]
+    assert W.all_junk_searches(s, {k: "n" for k in keys}) == 1
+    assert W.all_junk_searches(s, {k: "n" for k in keys[:3]}) == 0      # one result unlabelled
+    assert W.all_junk_searches(s, {**{k: "n" for k in keys}, keys[1]: "y"}) == 0

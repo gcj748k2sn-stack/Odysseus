@@ -558,6 +558,15 @@ def evaluate(searches, scores, truth, threshold, min_keep=MIN_KEEP, top_n=FETCHE
     return row, good_dropped
 
 
+def all_junk_searches(searches, truth, min_labelled=MIN_KEEP):
+    n = 0
+    for s in searches:
+        labs = [truth.get((s["id"], r["url"])) for r in s["results"]]
+        if len(labs) >= min_labelled and all(lab == "n" for lab in labs):
+            n += 1
+    return n
+
+
 def junk_in_current_top(searches, truth, top_n=FETCHED_TOP_N):
     return sum(1 for s in searches for r in s["results"][:top_n] if truth.get((s["id"], r["url"])) == "n")
 
@@ -700,26 +709,32 @@ def cmd_run(args):
         "",
         f"**Today's order:** {junk_in_current_top(searches, truth)} junk results in the fetched top {FETCHED_TOP_N}.",
         "",
+        f"**All-junk searches:** {all_junk_searches(searches, truth)} searches where every result is labelled junk "
+        f"(at least {MIN_KEEP} labelled). Fail-open keeps {MIN_KEEP} of them anyway, so no threshold can clean these.",
+        "",
     ]
     for name, scores in all_scores.items():
         lines += [f"## {name}", "",
                   "| threshold | junk dropped | relevant dropped | unlabeled dropped | fail-open searches | junk in top 5 after re-sort |",
                   "|---:|---:|---:|---:|---:|---:|"]
         best = None
+        seen_dropped, first_dropped = set(), []
         for thr in threshold_grid(scores):
             row, good_dropped = evaluate(searches, scores, truth, thr, args.min_keep)
             lines.append(f"| {thr:.3g} | {row['junk_dropped']}/{row['junk']} | {row['good_dropped']}/{row['good']} "
                          f"| {row['unlabeled_dropped']} | {row['fell_back']}/{len(searches)} | {row['junk_top_after']} |")
             if row["good_dropped"] == 0 and (best is None or row["junk_dropped"] > best[1]["junk_dropped"]):
                 best = (thr, row, good_dropped)
+            for q, u, sc in good_dropped:
+                if (q, u) not in seen_dropped:
+                    seen_dropped.add((q, u))
+                    first_dropped.append((thr, q, u, sc))
         lines.append("")
-        thr_hi = max(threshold_grid(scores), default=None)
-        if thr_hi is not None:
-            _, gd = evaluate(searches, scores, truth, thr_hi, args.min_keep)
-            if gd:
-                lines += [f"Relevant results dropped at {thr_hi:.3g} (the cost side — read these):", ""]
-                lines += [f"- {sc:.3f} · {q[:70]} → {u}" for q, u, sc in gd[:20]]
-                lines.append("")
+        if first_dropped:
+            lines += ["Relevant results dropped, by the threshold that first drops them (the cost side — "
+                      "read these; a wrong label shows up here too):", ""]
+            lines += [f"- from {thr:.3g}: score {sc:.3g} · {q[:70]} → {u}" for thr, q, u, sc in first_dropped[:25]]
+            lines.append("")
         if best and any(v == "y" for v in truth.values()):
             lines += [f"Highest threshold in the grid that drops no labelled-relevant result: **{best[0]:.3g}** "
                       f"({best[1]['junk_dropped']}/{best[1]['junk']} junk dropped).", ""]
