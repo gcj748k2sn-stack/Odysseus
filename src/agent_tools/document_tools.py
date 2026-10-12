@@ -5,6 +5,7 @@ from src.constants import MAX_READ_CHARS
 from src.tool_approvals import document_content_digest
 from src.tool_utils import _parse_tool_args, get_upload_handler
 from src.upload_handler import reserve_upload_references
+from src import edit_gutter as _edit_gutter
 
 logger = logging.getLogger(__name__)
 
@@ -768,9 +769,11 @@ class EditDocumentTool:
                     # legitimately tab-prefixed document.
                     _stripped = "\n".join(re.sub(r"^\d+\t", "", _l) for _l in _find.split("\n"))
                     if _stripped != _find and _stripped in updated_content:
-                        updated_content = updated_content.replace(_stripped, edit["replace"], 1)
+                        # Fork: the gutter copied into FIND is in REPLACE too (src/edit_gutter.py).
+                        _replace = _edit_gutter.strip(edit["replace"])
+                        updated_content = updated_content.replace(_stripped, _replace, 1)
                         applied += 1
-                        _applied_pairs.append((_stripped, edit["replace"]))
+                        _applied_pairs.append((_stripped, _replace))
                         logger.info("edit_document: matched after stripping line-number gutter from FIND")
                     else:
                         logger.warning(f"edit_document: FIND text not found, skipping: {_find[:80]!r}")
