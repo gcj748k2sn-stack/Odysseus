@@ -179,3 +179,14 @@ def test_all_junk_search_reaches_the_model_with_the_notice(search_env, monkeypat
     assert len(sources) == 2
     summary = text[text.index("SEARCH RESULTS SUMMARY:"):]
     assert F.OFF_TOPIC_NOTICE in summary
+
+
+def test_the_on_off_state_is_logged_once_per_change(monkeypatch, caplog):
+    monkeypatch.setattr(F, "_logged_state", None)
+    model = Fake()
+    with caplog.at_level(logging.INFO, logger="src.web_filter"):
+        F.filter_results("q oyster mushroom", RESULTS, settings=dict(F.DEFAULTS), model=model)
+        F.filter_results("q oyster mushroom", RESULTS, settings=dict(F.DEFAULTS), model=model)
+        F.filter_results("q oyster mushroom", RESULTS, settings=ON, model=model)
+    states = [r.getMessage().split()[1] for r in caplog.records if r.getMessage().startswith("[web-filter] o")]
+    assert states == ["off", "on"]

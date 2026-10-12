@@ -38,6 +38,7 @@ OFF_TOPIC_NOTICE = (
 _model = None
 _model_name = None
 _model_lock = threading.Lock()
+_logged_state = None   # last on/off state written to the log
 
 
 def _settings():
@@ -107,8 +108,15 @@ def filter_results(query, results, settings=None, model=None):
 
     Never raises and never returns fewer than min(min_keep, len(results))
     results; when disabled or on any error it returns `results` unchanged."""
+    global _logged_state
     cfg = settings if settings is not None else _settings()
-    if not cfg.get("web_filter_enabled") or not results or not (query or "").strip():
+    enabled = bool(cfg.get("web_filter_enabled"))
+    # One line per state change, so a log without [web-filter] lines can be
+    # told apart: old code (none at all), off ("off"), or on.
+    if enabled != _logged_state:
+        logger.info("[web-filter] %s (web_filter_enabled in data/settings.json)", "on" if enabled else "off")
+        _logged_state = enabled
+    if not enabled or not results or not (query or "").strip():
         return results, ""
     started = time.monotonic()
     try:
