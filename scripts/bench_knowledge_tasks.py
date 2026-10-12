@@ -161,6 +161,12 @@ def register(task, chk, answered, used_tool, write):
         # Markdown emphasis splits phrases ("do **not** have conflicting"); checks read plain text.
         return re.sub(r"\*\*|__", "", rec.get("final_text") or "")
 
+    def code(rec):
+        # Odysseus routes code into a document (every model, every run on 2026-10-10), so
+        # the sketch is graded wherever it went: the reply or a document tool's text.
+        docs = [t.get("command") or "" for t in rec.get("tools", []) if str(t.get("tool")).endswith("_document")]
+        return "\n".join([ft(rec), *docs])
+
     def no_tools(rec):
         return chk("no tool calls", not rec["tools"], f"{len(rec['tools'])} tool calls")
 
@@ -367,11 +373,12 @@ def register(task, chk, answered, used_tool, write):
       checks=lambda rec, ctx: [
           answered(rec),
           chk("includes Wire or an AHT library",
-              _rx(r"#include\s*[<\"](Wire|Adafruit_AHTX0|AHT20|AHTxx|AHT10|DFRobot_AHT20)", ft(rec)), ft(rec)[:120]),
+              _rx(r"#include\s*[<\"](Wire|Adafruit_AHTX0|AHTx0|AHT20|AHTxx|AHT10|DFRobot_AHT20)", code(rec)),
+              code(rec)[:120]),
           chk("has setup() and loop()",
-              _rx(r"void\s+setup\s*\(", ft(rec)) and _rx(r"void\s+loop\s*\(", ft(rec)), ft(rec)[:120]),
-          chk("prints over Serial", _rx(r"Serial\.(begin|print)", ft(rec)), ft(rec)[:120]),
-          chk("waits 2 s", _rx(r"\b2000\b", ft(rec)), ft(rec)[:120]),
+              _rx(r"void\s+setup\s*\(", code(rec)) and _rx(r"void\s+loop\s*\(", code(rec)), code(rec)[:120]),
+          chk("prints over Serial", _rx(r"Serial\.(begin|print)", code(rec)), code(rec)[:120]),
+          chk("waits 2 s", _rx(r"\b2000\b", code(rec)), code(rec)[:120]),
       ])
 
     k(id="mc_german", cat="microelectronics", kind="language",
@@ -482,7 +489,8 @@ def register(task, chk, answered, used_tool, write):
               ft(rec)[:160]),
           chk("names a source",
               _rx(r"https?://|\b[\w-]+\.(com|net|org|de|co\.uk|io)\b|kitco|bloomberg|reuters|goldprice|lbma|"
-                  r"world gold council|investing|marketwatch|cnbc|bullion|apmex", ft(rec)), ft(rec)[:160]),
+                  r"world gold council|investing|marketwatch|cnbc|bullion|apmex|"
+                  r"\bsources?\s*[:\u2014\u2013-]\s*\w", ft(rec)), ft(rec)[:160]),
       ])
 
     k(id="fin_german", cat="finance", kind="language",

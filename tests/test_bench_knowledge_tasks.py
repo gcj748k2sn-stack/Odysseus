@@ -300,3 +300,37 @@ def test_report_has_a_by_kind_table_for_knowledge_runs(tmp_path, capsys):
 
 def test_report_for_agent_runs_has_no_by_kind_table(tmp_path, capsys):
     assert "## By kind" not in _report(tmp_path, [_rec("arith", True)])
+
+
+def test_a_labelled_source_without_a_domain_counts(tmp_path):
+    """Qwen 20261010-154934: "Source: USA TODAY (market data from Alpha Vantage)" named its source."""
+    text = ("Price: $4,191.87 USD per troy ounce\nDate: October 9, 2026, at 12:05 p.m. ET\n"
+            "Source: USA TODAY (market data from Alpha Vantage)")
+    failed = [(n, d) for n, ok, d in _run_checks("fin_price_web", text, tmp_path, ("web_search",)) if not ok]
+    assert not failed, failed
+    assert not _passes("fin_price_web", "Gold is $4,191.87 per ounce on October 9, 2026. Search done.", tmp_path,
+                       ("web_search",))
+
+
+def _sketch_in_document(sketch, tmp_path, reply="Done — the sketch is in the editor."):
+    t = BY_ID["mc_sketch"]
+    ctx = {"ws": str(tmp_path), "marker": "[bench-0000]", "session": "s", "api": None, "expect": {}}
+    rec = {"final_text": reply, "text": reply, "tool_results": [],
+           "tools": [{"tool": "create_document", "command": "ESP32 AHT20 sketch\n" + sketch}]}
+    return all(ok for _, ok, _ in t["checks"](rec, ctx))
+
+
+def test_sketch_saved_to_a_document_is_graded(tmp_path):
+    """Every model on 2026-10-10 put the sketch into a document instead of the reply."""
+    good = CASES[[c[0] for c in CASES].index("mc_sketch")][1]
+    assert _sketch_in_document(good, tmp_path)
+    assert not _sketch_in_document("#include <Wire.h>\nvoid setup() { Serial.begin(9600); }\n"
+                                   "void loop() { Serial.println(1); delay(1000); }", tmp_path)
+
+
+def test_sketch_in_a_non_document_tool_does_not_count(tmp_path):
+    good = CASES[[c[0] for c in CASES].index("mc_sketch")][1]
+    t = BY_ID["mc_sketch"]
+    rec = {"final_text": "Done.", "text": "Done.", "tool_results": [], "tools": [{"tool": "bash", "command": good}]}
+    ctx = {"ws": str(tmp_path), "marker": "m", "session": "s", "api": None, "expect": {}}
+    assert not all(ok for _, ok, _ in t["checks"](rec, ctx))

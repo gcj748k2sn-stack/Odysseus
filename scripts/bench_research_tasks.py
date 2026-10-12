@@ -30,6 +30,10 @@ def _rx(pattern, text):
     return re.search(pattern, text or "", re.I | re.S)
 
 
+_DEC = r"(?:[.,]\d{1,2})?"
+_M = r"(?:m|metres?|meters?)\b"
+
+
 def _plain(rec):
     return re.sub(r"\*\*|__", "", rec.get("final_text") or "")
 
@@ -75,9 +79,10 @@ def register(task, chk, answered, used_tool):
         t = _plain(rec)
         return [
             answered(rec), web(rec),
-            chk("Fernsehturm 368 m", _rx(r"\b368\s?(m|metres|meters)\b", t), t[:200]),
-            chk("Eiffel Tower 330 m (or 324 m)", _rx(r"\b(330|324)\s?(m|metres|meters)\b", t), t[:200]),
-            chk("difference 38 m (or 44 m)", _rx(r"\b(38|44)\s?(m|metres|meters)\b", t), t[:200]),
+            # decimals allowed: Wikipedia gives 368.03 m, so answers say "368.03 m" / "38.03 metres"
+            chk("Fernsehturm 368 m", _rx(rf"\b368{_DEC}\s?{_M}", t), t[:200]),
+            chk("Eiffel Tower 330 m (or 324 m)", _rx(rf"\b(330|324){_DEC}\s?{_M}", t), t[:200]),
+            chk("difference 38 m (or 44 m)", _rx(rf"\b(38|44){_DEC}\s?{_M}", t), t[:200]),
             chk("Fernsehturm is taller",
                 _rx(r"(fernsehturm|tv tower|tower in berlin|berlin)[^.\n]{0,80}(taller|higher)|"
                     r"(taller|higher)[^.\n]{0,40}(fernsehturm|tv tower|berlin)", t)

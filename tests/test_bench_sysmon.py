@@ -44,6 +44,7 @@ IOREG = """+-o AGXAcceleratorG13X  <class AGXAcceleratorG13X, id 0x1000003a5, re
 """
 
 PS = """ 8123456  92.5 /Users/x/BonsaiDemo/bin/llama-server -m models/b.gguf --alias bonsai2-27b
+ 7800000 160.0 /opt/other/llama-server -m qwen.gguf --port 9000
   412000   3.0 /Users/x/odysseus/venv/bin/python -m uvicorn app:app --host 127.0.0.1 --port 7000
   200000   0.5 /Applications/LM Studio.app/Contents/MacOS/LM Studio
   100000   1,5 /Users/x/.lmstudio/extensions/backends/llama.cpp/llmworker
@@ -87,6 +88,9 @@ def test_swap():
     assert M.parse_swap("total = 2048.00M  used = 1037.25M  free = 1010.75M  (encrypted)") == \
         {"swap_total_mb": 2048.0, "swap_used_mb": 1037.2}
     assert M.parse_swap("total = 3.00G  used = 0.00M  free = 3.00G") == {"swap_total_mb": 3072.0, "swap_used_mb": 0.0}
+    # German locale (the M1 on 2026-10-10)
+    assert M.parse_swap("total = 4096,00M  used = 2861,50M  free = 1234,50M  (encrypted)") == \
+        {"swap_total_mb": 4096.0, "swap_used_mb": 2861.5}
 
 
 def test_gpu_reads_device_utilisation_not_the_driver_field():
@@ -106,7 +110,8 @@ def test_processes_are_grouped_and_others_ignored():
     assert p["bonsai"] == {"rss_mb": 7933.1, "cpu": 92.5}
     assert p["odysseus"]["rss_mb"] == 402.3
     assert p["lmstudio"] == {"rss_mb": 293.0, "cpu": 2.0}
-    assert set(p) == {"bonsai", "odysseus", "lmstudio"}
+    assert p["llama-server"] == {"rss_mb": 7617.2, "cpu": 160.0}
+    assert set(p) == {"bonsai", "odysseus", "lmstudio", "llama-server"}
 
 
 def test_powermetrics_samples():

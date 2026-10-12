@@ -403,18 +403,13 @@ class _DegenerateStreamGuard:
             count = self.recent_tokens.count(top)
             if count >= 60 and count / max(len(self.recent_tokens), 1) >= 0.78:
                 reason = f"repeated '{top}' {count}/{len(self.recent_tokens)} recent tokens"
-        if not reason and len(self.recent_tokens) >= 80:
+        if not reason:
             # Phrase loops are common on some local quantized MLX/MoE models:
             # "Also be a software developer mode?" repeated forever will not
             # trip the single-token guard above, but it is still a wedged
-            # generation. Require many repeats of the same 4-gram so normal
-            # prose/list formatting is not interrupted.
-            grams = [tuple(self.recent_tokens[i:i + 4]) for i in range(0, len(self.recent_tokens) - 3)]
-            if grams:
-                top_gram = max(set(grams), key=grams.count)
-                gram_count = grams.count(top_gram)
-                if gram_count >= 10:
-                    reason = f"repeated phrase '{' '.join(top_gram)}' {gram_count} times"
+            # generation. Fork: only an exactly repeating phrase counts, so
+            # templated lists are not stopped (src/stream_words.py).
+            reason = _stream_words.phrase_loop(self.recent_tokens)
 
         if not reason:
             return None

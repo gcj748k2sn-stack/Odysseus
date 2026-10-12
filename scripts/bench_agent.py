@@ -91,7 +91,12 @@ WS_ROOT = Path(os.environ.get("BENCH_WS_ROOT") or Path.home() / "odysseus-bench"
 # `bench_agent.py targets` prints the current ones.
 PRESETS = {
     "bonsai2": ("ed1cd41c", "bonsai2-27b"),        # Bonsai 2 (llama.cpp :8090)
-    "qwen35": ("a5179555", "qwen/qwen3.5-9b"),     # LM Studio :1234
+    "qwen35lm": ("a5179555", "qwen/qwen3.5-9b"),     # LM Studio :1234
+    "qwen35ol": ("f9264875", "qwen3.5:9b"),
+    "qwen35ol32k": ("f9264875", "qwen3.5:9b-32k"),
+    "qwen35ol64k": ("f9264875", "qwen3.5:9b-64k"),
+    "nemotron3nano": ("f9264875", "nemotron-3-nano:4b"),
+    "allminilm": ("f9264875", "all-minilm:l6-v2"),
 }
 
 # A server that cannot answer at all is not a model result: unreachable,
@@ -276,8 +281,10 @@ def run_one(api, task, target, rep, run_dir, args):
         typ = d.get("type")
         rec["events"][typ] = rec["events"].get(typ, 0) + 1
         if typ == "tool_start":
+            # Document tools carry the whole text (a sketch saved to a document is still graded).
+            cap = 8000 if str(d.get("tool") or "").endswith("_document") else 400
             rec["tools"].append({"tool": d.get("tool"), "round": d.get("round"),
-                                 "command": str(d.get("full_command") or d.get("command") or "")[:400]})
+                                 "command": str(d.get("full_command") or d.get("command") or "")[:cap]})
         elif typ == "tool_output" and APPROVAL_WAIT in str(d.get("output") or ""):
             pass                         # the card's placeholder, not a tool result
         elif typ == "tool_output":

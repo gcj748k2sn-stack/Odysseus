@@ -129,8 +129,8 @@ def test_resume_without_runs_finishes_the_original_repetitions(tmp_path, monkeyp
     the missing r2 (it defaulted to 1 and ran nothing, 2026-10-09)."""
     run_dir = tmp_path / "20261008-144530-qwen35"
     run_dir.mkdir()
-    (run_dir / "meta.json").write_text(json.dumps({"target": "qwen35", "runs": 2, "tasks": ["arith"]}))
-    (run_dir / "results.jsonl").write_text(json.dumps(_rec("arith", target="qwen35")) + "\n")
+    (run_dir / "meta.json").write_text(json.dumps({"target": "qwen35lm", "runs": 2, "tasks": ["arith"]}))
+    (run_dir / "results.jsonl").write_text(json.dumps(_rec("arith", target="qwen35lm")) + "\n")
     started = []
 
     class Api:
@@ -142,8 +142,8 @@ def test_resume_without_runs_finishes_the_original_repetitions(tmp_path, monkeyp
 
     monkeypatch.setattr(B, "Api", Api)
     monkeypatch.setattr(B, "preflight", lambda api, target, tasks: ({"skipped": {}}, []))
-    monkeypatch.setattr(B, "run_one", lambda api, task, target, rep, rd, args: started.append((task["id"], rep)) or _rec(task["id"], target="qwen35"))
-    args = SimpleNamespace(target="qwen35", quick=False, tasks="arith", runs=1, resume=str(run_dir),
+    monkeypatch.setattr(B, "run_one", lambda api, task, target, rep, rd, args: started.append((task["id"], rep)) or _rec(task["id"], target="qwen35lm"))
+    args = SimpleNamespace(target="qwen35lm", quick=False, tasks="arith", runs=1, resume=str(run_dir),
                            preset=None, no_warmup=True, yes=True, url="http://x", user="u")
     B.cmd_run(args)
     assert started == [("arith", 2)]

@@ -15,7 +15,7 @@ the deltas it came in, which is what the guard saw before.
 from __future__ import annotations
 
 import re
-from typing import List
+from typing import List, Optional
 
 WORD_RE = re.compile(r"[A-Za-z0-9_Ͱ-ϿЀ-ӿ]+")
 _TRAILING_WORD_RE = re.compile(r"[A-Za-z0-9_Ͱ-ϿЀ-ӿ]+$")
@@ -51,3 +51,25 @@ class WordStream:
             words += [w.lower() for piece in self._pieces for w in WORD_RE.findall(piece) if _keep(w)]
             self._pieces = []
         return words
+
+
+LOOP_WORDS = 60
+MAX_PERIOD = 24
+
+
+def phrase_loop(words: List[str]) -> Optional[str]:
+    """A phrase loop repeats exactly: the last LOOP_WORDS words equal the words one period earlier.
+
+    Replaces "the same 4-gram 10 times in the window", which also fires on
+    templated enumerations ("2026-09-03: 78 %, not 80 / 2026-09-04: ..."): their
+    4-grams repeat, but the dates and values between them change. Period 1 is
+    the guard's own same-word rule.
+    """
+    n = len(words)
+    for period in range(2, MAX_PERIOD + 1):
+        if n < LOOP_WORDS + period:
+            break
+        if all(words[i] == words[i - period] for i in range(n - LOOP_WORDS, n)):
+            phrase = " ".join(words[n - period:])
+            return f"repeated phrase '{phrase[:60]}' {(LOOP_WORDS + period) // period} times"
+    return None

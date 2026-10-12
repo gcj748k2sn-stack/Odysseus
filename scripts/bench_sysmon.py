@@ -37,7 +37,8 @@ _UNIT = {"K": 1 / 1024, "M": 1.0, "G": 1024.0, "T": 1024.0 * 1024}
 
 
 def _mb(num: str, unit: str) -> float:
-    return round(float(num) * _UNIT.get(unit.upper(), 1.0), 1)
+    # a German locale prints "2048,00M"
+    return round(float(num.replace(",", ".")) * _UNIT.get(unit.upper(), 1.0), 1)
 
 
 def parse_top(text: str) -> Dict[str, float]:
@@ -73,7 +74,7 @@ def parse_vm_stat(text: str) -> Dict[str, int]:
 
 def parse_swap(text: str) -> Dict[str, float]:
     """`sysctl -n vm.swapusage`."""
-    m = re.search(r"total = ([\d.]+)([KMGT])\s+used = ([\d.]+)([KMGT])", text)
+    m = re.search(r"total = ([\d.,]+)([KMGT])\s+used = ([\d.,]+)([KMGT])", text)
     return {"swap_total_mb": _mb(m.group(1), m.group(2)), "swap_used_mb": _mb(m.group(3), m.group(4))} if m else {}
 
 
@@ -115,8 +116,9 @@ def parse_batt(text: str) -> Dict[str, object]:
 
 
 _GROUPS = (
-    ("bonsai", lambda a: "llama-server" in a),
+    ("bonsai", lambda a: "llama-server" in a and "bonsai" in a),
     ("lmstudio", lambda a: "lm studio" in a or "lmstudio" in a or "/.lmstudio/" in a),
+    ("llama-server", lambda a: "llama-server" in a),       # another llama.cpp server (not Bonsai's)
     ("odysseus", lambda a: "uvicorn app:app" in a),
     ("chroma", lambda a: "chroma run" in a),
     ("searxng", lambda a: "searx" in a),
@@ -290,6 +292,9 @@ def summarize(samples: List[Dict[str, object]], power: List[Dict[str, object]]) 
         if name == "-" and len(ss) < 2:
             continue
         t0, t1 = ss[0]["epoch"], ss[-1]["epoch"]
+        # "-" (between steps) recurs all chain long: count sampled time, not first-to-last
+        gaps = [b["epoch"] - a["epoch"] for a, b in zip(ss, ss[1:])]
+        minutes = sum(g for g in gaps if g <= 60) / 60
 
         def col(key):
             return [s[key] for s in ss if isinstance(s.get(key), (int, float))]
@@ -308,7 +313,7 @@ def summarize(samples: List[Dict[str, object]], power: List[Dict[str, object]]) 
         top = ", ".join(f"{k} {v:.0f}" for k, v in sorted(rss.items(), key=lambda kv: -kv[1])[:2])
         swap_d = delta("swap_used_mb")
         rows.append("| " + " | ".join([
-            name, f"{(t1 - t0) / 60:.0f}",
+            name, f"{minutes:.0f}",
             f"{_fmt(_avg(cpu))}/{_fmt(max(cpu) if cpu else None)}",
             f"{_fmt(_avg(gpu))}/{_fmt(max(gpu) if gpu else None)}",
             _fmt(min(free) if free else None),

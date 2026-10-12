@@ -36,6 +36,9 @@ _CSV = [f"2026-09-01T{6 + 2 * (i // 3):02d}:00,{NODES[i % 3]},21.{i % 10},48.{i 
     ("numbered rows", "Counting: " + " ".join(f"row {i + 1}," for i in range(36))),
     ("numbered node names", "\n".join(f"{i + 1}. {NODES[i % 3]}" for i in range(36))),
     ("the node column", "Nodes in order: " + ", ".join(NODES[i % 3] for i in range(36))),
+    ("a dated list with a repeated template",
+     # the shape Qwen was stopped on in myco_growlog (2026-10-10): 'not 80 2026 09' ten times
+     "\n".join(f"2026-09-{d:02d}: humidity {60 + d}%, not 80" for d in range(1, 21))),
     ("prose", "The file has a header and then data rows. I will count them and answer with the number."),
 ])
 def test_legitimate_enumeration_is_not_a_loop(name, text):
@@ -72,3 +75,12 @@ def test_a_word_without_end_is_released_as_it_came():
     for _ in range(MAX_CARRY_CHARS):
         got += w.feed("ab")
     assert got and set(got) == {"ab"}
+
+
+def test_phrase_loop_needs_an_exact_repeat():
+    from src.stream_words import LOOP_WORDS, phrase_loop
+    loop = ["wait", "let", "me", "recheck"] * 20
+    assert phrase_loop(loop)
+    varied = [w for d in range(30) for w in ("not", "80", "2026", "09", f"{d:02d}")]
+    assert phrase_loop(varied) is None
+    assert phrase_loop(loop[:LOOP_WORDS]) is None   # too short to tell

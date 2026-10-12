@@ -95,3 +95,30 @@ def test_research_suite_selection():
     assert len(sel) == 5 and all(t["web"] for t in sel)
     assert len(B.select_tasks(SimpleNamespace(suite="research", quick=True, tasks=None))) == 3
     assert len(B.select_tasks(SimpleNamespace(suite="agent", quick=False, tasks=None))) == 20
+
+
+# Real answers from the 2026-10-10 full chain (Qwen 161024, Bonsai 194252) that the first
+# version of the towers check failed: Wikipedia gives 368.03 m, so answers carry decimals.
+REAL_TOWERS = [
+    "| Berlin TV Tower (Fernsehturm) | 368.03 m | Eiffel Tower | 330 m | The Berlin TV Tower is taller by "
+    "approximately 38 metres. Sources: https://en.wikipedia.org/wiki/Fernsehturm_Berlin",
+    "The Berlin TV Tower (Fernsehturm) is taller. Berlin TV Tower: 368.03 m (1,207.45 ft) "
+    "[Wikipedia](https://en.wikipedia.org/wiki/Fernsehturm_Berlin); Eiffel Tower: 330 m (1,083 ft). "
+    "The Berlin TV Tower is 38.03 metres taller than the Eiffel Tower.",
+    "Berlin TV Tower (Fernsehturm) is taller, by about 38 metres. Berlin TV Tower 368.03 m (1,207.45 ft), incl. "
+    "antenna, https://en.wikipedia.org/wiki/Fernsehturm_Berlin; Eiffel Tower 330 m. Difference: 368.03 − 330 = 38.03 m.",
+]
+
+
+@pytest.mark.parametrize("text", REAL_TOWERS)
+def test_real_tower_answers_with_decimals_pass(text):
+    failed = [(n, d) for n, ok, d in _checks("res_towers", text) if not ok]
+    assert not failed, failed
+
+
+@pytest.mark.parametrize("text", [
+    "The Fernsehturm is 365.03 m and the Eiffel Tower 330 m; the Fernsehturm is taller by 35.03 m (https://x.org).",
+    "The Fernsehturm is 368.03 m and the Eiffel Tower 330 m; the Fernsehturm is taller by 3.8 m (https://x.org).",
+])
+def test_decimals_do_not_let_wrong_numbers_through(text):
+    assert not _passes("res_towers", text)
