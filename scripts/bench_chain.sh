@@ -7,9 +7,10 @@
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh qwen-full bonsai-check   # ~4–5 h
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh full          # qwen-full bonsai-full, ~6–8 h
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh web           # research suite: Qwen LM Studio, Qwen Ollama, Bonsai
-#   (WEB_RUNS=2 for two runs per backend in the web phase; default 1)
+#   (WEB_RUNS=2 for two runs per backend in the web phase, default 1; WEB_SUITE=webhard for the harder web tasks)
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh filter-ab     # research suite, filter off vs on, Qwen LM Studio
-#   (AB_ROUNDS=3 by default: off on | on off | off on, one research run each; the filter is restored after each run)
+#   (AB_ROUNDS=3 by default: off on | on off | off on, one run each; AB_SUITE=webhard by default, research also works;
+#    the filter is restored after each run)
 #   BENCH_POWER=1 ...bench_chain.sh full      also records power in watts (asks for the Mac password once)
 #
 # While it runs, scripts/bench_sysmon.py samples CPU, GPU, memory, swap, thermal state and the
@@ -245,21 +246,21 @@ qwen_phase() {
 web_phase() {
   # The research suite (5 web tasks) on each backend in turn, slowest last, so a
   # long Bonsai run cannot cost the other two. A backend that does not come up is skipped.
-  local runs="${WEB_RUNS:-1}"
-  note "── Web phase (research suite ×$runs per backend)"
+  local runs="${WEB_RUNS:-1}" suite="${WEB_SUITE:-research}"
+  note "── Web phase ($suite suite ×$runs per backend)"
   if start_qwen; then
     note "  Qwen up (LM Studio)"
-    step qwen-lms-research bench --target qwen35lm --suite research --runs "$runs"
+    step "qwen-lms-$suite" bench --target qwen35lm --suite "$suite" --runs "$runs"
   else note "  ✗ LM Studio / Qwen did not come up in 5 min — skipped"; fi
   stop_lmstudio
   if start_ollama; then
     note "  Qwen up (Ollama, $OLLAMA_MODEL)"
-    step qwen-ollama-research bench --target qwen35ol64k --suite research --runs "$runs"
+    step "qwen-ollama-$suite" bench --target qwen35ol64k --suite "$suite" --runs "$runs"
   else note "  ✗ Ollama or $OLLAMA_MODEL not available within 2 min — skipped"; fi
   stop_ollama
   if start_bonsai; then
     note "  Bonsai up (medium)"
-    step bonsai-research bench --target bonsai2 --suite research --runs "$runs"
+    step "bonsai-$suite" bench --target bonsai2 --suite "$suite" --runs "$runs"
   else note "  ✗ Bonsai server did not come up in 5 min — skipped"; fi
   stop_bonsai
   note "  web phase done, model servers stopped"
@@ -267,17 +268,17 @@ web_phase() {
 }
 
 filter_ab_phase() {
-  # The research suite with the relevance filter off and on, alternating in an
+  # A web suite (webhard by default) with the relevance filter off and on, alternating in an
   # ABBA order so drift over the evening (web results, heat, swap) hits both arms.
   # Runs are named qwen35lm-filteroff / qwen35lm-filteron; report pools each arm.
-  local rounds="${AB_ROUNDS:-3}" i=1
-  note "── Filter A/B phase ($rounds rounds, Qwen on LM Studio)"
+  local rounds="${AB_ROUNDS:-3}" suite="${AB_SUITE:-webhard}" i=1
+  note "── Filter A/B phase ($suite suite, $rounds rounds, Qwen on LM Studio)"
   if ! start_qwen; then note "  ✗ LM Studio / Qwen did not come up in 5 min — phase skipped"; return; fi
   note "  Qwen up (LM Studio)"
   while [ $i -le "$rounds" ]; do
     if [ $((i % 2)) -eq 1 ]; then first=off; second=on; else first=on; second=off; fi
-    step "filter-$first-$i"  bench --target qwen35lm --suite research --runs 1 --web-filter "$first"
-    step "filter-$second-$i" bench --target qwen35lm --suite research --runs 1 --web-filter "$second"
+    step "filter-$first-$i"  bench --target qwen35lm --suite "$suite" --runs 1 --web-filter "$first"
+    step "filter-$second-$i" bench --target qwen35lm --suite "$suite" --runs 1 --web-filter "$second"
     i=$((i + 1))
   done
   stop_lmstudio

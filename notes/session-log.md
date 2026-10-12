@@ -24,6 +24,7 @@ Keep roughly the last working day here; older entries move verbatim to
 - ✅ Sandbox: 131 tests across six files, 10 mutations caught. **M1 (merged into `dev`, `41ed3187`): 8,013 passed**; live in log mode 19:21. JS still unverified (panel setting).
 - 📊 **Web phase 19:38–20:50 (M1):** research ×2 per backend — Qwen LM Studio 10/10 (15 min), Qwen Ollama 9/10 (15 min), Bonsai 9/10 (39 min); details and the fetch-429 finding in [benchmark.md](benchmark.md) *Results*. `bench_chain.sh` had a stale `qwen35` target (fixed); `bench_agent.py report` gained `--split-runs` / `--regrade` and counts 429s as environment errors.
 - 🆕 Late: `bench_agent.py run --web-filter on|off` and chain phase `filter-ab` (ABBA, Qwen LM Studio); filed **item 84** (HTTP 429 not remembered, so rate-limited pages are re-fetched).
+- 🆕 Night: **`webhard` suite** (6 web tasks provoking off-topic results: ambiguous nouns, a misspelled Latin name, German *Essen*, grow-shop results), keys checked by web search, 33 sample tests, 6 mutations caught; `filter-ab` now defaults to it. Not run on a model yet.
 - 🔧 19:30: the live log showed most "dropped" results were cut by the 5-result limit, not the threshold, so ratings can swap results at any score there (the notes' reach claim corrected); the replay now applies the limit too.
 - ➡️ After a few days of ratings: `extract --from-decisions`, `run --ratings`, read the flips, then decide `apply`.
 
