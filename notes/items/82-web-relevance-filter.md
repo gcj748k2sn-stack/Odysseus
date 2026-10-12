@@ -305,7 +305,7 @@ Recommended **0.035**: the highest cut-off with no wrong flags in the replay; it
 ## Open
 
 1. **Notice firings:** after a few days, read the decision log's `"notice": true` lines — right searches flagged? (`grep '"notice": true' data/logs/web_filter.jsonl | wc -l`, then read the queries).
-2. **Speed:** try `web_filter_candidates` 10 and compare the `ms=` figures with 15.
+2. **Speed:** measured 2026-10-12 evening from the decision log (`ms` by candidate count, setting 15; a provider returning fewer gives a 10-candidate search): **10 candidates: 2 searches, median 2,353 ms; 15: 2 searches, median 2,610 ms.** Read as ~50 ms per extra candidate on top of a ~1.8 s fixed cost (a two-point fit, n = 2 each), so going to 10 would save ~0.25 s per search and leave fewer replacements for dropped results: **keep 15.** ⚠️ `ms` starts before `_load_model`, so the first search after each restart includes loading the 1.1 GB model; there were restarts today, so the fixed cost may be partly load time. Next, cheap: time the load separately in the `[web-filter]` line (reporting only), then re-read the fixed cost.
 3. **Spot-check 20–30 of Claude's 630 labels** (*Fourth run*).
 4. Whether the 132 truncated searches answered off-topic more often than the other 64 (*Search output cut*).
 5. Misspelled queries (*Pinatus*): the filter can only flag them; a separate item if it recurs.
