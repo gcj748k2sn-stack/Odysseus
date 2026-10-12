@@ -223,3 +223,37 @@ def test_api_ratings_round_trip_and_stay_per_user(client):
     got = client.get("/api/web-ratings?search_ids=abc123def456,other", headers={"x-user": "cedrik"}).json()
     assert got == {"ratings": {"abc123def456": {RATE["url"]: "up"}}}
     assert client.get("/api/web-ratings?search_ids=abc123def456", headers={"x-user": "guest"}).json() == {"ratings": {}}
+
+
+# ------------------------------------------------------ filter settings API
+
+def test_filter_settings_validation():
+    from routes.web_feedback_routes import validate_filter_settings as V
+    assert V({"web_filter_enabled": True, "web_filter_threshold": "0.04", "web_filter_candidates": 15}) == {
+        "web_filter_enabled": True, "web_filter_threshold": 0.04, "web_filter_candidates": 15}
+    for bad in ({"web_filter_enabled": "yes"}, {"web_filter_threshold": 2}, {"web_filter_threshold": "nan"},
+                {"web_filter_candidates": 100}, {"web_filter_min_keep": 0}, {"search_provider": "x"}, []):
+        with pytest.raises(ValueError):
+            V(bad)
+
+
+def test_api_filter_settings_read_by_anyone_written_by_admin_only(client, monkeypatch):
+    import src.settings as S
+    store = {"search_provider": "searxng", "web_filter_enabled": False}
+    monkeypatch.setattr(S, "load_settings", lambda: dict(store))
+    monkeypatch.setattr(S, "save_settings", lambda s: store.update(s))
+    r = client.get("/api/web-filter/settings", headers={"x-user": "guest"})
+    assert r.status_code == 200 and r.json()["web_filter_enabled"] is False
+    assert set(r.json()) == {"web_filter_enabled", "web_filter_threshold", "web_filter_min_keep",
+                             "web_filter_candidates", "web_filter_notice_below", "web_filter_decision_log"}
+    body = {"web_filter_enabled": True, "web_filter_threshold": 0.04}
+    assert client.put("/api/web-filter/settings", json=body, headers={"x-user": "guest"}).status_code == 403
+    assert store["web_filter_enabled"] is False
+    r = client.put("/api/web-filter/settings", json=body, headers={"x-user": "cedrik"})
+    assert r.status_code == 200 and r.json()["web_filter_enabled"] is True and r.json()["web_filter_threshold"] == 0.04
+    assert store["search_provider"] == "searxng"           # other settings untouched
+    assert client.put("/api/web-filter/settings", json={"web_filter_threshold": 5},
+                      headers={"x-user": "cedrik"}).status_code == 400
+    assert client.put("/api/web-filter/settings", json={"search_provider": "duckduckgo"},
+                      headers={"x-user": "cedrik"}).status_code == 400
+    assert store["search_provider"] == "searxng"

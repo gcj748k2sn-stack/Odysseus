@@ -231,6 +231,15 @@ Maintainer's choices: a **Research topics** button in the left icon bar and the 
 - **Measured 2026-10-12 (M1, copy of `app.db`, all assistant rows with a `web_search` tool event): 132 of 196 web searches (67 %) lost their closing instructions** (stored output ≥ 10,000 chars and no `IMPORTANT INSTRUCTIONS`). The stored tool output is what the model read (same 10,000 cap, SOURCES marker already stripped). So two thirds of past agent searches ended mid-page with no instruction to answer the question. That predates the filter; it may have contributed to earlier findings such as *"Web search derails on ambiguous common nouns"* and wrong-species drift, but that's unmeasured.
 - **Still owed:** whether the 132 turns answered off-topic more often than the other 64.
 
+## Research topics panel, second version (2026-10-12)
+
+Maintainer's feedback on the first version: panel and field colours were inverted; wanted a **Topics** and a **Settings** tab, with topics styled like memories in the Brain panel.
+
+- Rebuilt on the Brain panel's own classes (`memory-modal-content`, `memory-tabs`/`memory-tab`, `memory-tab-panel`, `admin-card`, `memory-item`, `memory-item-meta`, `memory-cat-badge`, `memory-item-btn`, `memory-item-edit-input`, `admin-switch`, `preset-range`), so colours come from the same CSS as Brain. Tabs use `data-rt-tab`/`data-rt-panel`, because `memory.js` wires every `[data-memory-tab]` on the page.
+- **Topics tab:** one memory-style card per topic (name, examples, badges for searches and up/down counts, `off` badge), the admin switch for on/off (saves at once), edit (inline, like a memory) and delete (asks first); "+ Add topic"; an `other` card with its counts.
+- **Settings tab:** relevance filter on/off, cut-off (slider 0.005–0.2), candidates (5–30), always keep (1–10), decision log on/off, topic-matching similarity (0.1–0.9), one Save button. Backed by new `GET/PUT /api/web-filter/settings` (PUT admin only; only the six `web_filter_*` keys, range-checked; written into `data/settings.json`, other settings untouched). The off-topic notice cut-off is deliberately not in the panel until it has been measured.
+- Tests: settings validation and API (admin only, unknown keys refused, other settings untouched); two mutations caught. **The panel itself is unverified in a browser.**
+
 ## Verification
 
 - 2026-10-12, cloud sandbox (Linux, Python 3.13, `requirements.txt` in a fresh venv): `tests/test_bench_web_filter.py` 22 passed; 26 after the 11:19 fixes (grid, seed rules, score column), four more mutations, all caught. Ten mutations, nine caught: fail-open removed; snippet dots kept; substring domain match; user message taken from after the search; parser not stopping at page content; chunk order; stopwords counted; budget keeping nothing; no seed fallback. Not caught: a URL-less result kept when the next `[i]` line starts. The writer always writes the URL line, so this is not reachable from recorded data.
