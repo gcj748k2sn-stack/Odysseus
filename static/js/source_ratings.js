@@ -9,6 +9,7 @@
 // text, so the model never sees them.
 
 const UP = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 15 12 9 18 15"/></svg>';
+const CHEVRON = '<svg class="src-filtered-chevron" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>';
 const DOWN = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
 
 function esc(s) {
@@ -61,8 +62,12 @@ export function filteredBlock(filtered, safeHref) {
       + '<span class="source-domain">' + esc(domain) + score + '</span></a>';
     items += decorateSource(link, s);
   });
-  return '<details class="src-filtered-block"><summary>' + rows.length + ' filtered out by relevance</summary>'
-    + '<div class="src-filtered-list">' + items + '</div></details>';
+  // A plain block with its own toggle, not <details>: style.css shrinks every
+  // `details .source-link` to small inline tags.
+  return '<div class="src-filtered-block">'
+    + '<button type="button" class="src-filtered-toggle" aria-expanded="false">' + CHEVRON
+    + '<span>' + rows.length + ' filtered out by relevance</span></button>'
+    + '<div class="src-filtered-list" hidden>' + items + '</div></div>';
 }
 
 // ── clicks ──
@@ -79,6 +84,16 @@ function setState(searchId, url, rating) {
 }
 
 async function onClick(ev) {
+  const toggle = ev.target.closest && ev.target.closest('.src-filtered-toggle');
+  if (toggle) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    const list = toggle.parentElement.querySelector('.src-filtered-list');
+    const open = list.hidden;
+    list.hidden = !open;
+    toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    return;
+  }
   const btn = ev.target.closest && ev.target.closest('.src-rate-btn');
   if (!btn) return;
   ev.preventDefault();
@@ -137,7 +152,12 @@ const STYLE = `
   background: color-mix(in srgb, var(--fg) 10%, transparent); }
 .src-rate-btn.src-rate-error { color: var(--red, #e06c75); opacity: 1; }
 .src-filtered-block { margin-top: 6px; font-size: 0.9em; }
-.src-filtered-block > summary { cursor: pointer; opacity: 0.55; padding: 2px 8px; }
+.src-filtered-toggle { display: inline-flex; align-items: center; gap: 6px; background: none; border: none;
+  color: var(--fg); opacity: 0.55; cursor: pointer; padding: 2px 8px; font: inherit; }
+.src-filtered-toggle:hover { opacity: 0.85; }
+.src-filtered-chevron { transition: transform 0.15s; }
+.src-filtered-toggle[aria-expanded="true"] .src-filtered-chevron { transform: rotate(90deg); }
+.src-filtered-list[hidden] { display: none; }
 .src-filtered-list { display: flex; flex-direction: column; gap: 3px; margin-top: 4px; }
 .src-filtered { opacity: 0.6; }
 `;

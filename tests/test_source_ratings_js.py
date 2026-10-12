@@ -72,3 +72,13 @@ def test_filtered_block_lists_dropped_results_with_scores_and_arrows():
     assert '<span class="source-title">PINK &lt;b&gt;</span>' in out and "PINK <b>" not in out
     assert out.count('class="src-rate"') == 2 and 'data-filtered="1"' in out
     assert "no-id.example" not in out
+
+
+def test_filtered_block_is_not_a_details_element():
+    """style.css shrinks every `details .source-link` to tiny inline tags."""
+    out = _run("""
+      console.log(JSON.stringify(M.filteredBlock([{search_id:'s', url:'https://a.example/', title:'A', filtered:true}], u => u)));
+    """)
+    assert "<details" not in out and "<summary" not in out
+    assert 'class="src-filtered-toggle" aria-expanded="false"' in out
+    assert '<div class="src-filtered-list" hidden>' in out
