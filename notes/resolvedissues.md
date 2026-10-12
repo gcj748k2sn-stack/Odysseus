@@ -64,8 +64,18 @@ Moved here from the [todo.md](todo.md) index on 2026-10-07, rows verbatim as the
 | 54 | ~~"New Chat" sent the next message into the previously open chat — modules ran as two copies~~ | S2 | S | ✅ **CLOSED 2026-10-12** — fixed `c29a068a` | **live** in the agent's pane, in Safari, and after the 2026-10-06 merge · tests (4) |
 | 55 | ~~`trigger_research` reported "started" when the research model was down~~ | S3 | S | ✅ **CLOSED 2026-10-12** — fixed `0c71f29e` | **live** 2026-10-04 23:24 (`cf7e2281`): `exit_code=1`, no research link · tests (8) |
 | 34 | ~~An aborted document stream orphans its placeholder as `activeDocId`~~ | S2 | XS | ✅ **CLOSED 2026-10-12 — bounded by the 404 reaper; fix not built**; diagnostics removed | **log** — 1 `[doc-put-404]` in `app.log*` (07-12 → 10-12), and it is the scripted repro; 64 `Doc streaming: open` |
+| 83 | ~~Typing into an empty editor saved only the first character~~ | S2 | XS | ✅ **CLOSED 2026-10-12 — found, fixed (`d0de5b6`) and verified live the same day** | **live** before: editor "hi", server `"h"` v1 (doc `2d1ef98c`); after: doc `0422a71f` server `"hi"`, stamp matches, no `[doc-map]` warning · M1 suite 7,977 passed · no JS test |
 
 ---
+
+## Typing into an empty editor saved only the first character — closed 2026-10-12 (item 83)
+**Seen 2026-10-12 17:53** on the M1, the first document typed after the item 34 diagnostics were removed.
+
+- **Mechanism (`static/js/document.js`):** the first keystroke in an empty editor runs `_autoCreateFromInput`, which POSTed the document and set `activeDocId` but never stamped `textarea.dataset.docId` (`populateEditor` does). `addDocToTabs` records the first character as both `content` and `lastSyncedContent`. `saveCurrentToMap` then refused the unstamped buffer (the guard from *"Switching chats wrote the editor buffer into the other chat's document"*), and `saveDocument` sent the map's one character, found it equal to `lastSyncedContent`, skipped the PUT and returned success. Silent until something re-stamped the editor.
+- **Fix:** `_autoCreateFromInput` stamps the buffer with the new id when it is still unstamped. The cross-chat guard is unchanged.
+- **Verified live:** before, `"h" 1` for an editor showing "hi"; after (hard reload, New Chat, type `hi`), `[doc-save] … stamp=0422a71f… len=2` and the server returned `"hi"`.
+- **Damage found:** a copy of `app.db` (2026-10-12) has one one-character document, the test itself. **Not detectable:** a document hit by this and re-stamped later (switching away and back) lost only the text typed in between; its length does not show it. The ten empty documents in the same query (mostly 07-29…31) are a different signature — this path never creates an empty document.
+- **Trap:** a guard that refuses unstamped buffers needs every path that puts user text into the editor to stamp it. Check new paths for a stamp before relying on the guard.
 
 ## An aborted document stream orphaned its placeholder — closed 2026-10-12 (item 34), bounded, not fixed
 Full record: [items/34-an-aborted-document-stream-orphans-its-placeholder.md](items/34-an-aborted-document-stream-orphans-its-placeholder.md) (due to move to `archive/items/`).

@@ -4792,8 +4792,8 @@ import { bindMenuDismiss, dismissOrRemove } from './escMenuStack.js';
         textarea.placeholder = 'Document content...';
         // Stamp the buffer as this document's. Unstamped, saveCurrentToMap
         // refuses every later keystroke and autosave re-sends the first
-        // character only (todo: "Typing into an empty editor saves only the
-        // first character").
+        // character only (resolvedissues: "Typing into an empty editor saved
+        // only the first character").
         if (!textarea.dataset.docId) textarea.dataset.docId = doc.id;
       }
       syncHighlighting();
