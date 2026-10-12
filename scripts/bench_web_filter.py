@@ -39,6 +39,14 @@ extract --from-decisions data/logs/web_filter.jsonl
 import-ratings
          Turns the ▲/▼ ratings from the chat's sources box (data/web_ratings.jsonl)
          into labels for rows already in the sheet.
+run --ratings data/web_ratings.jsonl
+         Adds a "Ratings" section: the same searches with the live rating bias
+         (src/rating_bias.py) at several strengths, at the live threshold. A
+         search only sees ratings made before it (--rating-order time) and
+         never its own; labels that came from a rating are left out of the
+         score, so the ratings are not graded against themselves.
+rating-speed
+         Times the rating bias on a synthetic ratings file (no model needed).
 pages    Splits recorded web_fetch pages into paragraphs, scores each against
          the user's message, and writes pages.md showing what a budgeted
          paragraph filter would keep and drop. For reading, not for a score.
@@ -747,9 +755,213 @@ def read_decision_log(paths):
             if results:
                 searches.append({"kind": "search", "id": f"wf:{path.name}:{n}", "session_id": "",
                                  "timestamp_utc": "", "timestamp_local": rec.get("ts_local", ""),
+                                 "search_id": rec.get("search_id", ""), "topic": rec.get("topic", ""),
                                  "query": rec.get("query", ""), "user_message": "", "exit_code": 0,
                                  "results": results})
     return searches, stats
+
+
+# ------------------------------------------------------------------ ratings ---
+
+RATING_STRENGTHS = (0.3, 0.7, 1.0)
+LIVE_THRESHOLD = 0.035    # web_filter_threshold, src/web_filter.py
+LIVE_NOTICE = 0.035       # web_filter_notice_below as set on the M1
+
+
+def rating_module():
+    """src/rating_bias.py, the live arithmetic (standard library only)."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from src import rating_bias
+    return rating_bias
+
+
+def utc_to_local(ts_utc):
+    """app.db's naive-UTC timestamp as this machine's local time, in the
+    ts_local format the ratings use (the offset follows DST)."""
+    try:
+        t = dt.datetime.fromisoformat(str(ts_utc).replace(" ", "T")[:19])
+    except ValueError:
+        return ""
+    return t.replace(tzinfo=dt.timezone.utc).astimezone().replace(tzinfo=None).isoformat(timespec="seconds")
+
+
+def search_time_local(search):
+    return search.get("timestamp_local") or utc_to_local(search.get("timestamp_utc", ""))
+
+
+def rating_biases(searches, records, strength, min_ratings, order="time", topic_of=None, rb=None):
+    """({(search id, url): bias}, number of searches that had any rating to use).
+
+    order "time": a search sees only ratings made before it; "loo": every
+    rating except the search's own (optimistic, it uses later ratings). The
+    topic is the logged one, or topic_of(search) — called only when there
+    are ratings to apply, so the embedding model loads only then."""
+    rb = rb or rating_module()
+    out, used = {}, 0
+    for s in searches:
+        before = search_time_local(s) if order == "time" else None
+        if order == "time" and not before:
+            continue
+        table = rb.build_table(records, before=before, exclude_search=s.get("search_id") or None)
+        if not table["domains"]:
+            continue
+        topic = s.get("topic") or (topic_of(s) if topic_of else "")
+        any_bias = False
+        for r in s["results"]:
+            b = rb.bias_for(topic, r["url"], table, strength, min_ratings)
+            if b:
+                out[(s["id"], r["url"])] = b
+                any_bias = True
+        used += any_bias
+    return out, used
+
+
+def apply_biases(scores, biases, rb=None):
+    rb = rb or rating_module()
+    return {k: (rb.sigmoid(rb.logit(v) + biases[k]) if biases.get(k) else v) for k, v in scores.items()}
+
+
+def notice_counts(searches, raw, adjusted, truth, cut):
+    """Off-topic notice at `cut`, rule (a) raw best and rule (c) raw or
+    adjusted best: (all-junk flagged, all-junk total, wrong flags, searches
+    with a relevant result) for each."""
+    out = {"raw": [0, 0, 0, 0], "either": [0, 0, 0, 0]}
+    for s in searches:
+        keys = [(s["id"], r["url"]) for r in s["results"]]
+        labs = [truth.get(k) for k in keys]
+        good = "y" in labs
+        junk = bool(labs) and all(lab == "n" for lab in labs)
+        if not (good or junk):
+            continue
+        fire_raw = max(raw[k] for k in keys) < cut
+        fire = {"raw": fire_raw, "either": fire_raw or max(adjusted[k] for k in keys) < cut}
+        for rule, f in fire.items():
+            if junk:
+                out[rule][0] += f
+                out[rule][1] += 1
+            else:
+                out[rule][2] += f
+                out[rule][3] += 1
+    return out
+
+
+def flips(searches, raw, adjusted, truth, threshold, min_keep):
+    """Results the ratings move across the threshold: (query, url, label, raw, adjusted, 'kept→dropped'|…)."""
+    out = []
+    for s in searches:
+        keys = [(s["id"], r["url"]) for r in s["results"]]
+        before, _ = decide([(k, raw[k]) for k in keys], threshold, min_keep)
+        after, _ = decide([(k, adjusted[k]) for k in keys], threshold, min_keep)
+        before, after = set(before), set(after)
+        for k in keys:
+            if (k in before) != (k in after):
+                out.append((s["query"], k[1], truth.get(k) or "-", raw[k], adjusted[k],
+                            "kept→dropped" if k in before else "dropped→kept"))
+    return out
+
+
+def rating_section(searches, raw, truth, records, rated_label_keys, args, topic_of=None, rb=None):
+    """Report lines for `run --ratings`."""
+    rb = rb or rating_module()
+    query_of = {s["id"]: s["query"] for s in searches}
+    independent = {k: v for k, v in truth.items() if label_key(query_of[k[0]], k[1]) not in rated_label_keys}
+    order = sorted(searches, key=search_time_local)
+    quarters = [order[i * len(order) // 4:(i + 1) * len(order) // 4] for i in range(4)]
+    lines = ["## Ratings", "",
+             f"- Ratings: {len(records)} lines from `{args.ratings}`; order `{args.rating_order}`"
+             + (" (a search sees only ratings made before it)" if args.rating_order == "time"
+                else " (OPTIMISTIC: a search sees later ratings too, never its own)") + ".",
+             f"- Scored on labels not taken from a rating: {len(independent)} of {len(truth)} "
+             f"({len(truth) - len(independent)} left out so ratings are not graded against themselves).",
+             f"- Threshold {args.threshold:g}, fail-open {args.min_keep}, notice cut-off {args.notice_below:g}; "
+             f"a site's own term needs {args.rating_min} ratings.", "",
+             "| strength | searches with a bias | junk dropped | relevant dropped | unlabelled dropped "
+             "| junk in top 5 | notice (a) junk / wrong | notice (c) junk / wrong |",
+             "|---:|---:|---:|---:|---:|---:|---:|---:|"]
+    base, _ = evaluate(searches, raw, independent, args.threshold, args.min_keep)
+    nb = notice_counts(searches, raw, raw, independent, args.notice_below)["raw"]
+    lines.append(f"| 0 (no ratings) | 0 | {base['junk_dropped']}/{base['junk']} | {base['good_dropped']}/{base['good']} "
+                 f"| {base['unlabeled_dropped']} | {base['junk_top_after']} | {nb[0]}/{nb[1]} · {nb[2]}/{nb[3]} | – |")
+    per_strength = []
+    for strength in args.rating_strengths:
+        biases, used = rating_biases(searches, records, strength, args.rating_min, args.rating_order, topic_of, rb)
+        adj = apply_biases(raw, biases, rb)
+        row, _ = evaluate(searches, adj, independent, args.threshold, args.min_keep)
+        n = notice_counts(searches, raw, adj, independent, args.notice_below)
+        a, c = n["raw"], n["either"]
+        lines.append(f"| {strength:g} | {used}/{len(searches)} | {row['junk_dropped']}/{row['junk']} "
+                     f"| {row['good_dropped']}/{row['good']} | {row['unlabeled_dropped']} | {row['junk_top_after']} "
+                     f"| {a[0]}/{a[1]} · {a[2]}/{a[3]} | {c[0]}/{c[1]} · {c[2]}/{c[3]} |")
+        per_strength.append((strength, adj, used))
+    lines.append("")
+    if not any(used for _, _, used in per_strength):
+        lines += ["**No search had a rating available, so every row equals the first. That is no evidence "
+                  "either way, not a sign the bias is safe.**", ""]
+    lines += ["By search order (quarters, oldest first): change in junk / relevant dropped against no ratings.", "",
+              "| strength | " + " | ".join(f"Q{i + 1} ({len(q)})" for i, q in enumerate(quarters)) + " |",
+              "|---:|" + "---:|" * 4]
+    for strength, adj, _ in per_strength:
+        cells = []
+        for q in quarters:
+            b0, _ = evaluate(q, raw, independent, args.threshold, args.min_keep)
+            b1, _ = evaluate(q, adj, independent, args.threshold, args.min_keep)
+            cells.append(f"{b1['junk_dropped'] - b0['junk_dropped']:+d} / {b1['good_dropped'] - b0['good_dropped']:+d}")
+        lines.append(f"| {strength:g} | " + " | ".join(cells) + " |")
+    lines.append("")
+    for strength, adj, _ in per_strength:
+        fl = flips(searches, raw, adj, truth, args.threshold, args.min_keep)
+        if not fl:
+            continue
+        lines += [f"Results the ratings move at strength {strength:g} (label from all labels; read the URLs):", ""]
+        lines += [f"- {d}: label {lab} · {rs:.3g} → {as_:.3g} · {q[:60]} → {u}" for q, u, lab, rs, as_, d in fl[:30]]
+        if len(fl) > 30:
+            lines.append(f"- … {len(fl) - 30} more")
+        lines.append("")
+    return lines
+
+
+def synthetic_ratings(n, topics=("biology", "finance", "cooking"), domains=200):
+    """n rating records over a few topics and `domains` sites, for timing."""
+    out = []
+    for i in range(n):
+        out.append({"ts_local": f"2026-10-{1 + i % 28:02d}T12:00:{i % 60:02d}", "owner": f"u{i % 3}",
+                    "search_id": f"s{i // 4}", "url": f"https://site{i % domains}.example.com/p{i % 997}",
+                    "rating": ("up", "down", "down", "clear")[i % 4], "topic": topics[i % len(topics)]})
+    return out
+
+
+def cmd_rating_speed(args):
+    import time
+    rb = rating_module()
+    tmp = Path(tempfile.mkdtemp(prefix="rating_speed_"))
+    path = tmp / "web_ratings.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in synthetic_ratings(args.lines)), encoding="utf-8")
+    results = [{"url": f"https://site{i}.example.com/p{i}"} for i in range(args.results)]
+    scores = [0.03] * args.results
+
+    def timed(fn, repeat=5):
+        runs = []
+        for _ in range(repeat):
+            t = time.perf_counter()
+            fn()
+            runs.append((time.perf_counter() - t) * 1000)
+        return statistics.median(runs)
+
+    def miss():
+        rb._cache["key"] = None
+        rb.current_table(str(path))
+    miss_ms = timed(miss)
+    table = rb.current_table(str(path))
+    hit_ms = timed(lambda: rb.current_table(str(path)), 50)
+    adjust_ms = timed(lambda: rb.adjust(scores, results, "biology", table, 0.7, 2), 50)
+    size_kb = path.stat().st_size / 1024
+    path.unlink()
+    tmp.rmdir()
+    print(f"ratings file: {args.lines} lines, {size_kb:.0f} KB (synthetic, deleted)")
+    print(f"re-read after a rating (cache miss): {miss_ms:.1f} ms median of 5")
+    print(f"per search, unchanged file (cache hit): {hit_ms:.3f} ms")
+    print(f"bias for {args.results} results: {adjust_ms:.3f} ms")
 
 
 def cmd_extract(args):
@@ -900,9 +1112,24 @@ def cmd_run(args):
         for d in sorted(set(seen) | set(fetch_n), key=lambda x: (-seen[x], x)):
             w.writerow([d, seen[d], round(rank_sum[d] / seen[d], 1) if seen[d] else "",
                         labs[d]["y"], labs[d]["n"], fetch_n[d], fails[d]])
+    if args.ratings:
+        records = rating_module().read_records(str(args.ratings))
+        rated = set(ratings_as_labels(Path(args.ratings).read_text(encoding="utf-8").splitlines())) \
+            if Path(args.ratings).is_file() else set()
+        name = "rerank:query" if "rerank:query" in all_scores else next(iter(all_scores))
+        lines += [f"Rating replay on scorer `{name}`.", ""]
+        lines += rating_section(searches, all_scores[name], truth, records, rated, args, topic_of=_topic_of)
     (out / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print("\n".join(lines))
     print(f"\nwritten: {out / 'report.md'}, {out / 'scores.jsonl'}, {out / 'domains_seen.csv'}")
+
+
+def _topic_of(search):
+    """Topic for a search recorded before topics existed: the live assignment."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    from src.research_topics import assign_topic
+    return assign_topic(search["query"])[0]
 
 
 def cmd_export(args):
@@ -1025,6 +1252,17 @@ def main(argv=None):
     r.add_argument("--model", default=DEFAULT_RERANKER,
                    help=f"fastembed reranker (multilingual: {MULTILINGUAL_RERANKER})")
     r.add_argument("--min-keep", type=int, default=MIN_KEEP)
+    r.add_argument("--ratings", type=Path, help="add the rating replay, e.g. data/web_ratings.jsonl")
+    r.add_argument("--rating-order", choices=("time", "loo"), default="time",
+                   help="time: only earlier ratings (default); loo: all but the search's own (optimistic)")
+    r.add_argument("--rating-strengths", type=lambda v: [float(x) for x in v.split(",")],
+                   default=list(RATING_STRENGTHS))
+    r.add_argument("--rating-min", type=int, default=2)
+    r.add_argument("--threshold", type=float, default=LIVE_THRESHOLD, help="drop threshold for the rating replay")
+    r.add_argument("--notice-below", type=float, default=LIVE_NOTICE)
+    sp = sub.add_parser("rating-speed", help="time the rating bias on a synthetic ratings file")
+    sp.add_argument("--lines", type=int, default=10000)
+    sp.add_argument("--results", type=int, default=15)
     p = sub.add_parser("pages", help="preview a paragraph filter on fetched pages")
     p.add_argument("--dir", required=True)
     p.add_argument("--model", default=DEFAULT_RERANKER)
@@ -1047,7 +1285,8 @@ def main(argv=None):
     ir.add_argument("--overwrite", action="store_true", help="also replace labels already in the sheet")
     args = ap.parse_args(argv)
     {"extract": cmd_extract, "label": cmd_label, "run": cmd_run, "pages": cmd_pages,
-     "export": cmd_export, "import": cmd_import, "import-ratings": cmd_import_ratings}[args.cmd](args)
+     "export": cmd_export, "import": cmd_import, "import-ratings": cmd_import_ratings,
+     "rating-speed": cmd_rating_speed}[args.cmd](args)
 
 
 if __name__ == "__main__":

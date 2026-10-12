@@ -245,7 +245,8 @@ def test_api_filter_settings_read_by_anyone_written_by_admin_only(client, monkey
     r = client.get("/api/web-filter/settings", headers={"x-user": "guest"})
     assert r.status_code == 200 and r.json()["web_filter_enabled"] is False
     assert set(r.json()) == {"web_filter_enabled", "web_filter_threshold", "web_filter_min_keep",
-                             "web_filter_candidates", "web_filter_notice_below", "web_filter_decision_log"}
+                             "web_filter_candidates", "web_filter_notice_below", "web_filter_decision_log",
+                             "web_filter_rating_mode", "web_filter_rating_strength", "web_filter_rating_min"}
     body = {"web_filter_enabled": True, "web_filter_threshold": 0.04}
     assert client.put("/api/web-filter/settings", json=body, headers={"x-user": "guest"}).status_code == 403
     assert store["web_filter_enabled"] is False

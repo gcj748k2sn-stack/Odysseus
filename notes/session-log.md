@@ -18,9 +18,11 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
-## 2026-10-12 (late) — plan: ratings influence the web filter (cloud session, notes only)
+## 2026-10-12 (late) — ratings bias the web filter: built, log-only (cloud session)
 
-- 📝 Planned, not built: ▲/▼ ratings bias the reranker score per (topic, site) in logit space, bounded, `min_keep` unchanged; shadow mode first, replay time-ordered. Plan and four open decisions in [items/82-web-relevance-filter.md](items/82-web-relevance-filter.md) (*Plan: ratings feed back into the filter*).
+- 🆕 `src/rating_bias.py`, call site in `filter_results`: ▲/▼ shift a site's reranker logit in its topic (±0.7 default, `min_keep` unchanged, notice on raw scores). Default mode **`log`**: computes and logs, changes nothing. Replay `run --ratings` (time-ordered, own and rated labels excluded) and `rating-speed`. Decisions and benchmarks in [items/82-web-relevance-filter.md](items/82-web-relevance-filter.md) (*Ratings feed back into the filter*).
+- ✅ Sandbox: 131 tests across six files, 10 mutations caught. **M1 suite owed; JS unverified** (panel setting).
+- ➡️ After a few days of ratings: `extract --from-decisions`, `run --ratings`, read the flips, then decide `apply`.
 
 ---
 

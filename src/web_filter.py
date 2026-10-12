@@ -41,6 +41,12 @@ DEFAULTS = {
     # in data/logs/web_filter.jsonl, so the filter's own decisions can be
     # replayed and labelled; dropped results are recorded nowhere else.
     "web_filter_decision_log": True,
+    # ▲/▼ ratings bias later searches in the same topic (src/rating_bias.py):
+    # "off", "log" (compute and log, change nothing) or "apply". Strength is
+    # a logit offset (0.7 ≈ odds ×2); a site's own term needs this many ratings.
+    "web_filter_rating_mode": "log",
+    "web_filter_rating_strength": 0.7,
+    "web_filter_rating_min": 2,
 }
 
 DECISION_LOG_MAX_BYTES = 20 * 1024 * 1024
@@ -147,17 +153,40 @@ def _write_decision(record, path=None):
         logger.warning("[web-filter] decision log not written: %s: %s", type(e).__name__, e)
 
 
-def filter_results(query, results, settings=None, model=None, limit=None, decision_log=None, info=None):
+def _rating_bias(scores, results, topic, cfg, table=None):
+    """(mode, scores to select on, biases). Never raises: on any error, no bias."""
+    from src import rating_bias
+    mode, strength, min_ratings = rating_bias.settings_of(cfg)
+    if mode == "off":
+        return mode, scores, [0.0] * len(scores)
+    try:
+        table = table if table is not None else rating_bias.current_table()
+        adjusted, biases = rating_bias.adjust(scores, results, topic, table, strength, min_ratings)
+    except Exception as e:
+        logger.warning("[web-filter] rating bias skipped: %s: %s", type(e).__name__, e)
+        return mode, scores, [0.0] * len(scores)
+    return mode, adjusted, biases
+
+
+def filter_results(query, results, settings=None, model=None, limit=None, decision_log=None, info=None,
+                   rating_table=None):
     """Return (results to use, notice for the model or "").
 
     `info` (optional dict): its "search_id" and "topic" go into the decision
-    log; the filter adds "scores" ({url: score}) and "dropped" (the candidates
-    not passed on), which annotate_sources() turns into the sources box data.
+    log; the filter adds "scores" ({url: score}), "dropped" (the candidates
+    not passed on) and "rating_bias" ({url: bias}, non-zero only), which
+    annotate_sources() turns into the sources box data.
 
     With the filter on, results are returned best score first, at most `limit`
     of them. Never raises and never returns fewer than min(min_keep, limit,
     len(results)); when disabled or on any error it returns the results in
-    their original order, cut to `limit`."""
+    their original order, cut to `limit`.
+
+    Ratings (`web_filter_rating_mode`): "log" computes the rating bias and
+    records what it would change; "apply" selects on the biased scores. The
+    off-topic notice always uses the unbiased scores (its cut-off was measured
+    on them); `notice_either` in the decision log records whether it would
+    also fire on the biased ones. `rating_table` is for tests."""
     global _logged_state
     cfg = settings if settings is not None else _settings()
     enabled = bool(cfg.get("web_filter_enabled"))
@@ -179,20 +208,33 @@ def filter_results(query, results, settings=None, model=None, limit=None, decisi
     except Exception as e:
         logger.warning("[web-filter] skipped, results unchanged: %s: %s", type(e).__name__, e)
         return unchanged, ""
-    kept = select(scores, threshold, min_keep, limit)
+    topic = (info or {}).get("topic", "")
+    rating_mode, adjusted, biases = _rating_bias(scores, results, topic, cfg, rating_table)
+    raw_kept = select(scores, threshold, min_keep, limit)
+    rated_kept = select(adjusted, threshold, min_keep, limit) if rating_mode != "off" else raw_kept
+    kept = rated_kept if rating_mode == "apply" else raw_kept
+    selected_on = adjusted if rating_mode == "apply" else scores
+    kept_set, rated_set, raw_set = set(kept), set(rated_kept), set(raw_kept)
     if info is not None:
         info["scores"] = {r.get("url"): round(scores[i], 5) for i, r in enumerate(results) if r.get("url")}
-        info["dropped"] = [results[i] for i in range(len(results)) if i not in set(kept)]
+        info["dropped"] = [results[i] for i in range(len(results)) if i not in kept_set]
+        info["rating_bias"] = {r.get("url"): round(biases[i], 4) for i, r in enumerate(results)
+                               if r.get("url") and biases[i]}
     all_low = not any(s >= threshold for s in scores)
     best = max(scores)
     notice = OFF_TOPIC_NOTICE if best < notice_below else ""
-    kept_set = set(kept)
+    notice_either = bool(notice) or max(adjusted) < notice_below
     ms = int((time.monotonic() - started) * 1000)
+    # Results the ratings move across the threshold (applied, or would be in "log" mode).
+    rating_changes = [f"{_domain(results[i].get('url'))}:{'kept→dropped' if i in raw_set else 'dropped→kept'}"
+                      for i in range(len(results)) if (i in raw_set) != (i in rated_set)]
     logger.info(
-        "[web-filter] query=%r kept=%d/%d threshold=%.3g best=%.3f all_low=%s notice=%s ms=%d kept=%s dropped=%s",
+        "[web-filter] query=%r kept=%d/%d threshold=%.3g best=%.3f all_low=%s notice=%s ms=%d kept=%s dropped=%s"
+        " ratings=%s biased=%d rating_changes=%s",
         query[:120], len(kept), len(results), threshold, best, all_low, bool(notice), ms,
-        [f"{_domain(results[i].get('url'))}:{scores[i]:.3f}" for i in kept],
-        [f"{_domain(results[i].get('url'))}:{scores[i]:.3f}" for i in range(len(results)) if i not in kept_set],
+        [f"{_domain(results[i].get('url'))}:{selected_on[i]:.3f}" for i in kept],
+        [f"{_domain(results[i].get('url'))}:{selected_on[i]:.3f}" for i in range(len(results)) if i not in kept_set],
+        rating_mode, sum(1 for b in biases if b), rating_changes,
     )
     if cfg.get("web_filter_decision_log", DEFAULTS["web_filter_decision_log"]):
         position = {i: n for n, i in enumerate(kept, 1)}
@@ -201,10 +243,12 @@ def filter_results(query, results, settings=None, model=None, limit=None, decisi
             "search_id": (info or {}).get("search_id", ""), "topic": (info or {}).get("topic", ""),
             "query": query, "model": cfg.get("web_filter_model") or DEFAULTS["web_filter_model"],
             "threshold": threshold, "min_keep": min_keep, "limit": limit, "ms": ms, "notice": bool(notice),
+            "rating_mode": rating_mode, "notice_either": notice_either,
             "results": [{
                 "rank_in": i + 1, "url": r.get("url", ""), "title": r.get("title", ""),
                 "snippet": (r.get("snippet") or "")[:500], "engine": r.get("engine", ""),
                 "score": round(scores[i], 5), "kept": i in kept_set, "position_out": position.get(i),
+                "bias": round(biases[i], 4), "adjusted": round(adjusted[i], 5), "rated_kept": i in rated_set,
             } for i, r in enumerate(results)],
         }, decision_log)
     return [results[i] for i in kept], notice
@@ -219,12 +263,16 @@ def annotate_sources(sources, query, info):
     the model saw: test `filtered` before reading it as such."""
     info = info or {}
     scores = info.get("scores") or {}
+    biases = info.get("rating_bias") or {}
     meta = {"search_id": info.get("search_id", ""), "query": query, "topic": info.get("topic", "")}
+
+    def bias(url):
+        return {"rating_bias": biases[url]} if url in biases else {}
     out = []
     for src in sources:
-        out.append({**src, **meta, "score": scores.get(src.get("url"))})
+        out.append({**src, **meta, "score": scores.get(src.get("url")), **bias(src.get("url"))})
     for r in info.get("dropped") or []:
         if r.get("url"):
             out.append({"url": r.get("url", ""), "title": r.get("title", ""), "engine": r.get("engine", ""),
-                        **meta, "score": scores.get(r.get("url")), "filtered": True})
+                        **meta, "score": scores.get(r.get("url")), **bias(r.get("url")), "filtered": True})
     return out

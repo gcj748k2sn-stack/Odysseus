@@ -112,6 +112,12 @@ function slider(key, value, min, max, step, fmt) {
     + '" value="' + esc(value) + '" style="width:120px;margin:0" /></span>';
 }
 
+function choice(key, value, options) {
+  return '<select class="memory-sort-select rt-choice" data-key="' + key + '" style="height:24px;flex-shrink:0">'
+    + options.map(([v, label]) => '<option value="' + esc(v) + '"' + (v === value ? ' selected' : '') + '>' + esc(label) + '</option>').join('')
+    + '</select>';
+}
+
 function sw(key, on) {
   return '<label class="admin-switch" style="flex-shrink:0"><input type="checkbox" class="rt-flag" data-key="' + key + '"'
     + (on ? ' checked' : '') + ' /><span class="admin-slider"></span></label>';
@@ -122,6 +128,7 @@ const FMT = {
   web_filter_candidates: v => String(v),
   web_filter_min_keep: v => String(v),
   min_similarity: v => Number(v).toFixed(2),
+  web_filter_rating_strength: v => Number(v).toFixed(1),
 };
 
 function settingsPanel() {
@@ -143,6 +150,14 @@ function settingsPanel() {
     + settingRow('Decision log',
       'Write every search\'s candidates, scores and outcome to data/logs/web_filter.jsonl, for the replay and ratings.',
       sw('web_filter_decision_log', f.web_filter_decision_log))
+    + settingRow('Ratings',
+      'Your up/down arrows move a site\'s score on later searches in the same topic. "Log only" records what they '
+      + 'would change in the decision log; "Apply" lets them decide close calls. "Always keep" still holds.',
+      choice('web_filter_rating_mode', f.web_filter_rating_mode,
+        [['off', 'Off'], ['log', 'Log only'], ['apply', 'Apply']]))
+    + settingRow('Rating strength',
+      'How far ratings can move a score (0.7 roughly doubles or halves the odds of passing).',
+      slider('web_filter_rating_strength', f.web_filter_rating_strength, 0, 1.5, 0.1, FMT.web_filter_rating_strength))
     + settingRow('Topic matching',
       'How similar a search must be to a topic\'s examples to be assigned to it; below this it goes to "other".',
       slider('min_similarity', _data.min_similarity, 0.1, 0.9, 0.05, FMT.min_similarity))
@@ -276,6 +291,8 @@ function onChange(ev) {
     saveSetting(t.dataset.key, t.checked);
   } else if (t.classList.contains('rt-range')) {
     saveSetting(t.dataset.key, Number(t.value));
+  } else if (t.classList.contains('rt-choice')) {
+    saveSetting(t.dataset.key, t.value);
   }
 }
 
