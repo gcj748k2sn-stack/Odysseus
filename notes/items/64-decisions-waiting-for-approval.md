@@ -11,18 +11,6 @@ Open item, filed 2026-10-07. A parking list, not a defect: each entry is a choic
 - **Options:** keep both · remove both (one call site in `src/turn_report.py`, two modules, two configs, four test files, fixtures). They stand or fall together.
 - **Recommendation: keep.** Dormant, not obsolete; practically free; isolated in fork modules since 2026-10-07; and they are the deterministic trigger for the planned benchmark checks of items 21 and 2a. Add a subject only after a real failure.
 
-## 2. Close items that are built and verified
-
-Open by this file's convention (title not struck), but their status says done:
-- **25** — fixed `b9616240`; the owed M1 suite has since passed several times (7,441 passed on 2026-10-07).
-- **52** — built `c084b9e3`, live check passed 2026-10-06 00:31.
-- **54** — fixed `c29a068a`, verified live in the pane and in Safari.
-- **55** — fixed `0c71f29e`, verified live 2026-10-04 23:24.
-- **13** — both halves built and seen live; tests (15).
-
-Not yet: **46, 48, 56** each still owe a manual UI check; **60** has the bash hole seen live after the merge.
-- **Recommendation:** close the five, moving each conclusion to resolvedissues.md (CLAUDE.md §5).
-
 ## 3. The closing report flags tool failures the model already recovered from
 
 - **What:** `_side_effect_tool_summary` in `src/turn_report.py` appends *"⚠️ `python` failed — …"* for any failed side-effecting tool, even when the model retried and succeeded later in the turn. Seen in the 2026-10-07 Qwen benchmark (`json_output`); the benchmark now scores without the report.
@@ -35,6 +23,7 @@ Not yet: **46, 48, 56** each still owe a manual UI check; **60** has the bash ho
 - **Evidence:** item 34's last measurement, 2026-08-01: 0 spontaneous `[doc-put-404]` in 7 document stream opens — "too small to close". Nobody has worked on naming the paths since.
 - **Options:** close item 34 as bounded by the 404 reaper and remove all three · keep measuring.
 - **Recommendation:** count `[doc-put-404]` in `app.log*` since 2026-08-01 first; if still zero, close 34 and remove them.
+- ✅ **Decided 2026-10-12 (maintainer: "do it").** Waiting on the count, which needs the M1's logs: `grep -c '\[doc-put-404\]' /Users/cedrik/odysseus/data/logs/app.log*; grep -c 'Doc streaming: open' /Users/cedrik/odysseus/data/logs/app.log*` (the one known hit, `doc=_streaming_1785484957239 len=500`, is item 34's own scripted repro and does not count). If zero beyond that: close 34 as bounded by the 404 reaper; remove `_stackFrames` and its three uses (keep the `[doc-save]` and `[doc-map]` lines, which CLAUDE.md §3 relies on), the `switchAway` trace block in `switchToDoc`, and the `logger.info("[doc-put-404] …")` block before the 404 raise in `update_document`.
 
 ## 5. The Ollama 32k model files
 
@@ -65,10 +54,11 @@ Not yet: **46, 48, 56** each still owe a manual UI check; **60** has the bash ho
 - **What:** several fork fixes would help any Odysseus user and, once taken upstream, leave the fork's diff: document data-loss fixes (closing a tab, the editor-buffer flush, tidy archives instead of deleting), the `chat.js` ReferenceErrors, `<main>` extraction for Wikipedia, the negative cache for permanently failing URLs, LM Studio context discovery, `trigger_research` reporting a dead model.
 - **How:** upstream's CONTRIBUTING asks agents to open an issue first, not a PR.
 - **Recommendation:** worth it for the document data-loss fixes first; each accepted one shrinks every future merge.
+- ⏸ **Parked 2026-10-12** (maintainer: "ignore for now").
 
 ## 10. Small housekeeping
 
-- **`.env.bak.before-lmstudio`** (2026-08-07) in the repo root: a copy of secrets, gitignored but readable by the agent's bash, which runs from the repo root. Move it out of the repo.
+- **`.env.bak.before-lmstudio`** (2026-08-07) in the repo root: a copy of secrets, gitignored but readable by the agent's bash, which runs from the repo root. Move it out of the repo. **2026-10-12:** location and commands given to the maintainer (diff against `.env`; delete if nothing in it is still needed, otherwise move to `~/odysseus-secrets/` with `chmod 700`). Delete this line once done.
 - **`scripts/bench_agent_tasks.py`** keeps a hand-copied `WEB_INTENT_RE`; a five-line test comparing it with `routes/chat_routes.py` would catch drift.
 - **`tests/test_static_js_block_scope.py`** is a 576-line hand-written JS scanner; ESLint `no-undef` would do the same with a real parser, at the cost of an npm devDependency and a globals list. Optional.
 

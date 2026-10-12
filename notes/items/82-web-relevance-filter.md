@@ -2,6 +2,8 @@
 
 Open item. Its row in the [todo.md](../todo.md) index carries the current status; this file is the full record.
 
+> **Number clash in git history:** commits of 2026-10-12 call this work **"item 71"** (`7a74934` feat, `ceeed10`, `c6620bd`, `4aa265c`, `a0b7d92`). Item 71 is *"A follow-up with an open document changes the tool set"*. This item is 82 everywhere in `notes/`; history keeps the old label. Search `git log` for both.
+
 ---
 
 **Idea (maintainer, 2026-10-12):** a small "decision" model between web retrieval and the thinking model (Qwen 3.5 / Bonsai 2) that decides what reaches it. **Proposed shape:** a cross-encoder reranker (fastembed, already a dependency), not a generative model. It scores (question, passage) pairs in milliseconds and does not compete with the chat model for LM Studio. Two levels: (1) the search result list (title/URL/snippet), where *"Web search derails on ambiguous common nouns"* and *"today/latest routes web_search to the news category"* happen; (2) paragraphs of fetched pages, where most of the context, and so most of the prefill time, goes.

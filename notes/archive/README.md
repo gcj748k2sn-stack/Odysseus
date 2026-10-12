@@ -15,6 +15,7 @@ tree, `data/logs/app.log*` or `data/app.db`. What applies now is in
 | `todo-2026-10-06.md` | `todo.md` before the split: closed bodies, the 2026-08-01 *Next* list, owed verifications |
 | `session-log-2026-10-06.md` | Session-log entries of 2026-10-06 (00:30 to 23:05): the upstream merge and the first benchmark runs |
 | `session-log-2026-10-08.md` | Session-log entries of 2026-10-08 (08:40) to 2026-10-09 (02:05): benchmark day, items 7, 57, 69 fixed, item 70 filed |
+| `session-log-2026-10-09.md` | Session-log entries of 2026-10-09 (10:55) to 2026-10-10 (15:00): effort picker, items 68, 70, 72, 74–76, 78, 79, 58 built, knowledge and research suites, launchd service |
 | `session-log-2026-10-07.md` | Session-log entries of 2026-10-07 (00:00 to 22:59): cleanup, items 63–68 filed, approval-flow fixes, first valid benchmark runs |
 | `session-log-until-2026-10-06.md` | Session-log entries from 2026-07-30 to 2026-10-06 00:20 |
 
