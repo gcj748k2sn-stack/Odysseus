@@ -18,6 +18,12 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-12 (late) — plan: ratings influence the web filter (cloud session, notes only)
+
+- 📝 Planned, not built: ▲/▼ ratings bias the reranker score per (topic, site) in logit space, bounded, `min_keep` unchanged; shadow mode first, replay time-ordered. Plan and four open decisions in [items/82-web-relevance-filter.md](items/82-web-relevance-filter.md) (*Plan: ratings feed back into the filter*).
+
+---
+
 ## 2026-10-12 (evening) — notes repaired; item 64 decisions recorded (cloud session, notes only)
 
 - ✅ **Closed 13, 25, 52, 54, 55** (maintainer's decision, item 64): rows and conclusions moved to resolvedissues.md. ⚠️ Their files `notes/items/13-…`, `52-…`, `54-…` are **still in `items/`**: the move to `archive/items/` was refused by the session's permission classifier. Commands are in the hand-off.
