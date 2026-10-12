@@ -158,6 +158,26 @@ Worth having, but as a prior on top of the content score, not as the filter. Aut
 - **Queries the scorer cannot judge:** a search whose query is literally `<search query>` (the model sent a template placeholder — an Odysseus/model bug, not counted yet), and the *Lactarius procera / Macrolepiota procera / giant milk cap* searches, where the model mixed up species names and the relevant results don't match the query. Scoring against query + user message (`rerank:both`) ranks those higher.
 - Report change after this run: relevant drops are listed per threshold (where each is first dropped), not only at the strictest one.
 
+## Fourth run: every result labelled (2026-10-12, same corpus, y=522, n=366)
+
+Multilingual reranker (`jinaai/jina-reranker-v2-base-multilingual`), fail-open at 3.
+
+| scorer | threshold | junk dropped | relevant dropped | fail-open | junk in top 5 after |
+|---|---:|---:|---:|---:|---:|
+| rerank:query | 0.0258 | 71/366 (19 %) | **0/522** | 11/190 | 295 |
+| rerank:query | 0.0409 | 120/366 (33 %) | 3/522 | 35/190 | 246 |
+| rerank:query | 0.0773 | 166/366 (45 %) | 9/522 | 56/190 | 200 |
+| rerank:both | 0.046 | 111/366 | 1/522 | 36/190 | 255 |
+| lexical:query | 0.0435 | 71/366 | 5/522 | 30/190 | 295 |
+| rerank:user | 0.0233 | 27/366 | 26/522 | 18/190 | 339 |
+
+- **rerank:query is the candidate.** Up to 0.0409 the only relevant results lost come from the *Lactarius / Macrolepiota procera / giant milk cap* searches, where the model's query names the wrong species; at 0.0773, 6 of the 9 losses are those or `<search query>` searches. The cost sits in broken queries, not in normal ones.
+- **rerank:user is unusable:** its scores are nearly flat (0.0232–0.0233 for good pink-oyster guides), so it drops relevant pages from its first row. Scoring against the user's message is out.
+- **Word matching** drops relevant results from its first row (5/522) and is out.
+- **Ceiling:** 24 searches have only junk; fail-open keeps 3 of each, so junk in the top 5 never falls below ~175 for any scorer. Those need the "results look off-topic" notice, not a stricter threshold.
+- **Domains (labelled):** `en.wikipedia.org` 4 y / 32 n, `youtube.com` 0/19, `economictimes.indiatimes.com` 0/12, `victoriassecret.com` 0/29, `oyster.tfl.gov.uk` 0/10, `oyster.com` 0/7, `instagram.com` 0/6, `zhihu.com` 0/5, `seekingalpha.com` 0/5. Candidates for negative priors.
+- **Proposed shape for Odysseus (not built):** rerank the result list against the search query with the multilingual reranker; drop below ~0.03–0.04; keep at least 3; when every result scores below the threshold, keep them and tell the model they look off-topic. Off by default, every decision logged.
+
 ## Verification
 
 - 2026-10-12, cloud sandbox (Linux, Python 3.13, `requirements.txt` in a fresh venv): `tests/test_bench_web_filter.py` 22 passed; 26 after the 11:19 fixes (grid, seed rules, score column), four more mutations, all caught. Ten mutations, nine caught: fail-open removed; snippet dots kept; substring domain match; user message taken from after the search; parser not stopping at page content; chunk order; stopwords counted; budget keeping nothing; no seed fallback. Not caught: a URL-less result kept when the next `[i]` line starts. The writer always writes the URL line, so this is not reachable from recorded data.
