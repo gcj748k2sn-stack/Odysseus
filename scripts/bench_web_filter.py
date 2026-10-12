@@ -75,7 +75,11 @@ MIN_KEEP = 3             # fail-open: never hand the model fewer results than th
 # Known-bad results recorded in notes/items/14-…: (query pattern, result pattern).
 # A proxy for labels, used only when labels.csv has none — not ground truth.
 SEED_RULES = [
-    (r"pink\s+oyster|pleurotus", r"pink \(singer\)|victoria'?s secret|/wiki/pink_\(singer\)"),
+    (r"pink\s+oyster|pleurotus", r"pink \(singer\)|victoria.?s secret|/wiki/pink_\(singer\)"),
+    # Mushroom queries: the singer, the lingerie brand, London's Oyster card and
+    # a hotel-review site share words with them (seen in the 2026-10-12 replay).
+    (r"mushroom|pleurotus|oyster.*(grow|cultivat|fruit)|mycel|fung",
+     r"victoriassecret\.com|oyster\.tfl\.gov\.uk|//(www\.)?oyster\.com/|/wiki/pink_\(singer\)"),
     (r"cultivat|growing|fruiting|coloni[sz]ation|substrate|spawn",
      r"allrecipes\.com|tasteofhome\.com|webmd\.com|healthline\.com"),
 ]
@@ -420,8 +424,22 @@ def seed_label(query, result):
     return None
 
 
-def write_label_sheet(searches, path=LABELS_FILE):
-    """Add a row for every (query, url) not yet in the sheet; keep existing labels."""
+def read_scores(path, scorer):
+    """{label_key: score} for one scorer from a run's scores.jsonl."""
+    out = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            row = json.loads(line)
+            if scorer in row:
+                out[label_key(row["query"], row["url"])] = row[scorer]
+    return out
+
+
+def write_label_sheet(searches, path=LABELS_FILE, scores=None):
+    """Add a row for every (query, url) not yet in the sheet; keep existing labels.
+
+    With `scores` ({label_key: score}), every row's `score` column is set, so
+    the sheet can be sorted to label the drop candidates first."""
     path = Path(path)
     existing, rows = set(), []
     if path.is_file():
@@ -443,8 +461,14 @@ def write_label_sheet(searches, path=LABELS_FILE):
                 "user_message": (s.get("user_message") or "")[:200].replace("\n", " "),
             })
             added += 1
+    for row in rows:
+        # Recomputed every time, so a changed SEED_RULES reaches existing rows.
+        row["hint"] = "seed:n" if seed_label(row["query"], row) else ""
+        if scores is not None:
+            sc = scores.get(label_key(row["query"], row["url"]))
+            row["score"] = "" if sc is None else f"{sc:.6f}"
     path.parent.mkdir(parents=True, exist_ok=True)
-    fields = ["label", "hint", "query", "rank", "domain", "title", "snippet", "url", "user_message"]
+    fields = ["label", "score", "hint", "query", "rank", "domain", "title", "snippet", "url", "user_message"]
     with open(path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields, extrasaction="ignore")
         w.writeheader()
@@ -503,12 +527,23 @@ def junk_in_current_top(searches, truth, top_n=FETCHED_TOP_N):
     return sum(1 for s in searches for r in s["results"][:top_n] if truth.get((s["id"], r["url"])) == "n")
 
 
-def threshold_grid(scores):
+def threshold_grid(scores, shares=(0.1, 0.2, 0.3, 0.4, 0.5)):
+    """Cut points that would drop roughly 10 %, 20 % … of all results.
+
+    Not rounded: reranker scores pile up near 0 after the sigmoid, and
+    rounding merged distinct cut points. A cut point equal to the lowest
+    score would drop nothing, so it moves up to the next distinct value."""
     vals = sorted(scores.values())
     if not vals:
         return []
-    qs = [0.1, 0.2, 0.3, 0.4, 0.5]
-    return sorted({round(vals[min(len(vals) - 1, int(q * len(vals)))], 4) for q in qs})
+    distinct = sorted(set(vals))
+    out = set()
+    for share in shares:
+        thr = vals[min(len(vals) - 1, int(share * len(vals)))]
+        if thr == distinct[0] and len(distinct) > 1:
+            thr = distinct[1]
+        out.add(thr)
+    return sorted(out)
 
 
 # ------------------------------------------------------------------- pages ---
@@ -586,8 +621,15 @@ def cmd_extract(args):
 
 def cmd_label(args):
     searches, _ = read_corpus(args.dir)
-    added, total = write_label_sheet(searches, args.labels)
+    scores = None
+    if args.scores_from:
+        scores = read_scores(Path(args.dir) / "scores.jsonl", args.scores_from)
+        if not scores:
+            raise SystemExit(f"no '{args.scores_from}' scores in {args.dir}/scores.jsonl — run `run` first")
+    added, total = write_label_sheet(searches, args.labels, scores)
     print(f"{args.labels}: {added} new rows, {total} total. Fill the label column with y or n.")
+    if scores:
+        print(f"score column = {args.scores_from}; sort ascending to label the drop candidates first.")
 
 
 def cmd_run(args):
@@ -631,7 +673,7 @@ def cmd_run(args):
         best = None
         for thr in threshold_grid(scores):
             row, good_dropped = evaluate(searches, scores, truth, thr, args.min_keep)
-            lines.append(f"| {thr:.3f} | {row['junk_dropped']}/{row['junk']} | {row['good_dropped']}/{row['good']} "
+            lines.append(f"| {thr:.3g} | {row['junk_dropped']}/{row['junk']} | {row['good_dropped']}/{row['good']} "
                          f"| {row['unlabeled_dropped']} | {row['fell_back']}/{len(searches)} | {row['junk_top_after']} |")
             if row["good_dropped"] == 0 and (best is None or row["junk_dropped"] > best[1]["junk_dropped"]):
                 best = (thr, row, good_dropped)
@@ -640,11 +682,11 @@ def cmd_run(args):
         if thr_hi is not None:
             _, gd = evaluate(searches, scores, truth, thr_hi, args.min_keep)
             if gd:
-                lines += [f"Relevant results dropped at {thr_hi:.3f} (the cost side — read these):", ""]
+                lines += [f"Relevant results dropped at {thr_hi:.3g} (the cost side — read these):", ""]
                 lines += [f"- {sc:.3f} · {q[:70]} → {u}" for q, u, sc in gd[:20]]
                 lines.append("")
         if best and any(v == "y" for v in truth.values()):
-            lines += [f"Highest threshold in the grid that drops no labelled-relevant result: **{best[0]:.3f}** "
+            lines += [f"Highest threshold in the grid that drops no labelled-relevant result: **{best[0]:.3g}** "
                       f"({best[1]['junk_dropped']}/{best[1]['junk']} junk dropped).", ""]
 
     # Per-domain view: the raw material for a domains.json
@@ -720,6 +762,8 @@ def main(argv=None):
     lab = sub.add_parser("label", help="create/update the labels sheet")
     lab.add_argument("--dir", required=True)
     lab.add_argument("--labels", type=Path, default=LABELS_FILE)
+    lab.add_argument("--scores-from", metavar="SCORER",
+                     help="fill a score column from this scorer in <dir>/scores.jsonl, e.g. rerank:query")
     r = sub.add_parser("run", help="score, evaluate, write report.md")
     r.add_argument("--dir", required=True)
     r.add_argument("--labels", type=Path, default=LABELS_FILE)

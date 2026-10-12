@@ -243,7 +243,7 @@ def test_labels_survive_re_extraction_and_seed_rules_mark_known_junk(tmp_path):
     assert added == total == 4
     rows = sheet.read_text(encoding="utf-8").splitlines()
     assert any("seed:n" in r and "Pink (singer)" in r for r in rows)
-    sheet.write_text(sheet.read_text(encoding="utf-8").replace("\n,seed:n,", "\nn,seed:n,"), encoding="utf-8")
+    sheet.write_text(sheet.read_text(encoding="utf-8").replace("\n,,seed:n,", "\nn,,seed:n,"), encoding="utf-8")
     added, total = W.write_label_sheet(s, sheet)
     assert added == 0 and total == 4
     assert W.load_labels(sheet) == {W.label_key("pink oyster", "https://junk"): "n"}
@@ -277,3 +277,45 @@ def test_without_labels_the_seed_rules_stand_in_and_say_so():
     assert source.startswith("SEED_RULES proxy")
     truth, source = W.labels_for(_searches(), {W.label_key("pink oyster", "https://good1"): "y"})
     assert truth == {("s1", "https://good1"): "y"} and source == "labels.csv"
+
+
+def test_threshold_grid_keeps_cut_points_that_rounding_would_merge():
+    # reranker scores after the sigmoid: most results sit very close to 0
+    scores = {i: 1e-7 * (1.3 ** i) for i in range(50)}    # 1e-7 … 3e-2, mostly below 1e-4
+    grid = W.threshold_grid(scores)
+    assert len(grid) == 5
+    assert min(grid) > min(scores.values())   # a cut at the lowest score would drop nothing
+    assert W.threshold_grid({1: 0.0, 2: 0.0, 3: 0.0, 4: 0.5}) == [0.5]
+
+
+def test_threshold_grid_of_one_value_does_not_crash():
+    assert W.threshold_grid({1: 0.5, 2: 0.5}) == [0.5]
+    assert W.threshold_grid({}) == []
+
+
+def test_seed_rules_catch_the_oyster_collisions_only_for_mushroom_queries():
+    vs = {"title": "PINK | Victoria’s Secret", "url": "https://www.victoriassecret.com/us/pink"}
+    tfl = {"title": "Oyster card", "url": "https://oyster.tfl.gov.uk/oyster/entry.do"}
+    assert W.seed_label("pink mushroom fruiting temperature", vs) == "n"
+    assert W.seed_label("oyster mushroom grow kit", tfl) == "n"
+    assert W.seed_label("london oyster card top up", tfl) is None
+    assert W.seed_label("pink pajamas", vs) is None
+
+
+def test_label_sheet_gets_a_sortable_score_column_and_refreshed_hints(tmp_path):
+    sheet = tmp_path / "labels.csv"
+    s = _searches()
+    W.write_label_sheet(s, sheet)
+    scores = {W.label_key("pink oyster", "https://junk"): 0.001, W.label_key("pink oyster", "https://good1"): 0.9}
+    W.write_label_sheet(s, sheet, scores)
+    import csv as _csv
+    rows = {r["url"]: r for r in _csv.DictReader(open(sheet, encoding="utf-8"))}
+    assert rows["https://junk"]["score"] == "0.001000"
+    assert rows["https://good1"]["score"] == "0.900000"
+    assert rows["https://unl"]["score"] == ""
+    assert rows["https://junk"]["hint"] == "seed:n"
+    # a sheet written under older SEED_RULES gets its hints recomputed
+    sheet.write_text(sheet.read_text(encoding="utf-8").replace("seed:n", ""), encoding="utf-8")
+    W.write_label_sheet(s, sheet)
+    rows = {r["url"]: r for r in _csv.DictReader(open(sheet, encoding="utf-8"))}
+    assert rows["https://junk"]["hint"] == "seed:n"

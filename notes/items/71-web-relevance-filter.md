@@ -6,7 +6,7 @@ Open item. Its row in the [todo.md](../todo.md) index carries the current status
 
 **Idea (maintainer, 2026-10-12):** a small "decision" model between web retrieval and the thinking model (Qwen 3.5 / Bonsai 2) that decides what reaches it. **Proposed shape:** a cross-encoder reranker (fastembed, already a dependency), not a generative model. It scores (question, passage) pairs in milliseconds and does not compete with the chat model for LM Studio. Two levels: (1) the search result list (title/URL/snippet), where *"Web search derails on ambiguous common nouns"* and *"today/latest routes web_search to the news category"* happen; (2) paragraphs of fetched pages, where most of the context, and so most of the prefill time, goes.
 
-**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (22 tests).
+**Nothing is built into Odysseus.** What exists is the offline replay: `scripts/bench_web_filter.py` with `tests/test_bench_web_filter.py` (26 tests).
 
 ## How results are ranked today
 
@@ -47,6 +47,10 @@ All commands from `/Users/cedrik/odysseus`. `extract` copies `app.db` itself (ha
    ```
    ./venv/bin/python scripts/bench_web_filter.py label --dir $RUN
    ```
+   After a first `run` (step 4), refill the sheet with a sortable `score` column and label the lowest scores first, since those are what a filter would drop:
+   ```
+   ./venv/bin/python scripts/bench_web_filter.py label --dir $RUN --scores-from rerank:query
+   ```
    Open it in Numbers/Excel and put `y` (relevant) or `n` (junk) in the `label` column. Unlabelled rows are ignored. Labels are keyed on query + URL, so a later `extract` keeps them. 50–100 labelled rows across a dozen searches already give a usable first reading; label some relevant ones too, otherwise the report cannot show the cost.
 4. Score and report. The first run downloads the reranker into `data/fastembed_cache` (80 MB):
    ```
@@ -86,9 +90,26 @@ Worth having, but as a prior on top of the content score, not as the filter. Aut
 - Build it from evidence: `domains_seen.csv` lists each domain's appearances, mean rank, y/n labels and how often `web_fetch` failed on it (a site that always 403s is not worth a fetch slot, whatever its quality).
 - Keep priors small (±0.1 to ±0.3) and re-run the report after each change.
 
+## First run on the M1 (2026-10-12 11:19 local, run `20261012-111918`)
+
+**Corpus:** 190 searches, 888 results (4.7 per search), 157 fetches, 2026-07-17 → 2026-10-05 (UTC). No labels yet, so this is the SEED_RULES proxy: 32 known-junk results, all 32 in the fetched top 5 today. Reranker `Xenova/ms-marco-MiniLM-L-6-v2`.
+
+| scorer | best row | junk dropped | unlabelled dropped | fail-open | junk in top 5 after re-sort |
+|---|---|---:|---:|---:|---:|
+| lexical:query | 0.250 | 18/32 | 187 | 79/190 | 14 |
+| rerank:query | 0.007 | 28/32 | 191 | 77/190 | 4 |
+| rerank:both | 0.045 | 26/32 | 223 | 100/190 | 6 |
+| rerank:user | — | grid collapsed to one row | | | |
+
+- **Read with care:** the proxy junk is mostly *"Pink (singer)"*, the easiest case, and **the 191 unlabelled drops are the unknown cost**. Nothing here says the filter is safe yet.
+- **Two script faults this run exposed, fixed after it:** (1) the grid rounded thresholds to 4 decimals, and sigmoid reranker scores pile up near 0, so cut points merged (the duplicate `0.000` rows; `rerank:user` collapsed to one row). Now not rounded, printed with 3 significant digits. (2) The Victoria's Secret rule required *"pink oyster"* in the query and a straight apostrophe, so 29 appearances of `victoriassecret.com` got no hint.
+- **New collisions in the domain table** (the *ambiguous common nouns* mechanism, not filed before): `oyster.tfl.gov.uk` (London's Oyster card, 10 appearances) and `oyster.com` (hotel reviews, 7), plus `victoriassecret.com` (29). Now a seed rule for mushroom queries.
+- `rerank:user` collapsing is probably the English-only model on user messages (many are German) — unmeasured. Run the multilingual model before reading anything into it.
+- Fetch failures worth a look: `researchgate.net` 3/3, `forbes.com` 2/2, `msn.com` 2/2, `mushroomexpert.com` 2/2, `thesporedepot.com` 4/8.
+
 ## Verification
 
-- 2026-10-12, cloud sandbox (Linux, Python 3.13, `requirements.txt` in a fresh venv): `tests/test_bench_web_filter.py` 22 passed. Ten mutations, nine caught: fail-open removed; snippet dots kept; substring domain match; user message taken from after the search; parser not stopping at page content; chunk order; stopwords counted; budget keeping nothing; no seed fallback. Not caught: a URL-less result kept when the next `[i]` line starts. The writer always writes the URL line, so this is not reachable from recorded data.
+- 2026-10-12, cloud sandbox (Linux, Python 3.13, `requirements.txt` in a fresh venv): `tests/test_bench_web_filter.py` 22 passed; 26 after the 11:19 fixes (grid, seed rules, score column), four more mutations, all caught. Ten mutations, nine caught: fail-open removed; snippet dots kept; substring domain match; user message taken from after the search; parser not stopping at page content; chunk order; stopwords counted; budget keeping nothing; no seed fallback. Not caught: a URL-less result kept when the next `[i]` line starts. The writer always writes the URL line, so this is not reachable from recorded data.
 - End-to-end `extract → label → run (lexical) → pages --lexical` ran on a small database built from the real writer's output.
 - **The reranker path is unverified:** the sandbox could not download fastembed models. The adapter is tested with a fake model (logit order, sigmoid, length check). Owed: step 4 on the M1.
 - **Not yet measured on the real corpus:** everything. Next step: steps 2–4 on the M1, label, read the report.
