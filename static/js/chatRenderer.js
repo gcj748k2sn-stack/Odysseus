@@ -12,6 +12,7 @@ import { bindMenuDismiss } from './escMenuStack.js';
 import { loadPanel } from './panels.js';
 import { matchModelKey } from './model/matchKey.js';
 import { getTools } from './appConfig.js';
+import { splitSources, decorateSource, filteredBlock } from './source_ratings.js';
 
 const SEARCH_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>';
 const REPORT_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
@@ -1123,6 +1124,9 @@ export function copyMessageText(msgElement) {
 export function buildSourcesBox(sources, type, expanded) {
   var esc = uiModule.esc;
   var id = 'sources-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+  // Fork: rating arrows and the relevance filter's dropped results (source_ratings.js).
+  var _split = splitSources(sources);
+  sources = _split.shown;
   var count = sources.length;
   var label = type === 'research' ? 'Research sources' : 'Web sources';
   var lines = '';
@@ -1132,12 +1136,13 @@ export function buildSourcesBox(sources, type, expanded) {
     try { domain = new URL(s.url).hostname.replace('www.', ''); } catch(e) { domain = s.url; }
     var title = esc(s.title || domain || '');
     var safeUrl = _safeHref(s.url);
-    lines += '<a href="' + safeUrl + '" target="_blank" rel="noopener noreferrer" class="source-link">'
+    lines += decorateSource('<a href="' + safeUrl + '" target="_blank" rel="noopener noreferrer" class="source-link">'
       + '<span class="source-num">' + (i + 1) + '</span>'
       + '<span class="source-title">' + title + '</span>'
       + '<span class="source-domain">' + esc(domain) + '</span>'
-      + '</a>';
+      + '</a>', s);
   }
+  lines += filteredBlock(_split.filtered, _safeHref);
   var arrow = expanded ? 'down' : 'right';
   var expandedClass = expanded ? ' expanded' : '';
   return '<div class="sources-section">'

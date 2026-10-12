@@ -73,9 +73,14 @@ class WebSearchTool:
                 "elapsed_s": 30,
                 "tail": "Search completed; preparing sources.",
             })
-        output = text[:MAX_OUTPUT_CHARS] if len(text) > MAX_OUTPUT_CHARS else text
+        # Fork: shorten the fetched pages, never the closing instructions (src/search_output_fit.py).
+        from src.search_output_fit import fit_search_output
+        output = fit_search_output(text, MAX_OUTPUT_CHARS)
         if sources:
-            output += "\n\n<!-- SOURCES:" + json.dumps(sources) + " -->"
+            # "-->" inside a title would end the marker early; agent_loop's json.loads
+            # would then fail and leave the whole list, dropped results included,
+            # in the text the model reads. \u003e decodes back to ">".
+            output += "\n\n<!-- SOURCES:" + json.dumps(sources).replace("-->", "--\\u003e") + " -->"
         return {"output": output, "exit_code": 0}
 
 class WebFetchTool:
