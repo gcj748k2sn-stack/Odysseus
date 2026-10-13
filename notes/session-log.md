@@ -18,12 +18,21 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-13 — webhard suite to 10 tasks; filter A/B read (cloud session)
+
+- 📊 **Filter A/B on `research` (chain-20261013-0001, M1):** off 13/15, on 10/15, inside the CIs; with fetch-error runs left out off 8/9, on 8/8. Swap 8–14.5 GB all chain, so times are noise. Only `res_gnats` r3 (filter on, gave up after ~17 searches) could be the filter's; check its `[web-filter]` lines. 12 Oct sysmon: LM Studio and Ollama both ~8 GB RSS; Ollama 691 page-outs vs 2,372.
+- 🆕 **`webhard` 6 → 10 tasks** (`wh_amazon_length`, `wh_brocken_hoehe`, `wh_lionsmane_typo`, `wh_ssd1306_addr`), keys web-checked; `--quick` 3 → 5. Brought the unmerged `jolly-goodall` webhard commit onto this branch by file copy (same content). Sandbox (Python 3.13 scratch venv): 13 `test_bench_*` files, 250 passed; 6 of 6 mutations of the new checks caught. M1 suite owed.
+- ➡️ Run webhard on Qwen/LM Studio ×2, then `filter-ab` (now defaults to webhard), after a reboot.
+
+---
+
 ## 2026-10-12 (late) — ratings bias the web filter: built, log-only (cloud session)
 
 - 🆕 `src/rating_bias.py`, call site in `filter_results`: ▲/▼ shift a site's reranker logit in its topic (±0.7 default, `min_keep` unchanged, notice on raw scores). Default mode **`log`**: computes and logs, changes nothing. Replay `run --ratings` (time-ordered, own and rated labels excluded) and `rating-speed`. Decisions and benchmarks in [items/82-web-relevance-filter.md](items/82-web-relevance-filter.md) (*Ratings feed back into the filter*).
 - ✅ Sandbox: 131 tests across six files, 10 mutations caught. **M1 (merged into `dev`, `41ed3187`): 8,013 passed**; live in log mode 19:21. JS still unverified (panel setting).
 - 📊 **Web phase 19:38–20:50 (M1):** research ×2 per backend — Qwen LM Studio 10/10 (15 min), Qwen Ollama 9/10 (15 min), Bonsai 9/10 (39 min); details and the fetch-429 finding in [benchmark.md](benchmark.md) *Results*. `bench_chain.sh` had a stale `qwen35` target (fixed); `bench_agent.py report` gained `--split-runs` / `--regrade` and counts 429s as environment errors.
 - 🆕 Late: `bench_agent.py run --web-filter on|off` and chain phase `filter-ab` (ABBA, Qwen LM Studio); filed **item 84** (HTTP 429 not remembered, so rate-limited pages are re-fetched).
+- 🆕 Night: **`webhard` suite** (6 web tasks provoking off-topic results: ambiguous nouns, a misspelled Latin name, German *Essen*, grow-shop results), keys checked by web search, 33 sample tests, 6 mutations caught; `filter-ab` now defaults to it. Not run on a model yet.
 - 🔧 19:30: the live log showed most "dropped" results were cut by the 5-result limit, not the threshold, so ratings can swap results at any score there (the notes' reach claim corrected); the replay now applies the limit too.
 - ➡️ After a few days of ratings: `extract --from-decisions`, `run --ratings`, read the flips, then decide `apply`.
 

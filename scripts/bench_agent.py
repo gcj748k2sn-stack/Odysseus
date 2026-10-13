@@ -921,14 +921,14 @@ def fmt(x, nd=0, suf=""):
 
 
 def regrade_research(recs):
-    """Re-run today's checks on saved research answers (their checks read only
+    """Re-run today's checks on saved research and webhard answers (their checks read only
     the answer text, never the workspace), so runs graded with an older check
     compare fairly. Other suites keep their saved grade."""
     by_id = {t["id"]: t for t in T.TASKS}
     done = changed = 0
     for r in recs:
         task = by_id.get(r.get("task"))
-        if not task or task.get("suite") != "research":
+        if not task or task.get("suite") not in ("research", "webhard"):
             continue
         try:
             results = task["checks"](r, {})
@@ -939,7 +939,7 @@ def regrade_research(recs):
         changed += passed != r.get("passed")
         r["passed"] = passed
         done += 1
-    print(f"regraded {done} research task runs with today's checks; {changed} changed", file=sys.stderr)
+    print(f"regraded {done} research/webhard task runs with today's checks; {changed} changed", file=sys.stderr)
 
 
 def cmd_report(args):
@@ -1214,7 +1214,8 @@ def main():
     r.add_argument("--target", required=True, help="preset (%s) or NAME=ENDPOINT_ID:MODEL_ID" % ", ".join(PRESETS))
     r.add_argument("--quick", action="store_true", help="the suite's quick subset")
     r.add_argument("--suite", choices=list(T.SUITES) + ["all"], default="agent",
-                   help="agent (default), knowledge (mycology, microelectronics, finance) or research (web)")
+                   help="agent (default), knowledge (mycology, microelectronics, finance), research (web) or "
+                        "webhard (web searches that invite off-topic results)")
     r.add_argument("--tasks", help="comma-separated task ids")
     r.add_argument("--runs", type=int, default=1)
     r.add_argument("--resume", help="continue this run directory")
@@ -1239,7 +1240,7 @@ def main():
     p.add_argument("--split-runs", action="store_true",
                    help="one column per run folder (target + start time), e.g. before/after one target")
     p.add_argument("--regrade", action="store_true",
-                   help="re-run today's checks on saved research answers (other suites keep their grade)")
+                   help="re-run today's checks on saved research/webhard answers (other suites keep their grade)")
     p.set_defaults(func=cmd_report)
 
     pf = sub.add_parser("preflight", help="check the serving setup for a run without running it")
