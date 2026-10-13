@@ -62,6 +62,23 @@ Fork modules: `src/wiki_packs.py` (pack definitions, builder, storage; standard 
    ```
    This cloud session could not reach wikipedia.org (proxy 403), so no size in this file is measured yet.
 
+### Phase 0 results (M1, 2026-10-13, maintainer's run)
+
+1. **Google CSE is rate-limited by Google, confirmed for 10:59–11:39.** `searxng.log` (690,626 bytes, last write 11:39): `SearxEngineTooManyRequestsException: google cse: Our systems have detected unusual traffic from your network. (suspended_time=180)` every 3–4 minutes from 10:59:11 to 11:39:40 (the 40-line `tail` window). SearXNG suspends the engine for 180 s, retries, and is blocked again, so Google stays out for as long as the load lasts. **Not yet seen for the 01:00 hour**: the command showed only the last 40 lines; the per-hour count is owed.
+2. **FTS5 available:** `fts5 ok 3.53.4` in `/Users/cedrik/odysseus/venv`.
+3. **Wikipedia API reachable from the M1.** Direct members only (`categoryinfo`; subcategories not followed):
+
+| category | pages | subcats |
+|---|---|---|
+| en `Category:Edible fungi` | 539 | 5 |
+| en `Category:Mycology` | 110 | 13 |
+| en `Category:Fungi` | 33 | 22 |
+| de `Kategorie:Speisepilzart` | 300 | 0 |
+| de `Kategorie:Mykologie` | 76 | 21 |
+| de `Kategorie:Pilze` | 43 | 3 |
+
+   `Category:Fungi` is a hub (33 pages, 22 subcategories), so its tree size is only known after Phase 1's `plan`. `Edible fungi` (539) and `Speisepilzart` (300, no subcategories) are flat, small and on-topic: candidates for a first test pack before the WikiProject one.
+
 ## Phase 1 — build one pack: mycology (S–M, guess)
 
 **Pack definition** (`data/wiki_packs/packs.json`, one entry per pack):
