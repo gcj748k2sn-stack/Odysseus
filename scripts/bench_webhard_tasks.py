@@ -45,7 +45,7 @@ def _near(text, unit, lo, hi, gap=15):
     return out
 
 
-_GERMAN_WORDS = r"\b(und|die|der|das|hat|ist|nicht|mit|laut|rund|etwa|Einwohner|Stadt|Quelle)\b"
+_GERMAN_WORDS = r"\b(und|die|der|das|hat|ist|nicht|mit|laut|rund|etwa|von|eine|auch|oder|Einwohner|Stadt|Quellen?|H[öo]he|Metern)\b"
 
 
 def register(task, chk, answered, used_tool):
@@ -163,7 +163,8 @@ def register(task, chk, answered, used_tool):
       checks=lambda rec, ctx: [
           answered(rec), web(rec),
           chk("1140–1142 m", bool(_near(_plain(rec), r"\bm\b|met(?:er|re)", 1140, 1142.5, gap=8)), _plain(rec)[:160]),
-          chk("about the mountain", _rx(r"\bberg|gipfel|harz|mountain", _plain(rec)), _plain(rec)[:160]),
+          # the height in metres already rules out the "chunk" reading, so "Höhe" counts too
+          chk("about the mountain", _rx(r"\bberg|gipfel|harz|mountain|h[öo]he\b|\bhoch\b", _plain(rec)), _plain(rec)[:160]),
           chk("answered in German", len(re.findall(_GERMAN_WORDS, _plain(rec), re.I)) >= 4, _plain(rec)[:120]),
           cites(rec),
       ])

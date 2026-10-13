@@ -73,6 +73,9 @@ GOOD = {
         "Der Brocken ist mit 1141 m der höchste Berg im Harz. Quelle: https://de.wikipedia.org/wiki/Brocken",
         "Laut https://www.nationalpark-harz.de/ ist der Gipfel des Brocken 1.141,2 Meter hoch und damit der "
         "höchste Punkt in Norddeutschland.",
+        # Qwen, 2026-10-13 r1: right and German, failed the first version of the check
+        "Der Brocken hat eine Höhe von 1.141 Metern (manche Quellen nennen auch 1.141,1 m oder 1.142 m).\n\n"
+        "Quelle: [Wikipedia – Brocken](https://de.wikipedia.org/wiki/Brocken)",
     ],
     "wh_lionsmane_typo": [
         "You likely mean *Hericium erinaceus*, the **lion's mane** mushroom. In the wild it grows on hardwoods, "

@@ -23,7 +23,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - 📊 **Filter A/B on `research` (chain-20261013-0001, M1):** off 13/15, on 10/15, inside the CIs; with fetch-error runs left out off 8/9, on 8/8. Swap 8–14.5 GB all chain, so times are noise. Only `res_gnats` r3 (filter on, gave up after ~17 searches) could be the filter's; check its `[web-filter]` lines. 12 Oct sysmon: LM Studio and Ollama both ~8 GB RSS; Ollama 691 page-outs vs 2,372.
 - 🆕 **`webhard` 6 → 10 tasks** (`wh_amazon_length`, `wh_brocken_hoehe`, `wh_lionsmane_typo`, `wh_ssd1306_addr`), keys web-checked; `--quick` 3 → 5. Brought the unmerged `jolly-goodall` webhard commit onto this branch by file copy (same content). Sandbox (Python 3.13 scratch venv): 13 `test_bench_*` files, 250 passed; 6 of 6 mutations of the new checks caught. M1 suite owed.
 - 🆕 Chain phase `qwen-web` (webhard ×2 on Qwen/LM Studio only, so sysmon and `BENCH_POWER=1` cover a single-backend run); `bash -n` only.
-- ➡️ Run webhard on Qwen/LM Studio ×2 (`BENCH_POWER=1 … bench_chain.sh qwen-web`), then `filter-ab` (now defaults to webhard), after a reboot.
+- 📊 **Webhard on Qwen/LM Studio ×2 (M1, 08:52, after a reboot): 19/20** after fixing a Brocken checker bug (18/20 as scored); 23 W avg, swap +9.6 GB from a clean start. Details in benchmark.md *Results*. One real failure: pink oyster r2 hit the round budget after 23 searches.
+- ➡️ `filter-ab` (defaults to webhard) after a reboot; read pink oyster r2's `[web-filter]` lines.
 
 ---
 
