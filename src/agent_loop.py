@@ -59,6 +59,7 @@ from src import approval_replay as _approval_replay
 from src import decision_nudge as _decision_nudge
 from src import turn_reasoning as _turn_thinking
 from src import direct_reply as _direct_reply
+from src import budget_answer
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -5797,6 +5798,7 @@ async def stream_agent_loop(
             # happen to contain "let me know" are not stalls.
             _looks_like_promise = (
                 not guide_only
+                and not _force_answer      # no tools to act with in an answer round
                 and _intent_match is not None
                 and len(_intent_text) < 400
                 and "```" not in _intent_text
@@ -6637,9 +6639,22 @@ async def stream_agent_loop(
                 # model-supplied call from the same batch after this request.
                 break
 
-        # If budget was hit, stop the loop
+        # Budget hit: one tool-free round to answer from what was gathered
+        # (src/budget_answer.py), else stop.
         if budget_hit:
-            break
+            if not budget_answer.should_answer(_force_answer, round_num, max_rounds):
+                break
+            logger.info("[agent] tool budget (%d) reached on round %d — one tool-free round to answer",
+                        max_tool_calls, round_num)
+            _append_tool_results(messages, round_response, converted_calls, tool_results,
+                                 budget_answer.pad_results(len(converted_calls), tool_result_texts),
+                                 used_native, round_num, round_reasoning=round_reasoning,
+                                 tool_result_records=tool_result_records)
+            messages.append(budget_answer.answer_message(max_tool_calls))
+            _force_answer = True
+            yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
+            full_response += "\n\n"
+            continue
 
         # ask_user posed a question — stop here and wait for the user's choice.
         # Don't feed tool results back or advance a round; the user's selection

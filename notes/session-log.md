@@ -34,7 +34,9 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🆕 `scripts/bench_web_seen.py`: scores what each web_search showed the model, both A/B arms, after the run; `bench_agent.py` now keeps the whole web_search output (12,000 chars). 8 tests, 4 mutations caught; not run on real records. Only runs started after merging it are readable.
 - 📊 **Filter A/B on webhard (M1, 09:38–11:40):** pass tie (off 27/30 after a German-check fix, on 25/30); filter-on needs half the tool calls (1.5 vs 3) and is faster per task (56 vs 68 s); reranker ≈ 0.4–0.6 GB in Odysseus. 5 of 9 failures in both arms: Qwen hits the round budget without answering. Details in benchmark.md *Results*.
 - 📊 **Chain 12:13–16:24 (M1):** A/B pooled 43/50 on vs 42/50 off, 52 vs 74 s/task → filter kept on; webhard Bonsai 10/10, Ollama 7/10, LMS 27/30; knowledge full Qwen 43/48 vs Bonsai 38/48; research dropped to 6/10 (unexplained). Overview page updated. Details in benchmark.md *Results*.
-- ➡️ Read `report-web-seen-ab.md` / `-backends.md`; find out why research fell to 6/10; read pink oyster r2's `[web-filter]` lines.
+- 🆕 **Item 85 filed:** the tool budget ends the turn without an answer (no tool-free round, unlike the loop-breaker); ≥ 8 benchmark runs today. Plan and effort (S) in its file. SearXNG: only bing and google cse work (qwensetup.md).
+- 🔧 **Item 85 built:** `src/budget_answer.py` + call site at `budget_hit` (one tool-free answer round; intent nudge off in answer rounds). Sandbox: `tests/test_budget_answer.py` 9 passed, 6/6 mutations caught; full sandbox suite: see the item. M1 suite + webhard/research benchmark owed. `agent_max_tool_calls` = 20 on the M1.
+- ➡️ Item 85 step 3 (M1 suite, then `bench_chain.sh qwen-web qwen`); find out why research fell to 6/10; read pink oyster r2's `[web-filter]` lines.
 
 ---
 
