@@ -18,6 +18,13 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
+## 2026-10-13 (later) — labelling page for the web filter (cloud session)
+
+- 🆕 `bench_web_filter.py serve` (code in `scripts/bench_web_filter_label_ui.py`, standard library): a local page, one search per screen, `y`/`n` per result saved straight to `labels.csv`, nearest-threshold searches first, on-demand text preview of each link. Writes labels only, never ratings. Usage in [items/82-web-relevance-filter.md](items/82-web-relevance-filter.md) *Setup and run*, step 3.
+- ✅ Sandbox (Python 3.13 scratch venv): `test_bench_web_filter_label_ui.py` (11) + `test_bench_web_filter.py`, 47 passed; 7 of 7 mutations caught. Page driven in headless Chromium against a temp sheet (keys, preview, auto-advance, refused write after an outside change); that run caught a cursor that started on an already-labelled row (fixed). Preview fetch tested against a local server only, not live sites. M1 suite owed.
+
+---
+
 ## 2026-10-13 — webhard suite to 10 tasks; filter A/B read (cloud session)
 
 - 📊 **Filter A/B on `research` (chain-20261013-0001, M1):** off 13/15, on 10/15, inside the CIs; with fetch-error runs left out off 8/9, on 8/8. Swap 8–14.5 GB all chain, so times are noise. Only `res_gnats` r3 (filter on, gave up after ~17 searches) could be the filter's; check its `[web-filter]` lines. 12 Oct sysmon: LM Studio and Ollama both ~8 GB RSS; Ollama 691 page-outs vs 2,372.

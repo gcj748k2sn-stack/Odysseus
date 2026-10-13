@@ -53,7 +53,12 @@ All commands from `/Users/cedrik/odysseus`. `extract` copies `app.db` itself (ha
    ```
    ./venv/bin/python scripts/bench_web_filter.py label --dir $RUN --scores-from rerank:query
    ```
-   Open it in Numbers/Excel and put `y` (relevant) or `n` (junk) in the `label` column. Unlabelled rows are ignored. Labels are keyed on query + URL, so a later `extract` keeps them. 50–100 labelled rows across a dozen searches already give a usable first reading; label some relevant ones too, otherwise the report cannot show the cost.
+   **Quickest: the labelling page** (2026-10-13). One search per screen with all its results; `y`/`n` labels the current row and moves on, `p` shows a text preview of the page (fetched on demand, only URLs in the sheet), `o` opens it in a tab. Every click is saved to `labels.csv` at once (`labels.csv.bak` before the first one). Searches whose unlabelled scores sit nearest the threshold come first (needs the `score` column above). It never writes `data/web_ratings.jsonl`. Don't edit the sheet in Numbers while it is open: a write to a sheet changed on disk is refused, the page says so, `r` reloads.
+   ```
+   ./venv/bin/python scripts/bench_web_filter.py serve
+   ```
+   then open http://127.0.0.1:8765/ and stop with Ctrl+C. For new searches from the live filter, build the corpus with `extract --from-decisions data/logs/web_filter.jsonl` and run `label --dir` on it first.
+   Or open the sheet in Numbers/Excel and put `y` (relevant) or `n` (junk) in the `label` column. Unlabelled rows are ignored. Labels are keyed on query + URL, so a later `extract` keeps them. 50–100 labelled rows across a dozen searches already give a usable first reading; label some relevant ones too, otherwise the report cannot show the cost.
    To label elsewhere: `export` writes the unlabelled rows (id, query, title, domain, snippet; no user messages) to `data/bench/web_filter/to_label.tsv`; `import FILE` applies `id<TAB>y|n` lines back, keeping labels already in the sheet:
    ```
    ./venv/bin/python scripts/bench_web_filter.py export

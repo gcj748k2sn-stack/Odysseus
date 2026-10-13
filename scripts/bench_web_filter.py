@@ -47,6 +47,10 @@ run --ratings data/web_ratings.jsonl
          score, so the ratings are not graded against themselves.
 rating-speed
          Times the rating bias on a synthetic ratings file (no model needed).
+serve    A local page (http://127.0.0.1:8765/) for labelling the sheet: one
+         search per screen, y/n per result, saved to labels.csv on every
+         click, searches nearest the threshold first, optional text preview
+         of each link. Never writes data/web_ratings.jsonl.
 pages    Splits recorded web_fetch pages into paragraphs, scores each against
          the user's message, and writes pages.md showing what a budgeted
          paragraph filter would keep and drop. For reading, not for a score.
@@ -1237,6 +1241,11 @@ def cmd_pages(args):
     print(f"written: {out}")
 
 
+def cmd_serve(args):
+    from bench_web_filter_label_ui import serve
+    serve(args.labels, port=args.port, threshold=args.threshold)
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -1291,10 +1300,15 @@ def main(argv=None):
     ir.add_argument("--labels", type=Path, default=LABELS_FILE)
     ir.add_argument("--owner", help="only this user's ratings")
     ir.add_argument("--overwrite", action="store_true", help="also replace labels already in the sheet")
+    sv = sub.add_parser("serve", help="label the sheet in a local web page")
+    sv.add_argument("--labels", type=Path, default=LABELS_FILE)
+    sv.add_argument("--port", type=int, default=8765)
+    sv.add_argument("--threshold", type=float, default=LIVE_THRESHOLD,
+                    help="searches with unlabelled scores nearest this come first")
     args = ap.parse_args(argv)
     {"extract": cmd_extract, "label": cmd_label, "run": cmd_run, "pages": cmd_pages,
      "export": cmd_export, "import": cmd_import, "import-ratings": cmd_import_ratings,
-     "rating-speed": cmd_rating_speed}[args.cmd](args)
+     "rating-speed": cmd_rating_speed, "serve": cmd_serve}[args.cmd](args)
 
 
 if __name__ == "__main__":
