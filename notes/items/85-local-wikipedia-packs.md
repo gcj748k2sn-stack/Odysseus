@@ -109,7 +109,7 @@ Two source types: `wikiproject` (pages whose talk page carries the project banne
 - `articles(pageid, title, url, lang, revid, rev_ts, fetched_at, text)`,
 - `aliases(pageid, alias)`,
 - `chunks` FTS5 table `(title, aliases, heading, body)` with sections split at ~600 characters (same idea as `chunk_text` in `bench_web_filter.py`), `bm25` weights favouring title and aliases.
-Reuse `_sanitize_fts_query` from `src/session_search.py` — free text with FTS5 operators otherwise raises.
+~~Reuse `_sanitize_fts_query` from `src/session_search.py`~~ **Corrected while building:** `session_search.py` imports `core.database`, whose import runs `init_db()` against `app.db`, so `src/wiki_packs.py` has its own `fts_query` (every term quoted, joined by OR). Free text with FTS5 operators otherwise raises.
 
 **Tests** (`tests/test_wiki_packs.py`, no network: API responses from recorded fixtures):
 - plan on a fixture category tree respects depth and `exclude_title`;
@@ -120,6 +120,16 @@ Reuse `_sanitize_fts_query` from `src/session_search.py` — free text with FTS5
 - Mutations to record: no depth limit; alias table ignored; `revid` check removed; MATCH builder bypassed.
 
 **Exit:** `mycology-en` built on the M1, count and size written into this file, `query` spot-checked on 10 recorded mushroom queries.
+
+### Phase 1 built (2026-10-13, cloud session) — not yet run against the live API
+
+- `src/wiki_packs.py` (standard library; never imports `core.database`, pinned by a test) and the CLI `scripts/wiki_pack.py`: `define`, `list`, `plan`, `build [--limit N]`, `query`, `delete [--forget]`. Files in `data/wiki_packs/` (`packs.json`, `<id>.plan.json`, `<id>.sqlite`).
+- **Build method: (a) extracts only**, one article per request; `build` prints seconds per request every 25 articles, so the M1 run measures it. Method (b) (wikitext, 50 per request) is built only if (a) is too slow for the WikiProject pack.
+- `build` is also the update: it re-lists, fetches new or changed `revid`s, removes articles that left the set, commits per article. `plan` writes `subcategories_not_followed` (the drift just past the depth limit).
+- Network errors stop the run with *"rerun the same command to resume"*; 429/503/`maxlag` are waited out (Retry-After, else 5/10/20/40 s), 5 attempts.
+- **Tests:** `tests/test_wiki_packs.py`, 25, against a fake API answering in `formatversion=2` shape (continuation, redirects, missing pages, 429, maxlag) — so they show the code matches *my reading* of the API, not the API. Sandbox (Python 3.13 venv): with the two label-page/replay files, 72 passed.
+- **Mutations (failures):** depth loop one level deeper 6; aliases not stored 2; `revid` check removed 2; terms not quoted 1; reference sections kept 2; exclusions ignored 6; continuation ignored 6; no retry on 429 1; departed articles kept 1. The first depth mutation tried (`d < depth` removed) survived because the check was redundant with the loop bound; the check was removed.
+- **Owed (M1):** the commands in the hand-off; then record count, size, seconds per request and 10 spot-check queries here.
 
 ## Phase 2 — replay: would the pack have answered? (S, guess)
 
