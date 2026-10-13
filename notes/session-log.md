@@ -33,7 +33,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - 📊 **Webhard on Qwen/LM Studio ×2 (M1, 08:52, after a reboot): 19/20** after fixing a Brocken checker bug (18/20 as scored); 23 W avg, swap +9.6 GB from a clean start. Details in benchmark.md *Results*. One real failure: pink oyster r2 hit the round budget after 23 searches.
 - 🆕 `scripts/bench_web_seen.py`: scores what each web_search showed the model, both A/B arms, after the run; `bench_agent.py` now keeps the whole web_search output (12,000 chars). 8 tests, 4 mutations caught; not run on real records. Only runs started after merging it are readable.
 - 📊 **Filter A/B on webhard (M1, 09:38–11:40):** pass tie (off 27/30 after a German-check fix, on 25/30); filter-on needs half the tool calls (1.5 vs 3) and is faster per task (56 vs 68 s); reranker ≈ 0.4–0.6 GB in Odysseus. 5 of 9 failures in both arms: Qwen hits the round budget without answering. Details in benchmark.md *Results*.
-- ➡️ `bench_web_seen.py` on the A/B's third round (the only runs with whole search output); read pink oyster r2's `[web-filter]` lines.
+- 📊 **Chain 12:13–16:24 (M1):** A/B pooled 43/50 on vs 42/50 off, 52 vs 74 s/task → filter kept on; webhard Bonsai 10/10, Ollama 7/10, LMS 27/30; knowledge full Qwen 43/48 vs Bonsai 38/48; research dropped to 6/10 (unexplained). Overview page updated. Details in benchmark.md *Results*.
+- ➡️ Read `report-web-seen-ab.md` / `-backends.md`; find out why research fell to 6/10; read pink oyster r2's `[web-filter]` lines.
 
 ---
 
