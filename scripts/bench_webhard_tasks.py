@@ -45,7 +45,17 @@ def _near(text, unit, lo, hi, gap=15):
     return out
 
 
-_GERMAN_WORDS = r"\b(und|die|der|das|hat|ist|nicht|mit|laut|rund|etwa|von|eine|auch|oder|Einwohner|Stadt|Quellen?|H[öo]he|Metern)\b"
+_GERMAN_WORDS = (r"\b(und|die|der|das|dem|den|des|ist|hat|sind|nicht|mit|von|über|ueber|eine?|auch|oder|laut|rund|"
+                 r"etwa|Einwohner|Stadt|Quellen?|H[öo]he|Metern?|hoch)\b")
+_ENGLISH_WORDS = r"\b(the|is|has|and|of|with|according|inhabitants|high|height|about|people|city)\b"
+
+
+def _german(text):
+    """Answered in German: ≥ 3 common German words and more German than English ones.
+    A short German answer has few of either, so a fixed count alone failed right answers."""
+    de = len(re.findall(_GERMAN_WORDS, text, re.I))
+    en = len(re.findall(_ENGLISH_WORDS, text, re.I))
+    return de >= 3 and de > en
 
 
 def register(task, chk, answered, used_tool):
@@ -131,7 +141,7 @@ def register(task, chk, answered, used_tool):
               bool(_near(_plain(rec), r"einwohner|menschen|bewohner|people|inhabitants|\(", 560000, 600000, gap=40)
                    or _near(_plain(rec), r"tsd|tausend", 560, 600, gap=3)
                    or _near(_plain(rec), r"mio|millionen", 0.56, 0.6, gap=3)), _plain(rec)[:160]),
-          chk("answered in German", len(re.findall(_GERMAN_WORDS, _plain(rec), re.I)) >= 4, _plain(rec)[:120]),
+          chk("answered in German", _german(_plain(rec)), _plain(rec)[:120]),
           cites(rec),
       ])
 
@@ -165,7 +175,7 @@ def register(task, chk, answered, used_tool):
           chk("1140–1142 m", bool(_near(_plain(rec), r"\bm\b|met(?:er|re)", 1140, 1142.5, gap=8)), _plain(rec)[:160]),
           # the height in metres already rules out the "chunk" reading, so "Höhe" counts too
           chk("about the mountain", _rx(r"\bberg|gipfel|harz|mountain|h[öo]he\b|\bhoch\b", _plain(rec)), _plain(rec)[:160]),
-          chk("answered in German", len(re.findall(_GERMAN_WORDS, _plain(rec), re.I)) >= 4, _plain(rec)[:120]),
+          chk("answered in German", _german(_plain(rec)), _plain(rec)[:120]),
           cites(rec),
       ])
 

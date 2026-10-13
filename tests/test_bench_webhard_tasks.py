@@ -76,6 +76,8 @@ GOOD = {
         # Qwen, 2026-10-13 r1: right and German, failed the first version of the check
         "Der Brocken hat eine Höhe von 1.141 Metern (manche Quellen nennen auch 1.141,1 m oder 1.142 m).\n\n"
         "Quelle: [Wikipedia – Brocken](https://de.wikipedia.org/wiki/Brocken)",
+        # Qwen, 2026-10-13 filter A/B: right and German, failed the second version of the check
+        "Der Brocken ist 1141,2 Meter über dem Normalnull (NHN) hoch. \n\nQuelle: https://de.wikipedia.org/wiki/Brocken",
     ],
     "wh_lionsmane_typo": [
         "You likely mean *Hericium erinaceus*, the **lion's mane** mushroom. In the wild it grows on hardwoods, "
@@ -129,6 +131,9 @@ BAD = {
         ("answered in English", "The Brocken is 1141 m high, the highest mountain in the Harz (https://wikipedia.org)."),
         ("a chunk, not the mountain", "Ein Brocken ist ein großes Stück, das man nicht mit Messer und Gabel isst "
                                       "(https://duden.de)."),
+        ("English with German words in it", "The Brocken (der Brocken, die Höhe ist 1141 m) is 1141 m high, the "
+                                             "highest mountain in the Harz, according to https://de.wikipedia.org/wiki/Brocken."),
+        ("no sentence in any language", "Brocken, Harz: 1141 m (Quelle: https://de.wikipedia.org/wiki/Brocken)"),
         ("wrong height", "Der Brocken ist 1.493 m hoch und der höchste Berg im Harz (https://x.de)."),
     ],
     "wh_lionsmane_typo": [
