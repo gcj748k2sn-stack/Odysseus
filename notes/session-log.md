@@ -18,9 +18,11 @@ Keep roughly the last working day here; older entries move verbatim to
 
 ---
 
-## 2026-10-13 (later) — labelling page for the web filter (cloud session)
+## 2026-10-13 (later) — labelling page; search engines read; item 85 planned (cloud session)
 
 - 🆕 `bench_web_filter.py serve` (code in `scripts/bench_web_filter_label_ui.py`, standard library): a local page, one search per screen, `y`/`n` per result saved straight to `labels.csv`, nearest-threshold searches first, on-demand text preview of each link. Writes labels only, never ratings. Usage in [items/82-web-relevance-filter.md](items/82-web-relevance-filter.md) *Setup and run*, step 3.
+- 📊 Engines (maintainer's runs on the M1 decision log, 247 searches): Bing 54 % of results below 0.035 and every result below it in 60 searches; Google CSE 0 %; 103 searches Bing only, 26 of them all junk; Google CSE absent by hour (0/52 at 01:00, back at 08:00), likely SearXNG suspension — unverified. The filter A/B of `chain-20261013-0001` ran in those hours.
+- 📝 **Item 85 planned** (local Wikipedia packs, local-first search, approval card for new packs): [items/85-local-wikipedia-packs.md](items/85-local-wikipedia-packs.md). Nothing built.
 - ✅ Sandbox (Python 3.13 scratch venv): `test_bench_web_filter_label_ui.py` (11) + `test_bench_web_filter.py`, 47 passed; 7 of 7 mutations caught. Page driven in headless Chromium against a temp sheet (keys, preview, auto-advance, refused write after an outside change); that run caught a cursor that started on an already-labelled row (fixed). Preview fetch tested against a local server only, not live sites. M1 suite owed.
 
 ---
