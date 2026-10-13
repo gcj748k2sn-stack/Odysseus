@@ -24,7 +24,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🆕 **`webhard` 6 → 10 tasks** (`wh_amazon_length`, `wh_brocken_hoehe`, `wh_lionsmane_typo`, `wh_ssd1306_addr`), keys web-checked; `--quick` 3 → 5. Brought the unmerged `jolly-goodall` webhard commit onto this branch by file copy (same content). Sandbox (Python 3.13 scratch venv): 13 `test_bench_*` files, 250 passed; 6 of 6 mutations of the new checks caught. M1 suite owed.
 - 🆕 Chain phase `qwen-web` (webhard ×2 on Qwen/LM Studio only, so sysmon and `BENCH_POWER=1` cover a single-backend run); `bash -n` only.
 - 📊 **Webhard on Qwen/LM Studio ×2 (M1, 08:52, after a reboot): 19/20** after fixing a Brocken checker bug (18/20 as scored); 23 W avg, swap +9.6 GB from a clean start. Details in benchmark.md *Results*. One real failure: pink oyster r2 hit the round budget after 23 searches.
-- ➡️ `filter-ab` (defaults to webhard) after a reboot; read pink oyster r2's `[web-filter]` lines.
+- 🆕 `scripts/bench_web_seen.py`: scores what each web_search showed the model, both A/B arms, after the run; `bench_agent.py` now keeps the whole web_search output (12,000 chars). 8 tests, 4 mutations caught; not run on real records. Only runs started after merging it are readable.
+- ➡️ `filter-ab` (defaults to webhard) after a reboot, then `bench_web_seen.py` on its runs; read pink oyster r2's `[web-filter]` lines.
 
 ---
 
