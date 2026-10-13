@@ -8,6 +8,8 @@
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh full          # qwen-full bonsai-full, ~6–8 h
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh web           # research suite: Qwen LM Studio, Qwen Ollama, Bonsai
 #   (WEB_RUNS=2 for two runs per backend in the web phase, default 1; WEB_SUITE=webhard for the harder web tasks)
+#   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh qwen-web      # webhard suite ×2, Qwen LM Studio only
+#   (WEB_SUITE and WEB_RUNS as above, but defaulting to webhard and 2)
 #   cd /Users/cedrik/odysseus && caffeinate -i scripts/bench_chain.sh filter-ab     # research suite, filter off vs on, Qwen LM Studio
 #   (AB_ROUNDS=3 by default: off on | on off | off on, one run each; AB_SUITE=webhard by default, research also works;
 #    the filter is restored after each run)
@@ -37,8 +39,8 @@ PHASES="$*"
 [ "$PHASES" = "--with-qwen" ] && PHASES="bonsai qwen"
 [ "$PHASES" = "full" ] && PHASES="qwen-full bonsai-full"
 for p in $PHASES; do
-  case "$p" in bonsai|bonsai-long|bonsai-check|bonsai-full|qwen|qwen-full|web|filter-ab) ;;
-    *) echo "unknown phase: $p (full, bonsai, bonsai-long, bonsai-check, bonsai-full, qwen, qwen-full, web, filter-ab)"; exit 2;; esac
+  case "$p" in bonsai|bonsai-long|bonsai-check|bonsai-full|qwen|qwen-full|qwen-web|web|filter-ab) ;;
+    *) echo "unknown phase: $p (full, bonsai, bonsai-long, bonsai-check, bonsai-full, qwen, qwen-full, qwen-web, web, filter-ab)"; exit 2;; esac
 done
 
 LMS=$(command -v lms || echo "$HOME/.lmstudio/bin/lms")
@@ -243,6 +245,19 @@ qwen_phase() {
   step qwen-research         bench --target qwen35lm --suite research --runs 2
 }
 
+qwen_web_phase() {
+  # One web suite on Qwen via LM Studio only, so its load and power are recorded without
+  # switching servers. Defaults to the harder suite, two runs.
+  local runs="${WEB_RUNS:-2}" suite="${WEB_SUITE:-webhard}"
+  note "── Qwen web phase ($suite suite ×$runs, LM Studio)"
+  if ! start_qwen; then note "  ✗ LM Studio / Qwen did not come up in 5 min — phase skipped"; return; fi
+  note "  Qwen up (LM Studio)"
+  step "qwen-lms-$suite" bench --target qwen35lm --suite "$suite" --runs "$runs"
+  stop_lmstudio
+  note "  LM Studio stopped"
+  copy_logs
+}
+
 web_phase() {
   # The research suite (5 web tasks) on each backend in turn, slowest last, so a
   # long Bonsai run cannot cost the other two. A backend that does not come up is skipped.
@@ -297,6 +312,7 @@ for p in $PHASES; do
     bonsai-full) bonsai_full_phase ;;
     qwen) qwen_phase ;;
     qwen-full) qwen_full_phase ;;
+    qwen-web) qwen_web_phase ;;
     web) web_phase ;;
     filter-ab) filter_ab_phase ;;
   esac
