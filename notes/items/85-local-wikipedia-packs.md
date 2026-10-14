@@ -129,7 +129,26 @@ Two source types: `wikiproject` (pages whose talk page carries the project banne
 - Network errors stop the run with *"rerun the same command to resume"*; 429/503/`maxlag` are waited out (Retry-After, else 5/10/20/40 s), 5 attempts.
 - **Tests:** `tests/test_wiki_packs.py`, 25, against a fake API answering in `formatversion=2` shape (continuation, redirects, missing pages, 429, maxlag) — so they show the code matches *my reading* of the API, not the API. Sandbox (Python 3.13 venv): with the two label-page/replay files, 72 passed.
 - **Mutations (failures):** depth loop one level deeper 6; aliases not stored 2; `revid` check removed 2; terms not quoted 1; reference sections kept 2; exclusions ignored 6; continuation ignored 6; no retry on 429 1; departed articles kept 1. The first depth mutation tried (`d < depth` removed) survived because the check was redundant with the loop bound; the check was removed.
-- **Owed (M1):** the commands in the hand-off; then record count, size, seconds per request and 10 spot-check queries here.
+- **Owed (M1):** run these, then record count, size, seconds per request and the query results here. `plan` lists only; check the sample and *subcategories just past the depth limit* before `build`.
+  ```
+  cd /Users/cedrik/odysseus
+  ./venv/bin/python scripts/wiki_pack.py define edible-fungi-en --lang en --category "Edible fungi" --depth 1 --topic biology --name "Edible fungi"
+  ./venv/bin/python scripts/wiki_pack.py define speisepilze-de --lang de --category "Speisepilzart" --depth 0 --topic biology --name "Speisepilze"
+  ./venv/bin/python scripts/wiki_pack.py plan edible-fungi-en
+  ./venv/bin/python scripts/wiki_pack.py plan speisepilze-de
+  ./venv/bin/python scripts/wiki_pack.py build edible-fungi-en --limit 50
+  ./venv/bin/python scripts/wiki_pack.py build edible-fungi-en
+  ./venv/bin/python scripts/wiki_pack.py build speisepilze-de
+  ./venv/bin/python scripts/wiki_pack.py list
+  ls -la data/wiki_packs/
+  ./venv/bin/python scripts/wiki_pack.py query edible-fungi-en "Pleurotus djamor pink oyster mushroom native range Indonesia Philippines"
+  ./venv/bin/python scripts/wiki_pack.py query edible-fungi-en "porcini habitat"
+  ./venv/bin/python scripts/wiki_pack.py query speisepilze-de "Steinpilz Standort Nadelwald"
+  ```
+- **Owed (Phase 0, step 1):** the 01:00 hour of 13 Oct. Blocks per hour:
+  ```
+  grep "ERROR:searx.engines.google cse" /Users/cedrik/odysseus/searxng/searxng.log | grep "unusual traffic" | cut -c1-13 | sort | uniq -c | awk '$2 >= "2026-10-12"'
+  ```
 
 ## Phase 2 — replay: would the pack have answered? (S, guess)
 

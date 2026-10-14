@@ -66,6 +66,8 @@ The current plan is the ➡️ **Next** line of the newest [session-log.md](sess
 
 *Rewritten 2026-10-12; the earlier list (item 70 first, the disabled custom preset) was done or stale.*
 
+- **Item 85 (M1 first):** merge `claude/loving-wozniak-8rdtz0`, run the suite, then the Phase 1 run in [items/85-local-wikipedia-packs.md](items/85-local-wikipedia-packs.md) (*Phase 1 built → Owed*). Then Phase 2, the replay.
+- **Item 82, labelling:** `bench_web_filter.py serve` (step 3 of the item's *Setup and run*). Before reading the 13 Oct filter A/B, count Google-less searches per run (SearXNG's Google CSE was blocked for hours; see item 85 *Why*).
 - **Item 81 (S1, nothing built):** a report-only notice when a reply names a file that no tool wrote and that does not exist — same shape as item 68's guard. Decide: build now, or wait for 68's log line live.
 - **Item 79's side effect:** a real thinking runaway (`mc_strapping`, 31 min) is no longer cut. Decide on a cap (`--reasoning-budget` on llama.cpp, or a time limit in Odysseus) or accept it.
 - **Item 3's prevention gap** — `update_document` bypasses the stale-value lint; item 7's guard routes failed edits into exactly that path.
