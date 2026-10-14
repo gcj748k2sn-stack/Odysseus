@@ -1057,6 +1057,8 @@ def cmd_report(args):
 
     def passrate(rs):
         k, n = sum(r["passed"] for r in rs), len(rs)
+        if not n:                       # e.g. runs of two suites share no task
+            return "–"
         lo, hi = wilson(k, n)
         return f"**{k}/{n}** ({100 * k / n:.0f} %, 95 % CI {100 * lo:.0f}–{100 * hi:.0f})"
 
