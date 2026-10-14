@@ -31,7 +31,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - 🔧 **Item 85 built:** `src/budget_answer.py` + call site at `budget_hit` (one tool-free answer round; intent nudge off in answer rounds). Sandbox: `tests/test_budget_answer.py` 9 passed, 6/6 mutations caught; full sandbox suite: see the item. M1 suite + webhard/research benchmark owed. `agent_max_tool_calls` = 20 on the M1.
 - 🐞🔧 **Item 85 first live run (evening):** answer round never fired — the budget ran out on the last allowed round (approval card → fresh 20/20 limits, ~1 call per round). Fixed 10-14: one round past the cap only for a forced answer. 11 tests, mutations caught; quick M1 check (`res_gold2000`, `res_gnats` ×2) owed.
 - ✅/❌ **Item 85 live (10-14, budget lowered to 4):** answer round fires (2 log lines, 2 answers), but both answers guessed a wrong year (2011). Added a facts-only instruction and Odysseus's own "budget ran out, may be incomplete" notice above the answer; rerun of the budget-4 check owed.
-- ➡️ Item 85 budget-4 rerun, then the bigger run; find out why research fell to 6/10; read pink oyster r2's `[web-filter]` lines.
+- ✅ **Item 85 verified live (budget 1 ×3, 12:41):** notice on top, 0 invented answers (r3 correct). Open: answer round at the round cap too? (`agent_max_rounds` is now 10.)
+- ➡️ Decide item 85's round-cap question; bigger run when convenient; find out why research fell to 6/10; read pink oyster r2's `[web-filter]` lines.
 
 ---
 
