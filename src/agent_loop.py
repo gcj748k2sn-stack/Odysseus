@@ -6658,7 +6658,9 @@ async def stream_agent_loop(
             messages.append(budget_answer.answer_message(max_tool_calls))
             _force_answer = True
             yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
-            full_response += "\n\n"
+            _budget_notice = budget_answer.notice(max_tool_calls)
+            yield f'data: {json.dumps({"delta": _budget_notice})}\n\n'
+            full_response += "\n\n" + _budget_notice
             continue
 
         # ask_user posed a question — stop here and wait for the user's choice.

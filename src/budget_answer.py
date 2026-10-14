@@ -37,12 +37,23 @@ def pad_results(n_calls: int, texts: list) -> list:
 
 
 def answer_message(limit: int) -> dict:
+    # Facts only from the results: in the first live test (2026-10-14, budget
+    # 4) Qwen filled the gap from memory with a wrong year, twice.
     return {
         "role": "system",
         "content": (
             f"The tool-call budget for this turn ({limit} calls) is used up, so no "
-            "tools are available any more. Write your final answer now from the "
-            "results already gathered above. If they do not answer the question, "
-            "say in one or two sentences what you found and what is missing."
+            "tools are available any more. Write your final answer now, using only "
+            "facts that appear in the tool results above. Do not fill gaps from "
+            "memory. If the results do not contain the answer, say plainly that you "
+            "could not find it, and in one or two sentences what you did find."
         ),
     }
+
+
+def notice(limit: int) -> str:
+    """Odysseus's own line above the answer, so a partial answer is not read as a
+    finished one. Written by the server, not the model; changes nothing."""
+    return (f"⚠️ The tool budget for this turn ({limit} calls) ran out before the search "
+            "was finished. The answer below uses only what was found so far and may "
+            "be incomplete.\n\n")

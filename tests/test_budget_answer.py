@@ -103,6 +103,14 @@ def test_budget_hit_gets_one_tool_free_answer_round(monkeypatch):
     assert not _tools_offered(last), "the answer round must offer no tools"
     assert any(m.get("role") == "system" and "budget" in str(m.get("content")) for m in last["messages"])
     assert "August 2020" in text
+    assert text.index(budget_answer.notice(5).strip()) < text.index("August 2020"), \
+        "Odysseus's notice stands above the answer"
+
+
+def test_the_answer_round_asks_for_facts_from_the_results_only():
+    content = budget_answer.answer_message(20)["content"]
+    assert "only" in content and "Do not fill gaps from memory" in content
+    assert "could not find it" in content
 
 
 def test_every_tool_call_of_the_cut_batch_has_a_result(monkeypatch):
@@ -139,6 +147,7 @@ def test_a_turn_that_answers_within_the_budget_is_unchanged(monkeypatch):
     assert not any('"budget_exceeded"' in e for e in events)
     assert not any(m.get("role") == "system" and "tool-call budget" in str(m.get("content"))
                    for r in seen for m in r["messages"])
+    assert "tool budget" not in _run(monkeypatch, budget=20, answer_in_round=2)[3], "no notice without a budget stop"
 
 
 def test_budget_hit_on_the_last_round_still_gets_its_answer_round(monkeypatch):
