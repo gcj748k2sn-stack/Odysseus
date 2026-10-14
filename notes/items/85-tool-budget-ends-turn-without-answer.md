@@ -36,7 +36,7 @@ Open item, filed 2026-10-13. Its row in the [todo.md](../todo.md) index carries 
 - `377d41b` merged; `agent_max_tool_calls` 1 for the run, restored to 20 after; the maintainer's `agent_max_rounds` is now **10** (hence *"of 10"*). A run at budget 4 first (12:3x) never reached the budget: Qwen found BullionVault and answered within 4 calls, 3/3 correct — no evidence either way.
 - Budget 1, `res_gold2000` ×3: **3 log lines `tool budget (1) reached on round 2 of 10 — one tool-free round to answer`, the ⚠️ notice on top of all 3 answers, and no invented answer:** r1 *"could not find the specific month and year"* (quotes the snippet's *"2011 highs of nearly $2000"* as a snippet, not as the answer); r2 *"could not definitively determine"*, lists the conflicting snippets; r3 **August 2020** with a source. Before the facts-only instruction: 2 of 2 invented (*2011*). n = 3 against n = 2: a direction, not a rate.
 - Text-mode `<tool_call>` markup again at the start of r3's streamed text; not user-visible (see above).
-- **Open:** with `agent_max_rounds` 10 and the budget 20, the round cap usually binds first (about one call per round), and that path still ends with `rounds_exhausted` (*Continue*), no answer round. Extending the answer round to the round cap is the maintainer's call (it trades *Continue* for an answer).
+- **Open:** (`agent_max_rounds` set back to 20 by the maintainer the same day.) With `agent_max_rounds` 10 and the budget 20, the round cap usually binds first (about one call per round), and that path still ends with `rounds_exhausted` (*Continue*), no answer round. Extending the answer round to the round cap is the maintainer's call (it trades *Continue* for an answer).
 
 ## Plan
 
