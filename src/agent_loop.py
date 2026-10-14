@@ -6643,6 +6643,8 @@ async def stream_agent_loop(
         # (src/budget_answer.py), else stop.
         if budget_hit:
             if not budget_answer.should_answer(_force_answer, round_num, max_rounds):
+                logger.info("[agent] tool budget (%d) reached on round %d of %d — no answer round left",
+                            max_tool_calls, round_num, max_rounds)
                 break
             logger.info("[agent] tool budget (%d) reached on round %d — one tool-free round to answer",
                         max_tool_calls, round_num)
