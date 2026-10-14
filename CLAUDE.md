@@ -124,6 +124,11 @@ re-read least, so trust it least.
   score.** A score without its mutation cannot be re-derived.
 - **Don't detect malformed output with a parser** — it filters out your own
   evidence. Match lexically.
+- **A benchmark failure is a claim about the checker until the answer has been
+  read.** Lexical checks have marked right answers wrong again and again (a
+  cited-source list counted as bullets, a short German answer read as not
+  German). Read the failing answer text before reporting a model miss; after a
+  checker fix, `bench_agent.py report --regrade` re-scores saved runs.
 - **Every checker that flags needs negative controls** ("this input must
   produce nothing"), and **validation against the whole recorded corpus**, not
   just its fixtures.
