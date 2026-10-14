@@ -1,6 +1,6 @@
-# 85. Local Wikipedia packs: search a local topic subset first, propose new topics with an approval card
+# 86. Local Wikipedia packs: search a local topic subset first, propose new topics with an approval card
 
-Open item, **planned 2026-10-13, nothing built.** Its row in the [todo.md](../todo.md) index carries the current status; this file is the full record.
+Open item (filed as **85** on branch `claude/loving-wozniak-8rdtz0`; renumbered at the merge, because 85 is *The tool budget ends the turn without an answer* — commits `d7137c5`, `27ddcdd`, `a834d48`, `c6225d2` say 85), **planned 2026-10-13, nothing built.** Its row in the [todo.md](../todo.md) index carries the current status; this file is the full record.
 
 ## Why
 

@@ -59,6 +59,7 @@ from src import approval_replay as _approval_replay
 from src import decision_nudge as _decision_nudge
 from src import turn_reasoning as _turn_thinking
 from src import direct_reply as _direct_reply
+from src import budget_answer
 from src.tool_security import (
     blocked_tools_for_owner,
     delegated_credential_blocked_tools,
@@ -5048,7 +5049,12 @@ async def stream_agent_loop(
         )
         _approved_result_injected = True
 
-    for round_num in range(1, max_rounds + 1):
+    # One round past the cap, only for a forced tool-free answer (budget or
+    # loop-breaker set on the last round; src/budget_answer.py).
+    for round_num in range(1, max_rounds + 2):
+        if not budget_answer.round_allowed(round_num, max_rounds, _force_answer):
+            _exhausted_rounds = True
+            break
         round_response = ""
         round_reasoning = ""  # reasoning_content deltas (DeepSeek-thinking, vLLM --reasoning-parser)
         native_tool_calls = []  # populated if model uses function calling
@@ -5797,6 +5803,7 @@ async def stream_agent_loop(
             # happen to contain "let me know" are not stalls.
             _looks_like_promise = (
                 not guide_only
+                and not _force_answer      # no tools to act with in an answer round
                 and _intent_match is not None
                 and len(_intent_text) < 400
                 and "```" not in _intent_text
@@ -6637,9 +6644,24 @@ async def stream_agent_loop(
                 # model-supplied call from the same batch after this request.
                 break
 
-        # If budget was hit, stop the loop
+        # Budget hit: one tool-free round to answer from what was gathered
+        # (src/budget_answer.py), else stop.
         if budget_hit:
-            break
+            if not budget_answer.should_answer(_force_answer):
+                break
+            logger.info("[agent] tool budget (%d) reached on round %d of %d — one tool-free round to answer",
+                        max_tool_calls, round_num, max_rounds)
+            _append_tool_results(messages, round_response, converted_calls, tool_results,
+                                 budget_answer.pad_results(len(converted_calls), tool_result_texts),
+                                 used_native, round_num, round_reasoning=round_reasoning,
+                                 tool_result_records=tool_result_records)
+            messages.append(budget_answer.answer_message(max_tool_calls))
+            _force_answer = True
+            yield f'data: {json.dumps({"type": "agent_step", "round": round_num + 1})}\n\n'
+            _budget_notice = budget_answer.notice(max_tool_calls)
+            yield f'data: {json.dumps({"delta": _budget_notice})}\n\n'
+            full_response += "\n\n" + _budget_notice
+            continue
 
         # ask_user posed a question — stop here and wait for the user's choice.
         # Don't feed tool results back or advance a round; the user's selection

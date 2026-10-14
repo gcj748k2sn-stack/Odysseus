@@ -292,8 +292,11 @@ def run_one(api, task, target, rep, run_dir, args):
         elif typ == "tool_output" and APPROVAL_WAIT in str(d.get("output") or ""):
             pass                         # the card's placeholder, not a tool result
         elif typ == "tool_output":
+            # web_search keeps its whole result list (Odysseus caps it at 10,000 chars), so
+            # scripts/bench_web_seen.py can score what the model was shown.
+            cap = 12000 if d.get("tool") == "web_search" else 300
             rec["tool_results"].append({"tool": d.get("tool"), "exit_code": d.get("exit_code"),
-                                        "output": str(d.get("output") or "")[:300]})
+                                        "output": str(d.get("output") or "")[:cap]})
             final_parts.clear()          # text after the last tool result is the answer
         elif typ == "agent_step":
             state["stream_rounds"] = max(state["stream_rounds"], int(d.get("round") or 0))
