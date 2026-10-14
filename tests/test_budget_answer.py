@@ -21,10 +21,16 @@ def test_pad_results_answers_every_call_of_the_cut_batch():
     assert budget_answer.pad_results(0, []) == []
 
 
-def test_should_answer_only_once_and_only_with_a_round_left():
-    assert budget_answer.should_answer(False, 3, 10)
-    assert not budget_answer.should_answer(True, 3, 10)
-    assert not budget_answer.should_answer(False, 10, 10)
+def test_should_answer_only_once():
+    assert budget_answer.should_answer(False)
+    assert not budget_answer.should_answer(True)
+
+
+def test_one_round_past_the_cap_only_to_answer():
+    assert budget_answer.round_allowed(10, 10, False)
+    assert budget_answer.round_allowed(11, 10, True)
+    assert not budget_answer.round_allowed(11, 10, False)
+    assert not budget_answer.round_allowed(12, 10, True)
 
 
 def _run(monkeypatch, *, budget, calls_per_round=2, answer_in_round=None, max_rounds=10,
@@ -135,11 +141,23 @@ def test_a_turn_that_answers_within_the_budget_is_unchanged(monkeypatch):
                    for r in seen for m in r["messages"])
 
 
-def test_no_answer_round_when_the_budget_runs_out_on_the_last_round(monkeypatch):
-    # 2 calls per round, budget 3: round 2 (the last) runs one call and cuts one.
-    seen, executed, events, _ = _run(monkeypatch, budget=3, max_rounds=2)
-    assert len(executed) == 3 and len(seen) == 2
-    assert not any('"rounds_exhausted"' in e for e in events), "a budget stop is not a round-cap stop"
+def test_budget_hit_on_the_last_round_still_gets_its_answer_round(monkeypatch):
+    # 2 calls per round, budget 3, cap 2 rounds: round 2 (the last) runs one
+    # call and cuts one — the 2026-10-13 evening case (budget and cap both 20).
+    seen, executed, events, text = _run(monkeypatch, budget=3, max_rounds=2)
+    assert len(executed) == 3
+    assert len(seen) == 3, "one round past the cap, only to answer"
+    assert not _tools_offered(seen[-1])
+    assert "August 2020" in text
+    assert not any('"rounds_exhausted"' in e for e in events), "the turn ended with an answer"
+
+
+def test_running_out_of_rounds_without_a_forced_answer_is_unchanged(monkeypatch):
+    # Unlimited budget, a model that never stops: the cap still holds and the
+    # client still gets rounds_exhausted (its "Continue" button).
+    seen, executed, events, _ = _run(monkeypatch, budget=0, max_rounds=3)
+    assert len(seen) == 3 and len(executed) == 6
+    assert any('"rounds_exhausted"' in e for e in events)
 
 
 def test_a_promise_in_the_answer_round_does_not_start_another_round(monkeypatch):

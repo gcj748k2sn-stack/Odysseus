@@ -36,7 +36,8 @@ Keep roughly the last working day here; older entries move verbatim to
 - 📊 **Chain 12:13–16:24 (M1):** A/B pooled 43/50 on vs 42/50 off, 52 vs 74 s/task → filter kept on; webhard Bonsai 10/10, Ollama 7/10, LMS 27/30; knowledge full Qwen 43/48 vs Bonsai 38/48; research dropped to 6/10 (unexplained). Overview page updated. Details in benchmark.md *Results*.
 - 🆕 **Item 85 filed:** the tool budget ends the turn without an answer (no tool-free round, unlike the loop-breaker); ≥ 8 benchmark runs today. Plan and effort (S) in its file. SearXNG: only bing and google cse work (qwensetup.md).
 - 🔧 **Item 85 built:** `src/budget_answer.py` + call site at `budget_hit` (one tool-free answer round; intent nudge off in answer rounds). Sandbox: `tests/test_budget_answer.py` 9 passed, 6/6 mutations caught; full sandbox suite: see the item. M1 suite + webhard/research benchmark owed. `agent_max_tool_calls` = 20 on the M1.
-- ➡️ Item 85 step 3 (M1 suite, then `bench_chain.sh qwen-web qwen`); find out why research fell to 6/10; read pink oyster r2's `[web-filter]` lines.
+- 🐞🔧 **Item 85 first live run (evening):** answer round never fired — the budget ran out on the last allowed round (approval card → fresh 20/20 limits, ~1 call per round). Fixed 10-14: one round past the cap only for a forced answer. 11 tests, mutations caught; quick M1 check (`res_gold2000`, `res_gnats` ×2) owed.
+- ➡️ Item 85 quick check, then the bigger run; find out why research fell to 6/10; read pink oyster r2's `[web-filter]` lines.
 
 ---
 

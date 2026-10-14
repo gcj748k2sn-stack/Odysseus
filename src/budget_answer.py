@@ -15,9 +15,19 @@ wiped a document (notes: *The agent gathers information, then stops*).
 NOT_RUN = "Not run: the tool-call budget for this turn was reached."
 
 
-def should_answer(force_answer_active: bool, round_num: int, max_rounds: int) -> bool:
-    """One answer round, only if none is running yet and a round is left."""
-    return not force_answer_active and round_num < max_rounds
+def should_answer(force_answer_active: bool) -> bool:
+    """One answer round, only if none is running yet."""
+    return not force_answer_active
+
+
+def round_allowed(round_num: int, max_rounds: int, force_answer_active: bool) -> bool:
+    """Rounds up to the cap run as before; one more runs only to answer.
+
+    The budget is usually hit on the last round: Qwen makes about one call per
+    round, and agent_max_tool_calls and agent_max_rounds are both 20 on the
+    M1, so without the extra round the answer round was
+    skipped every time (2026-10-13 evening runs)."""
+    return round_num <= max_rounds or (round_num == max_rounds + 1 and force_answer_active)
 
 
 def pad_results(n_calls: int, texts: list) -> list:
