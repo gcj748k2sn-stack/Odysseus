@@ -122,3 +122,58 @@ def test_real_tower_answers_with_decimals_pass(text):
 ])
 def test_decimals_do_not_let_wrong_numbers_through(text):
     assert not _passes("res_towers", text)
+
+
+# Qwen 2026-10-14 (`20261014-132833`): 5 tips, then the two cited sites as a
+# list under a heading. The old check counted 7 and failed both.
+GNATS_REAL = [
+    "Based on my web search, here are 3–5 bullet points on how to keep fungus gnats out of a mushroom grow tent:\n\n"
+    "- **Install filter patches or fine mesh screens** on intake vents to physically block gnats (Zombie Myco)\n"
+    "- **Use yellow sticky traps** to monitor and trap adult fungus gnats (Gorilla Grow Tent)\n"
+    "- **Apply beneficial nematodes** (*Steinernema feltiae*) to the substrate to kill larvae (Zombie Myco)\n"
+    "- **Create a physical barrier with soil coverings** on top of your substrate (Gorilla Grow Tent)\n"
+    "- **Add BTI (Bacillus thuringiensis israelensis)** granules to your substrate\n\n---\n\n"
+    "**Citations:**\n1. https://www.gorillagrowtent.com/blogs/news/how-to-get-rid-of-gnats-in-grow-tent\n"
+    "2. https://zombiemyco.com/blogs/mushroom-contamination/fungus-gnats-in-mushroom-kits-should-you-worry",
+    "Based on my research, here are 3–5 bullet points:\n\n"
+    "1. **Yellow sticky traps** – Place horizontal yellow sticky traps at soil level.\n\n"
+    "2. **Soil surface barrier** – Apply a layer of coarse sand or perlite (gorillagrowtent.com).\n\n"
+    "3. **Biological controls** – Use BTI, beneficial nematodes or predatory mites.\n\n"
+    "4. **Proper watering practices** – Allow the top 1–2 inches of substrate to dry between waterings.\n\n"
+    "5. **Quarantine new materials** – Isolate new growing media before introducing them.\n\n"
+    "**Sources:**\n"
+    "- [Gorilla Grow Tent – How to Get Rid of Gnats](https://www.gorillagrowtent.com/blogs/news/how-to-get-rid-of-gnats-in-grow-tent)\n"
+    "- [Zombie Myco – Mushroom Pests](https://zombiemyco.com/blogs/mushrooms/mushroom-pests-how-do-you-control-them-indoors)",
+]
+
+
+GNATS_ONE_RULE = [
+    # only the heading rule applies: the source lines carry text as well as a link
+    "- Yellow sticky traps catch adults.\n- Fine mesh over the intakes.\n- Discard spent blocks.\n"
+    "- Beneficial nematodes for larvae.\n\nSources:\n- Gorilla Grow Tent blog, https://gorillagrowtent.com/x\n"
+    "- Zombie Myco guide, https://zombiemyco.com/y\n- La Mycosphère, https://lamycosphere.com/z",
+    # only the link-only rule applies: no heading, bare links as bullets
+    "- Yellow sticky traps catch adults.\n- Fine mesh over the intakes.\n- Discard spent blocks.\n"
+    "- Beneficial nematodes for larvae.\n- https://gorillagrowtent.com/x\n- https://zombiemyco.com/y\n"
+    "- [La Mycosphère](https://lamycosphere.com/z)",
+]
+
+
+@pytest.mark.parametrize("text", GNATS_REAL + GNATS_ONE_RULE)
+def test_real_gnats_answers_with_a_source_list_pass(text):
+    failed = [(n, d) for n, ok, d in _checks("res_gnats", text) if not ok]
+    assert not failed, failed
+
+
+@pytest.mark.parametrize("text", [
+    # seven real tips, sources inline: still too many
+    "\n".join(f"- Tip {i}: use sticky traps and mesh screens" for i in range(1, 8)) +
+    "\n\nhttps://a.com https://b.com",
+    # seven tips with the sources list after them: the list is not counted, the tips are
+    "\n".join(f"{i}. Tip {i}: sticky traps, mesh" for i in range(1, 8)) +
+    "\n\nSources:\n- https://a.com\n- https://b.com",
+    # two tips plus two source bullets: four lines, but only two tips
+    "- Use sticky traps.\n- Put mesh on intakes.\n\nSources:\n- https://a.com\n- https://b.com",
+])
+def test_tip_count_still_rejects_too_many_or_too_few(text):
+    assert not all(ok for _, ok, _ in _checks("res_gnats", text))

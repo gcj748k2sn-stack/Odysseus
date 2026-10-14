@@ -38,6 +38,20 @@ def _plain(rec):
     return re.sub(r"\*\*|__", "", rec.get("final_text") or "")
 
 
+_SOURCES_HEAD = re.compile(r"^\s*(?:#+\s*)?(?:sources?|citations?|references?|quellen)\b", re.I | re.M)
+_LINK_ONLY = re.compile(r"\s*(?:\[[^\]]*\]\([^)]*\)|<?https?://\S+>?)\s*")
+
+
+def _tip_count(text):
+    """List items before a Sources/Citations heading, links-only items left out.
+    The task asks for cited sites, and Qwen lists them as bullets under a
+    heading: 5 tips + 2 sources counted as 7 and failed (2026-10-14)."""
+    head = _SOURCES_HEAD.search(text or "")
+    body = text[:head.start()] if head else (text or "")
+    items = re.findall(r"^\s*(?:[-*•]|\d+[.)])\s+(\S.*)$", body, re.M)
+    return sum(1 for it in items if not _LINK_ONLY.fullmatch(it))
+
+
 def register(task, chk, answered, used_tool):
     def r(**kw):
         kw.setdefault("workspace", False)
@@ -119,7 +133,7 @@ def register(task, chk, answered, used_tool):
             "dry / humidity control": r"dry (out|the)|let .{0,20}dry|overwater",
         }
         hit = [m for m, p in measures.items() if _rx(p, t)]
-        bullets = len(re.findall(r"^\s*(?:[-*•]|\d+[.)])\s+\S", t, re.M))
+        bullets = _tip_count(t)
         return [
             answered(rec), web(rec),
             chk("3–5 bullet points", 3 <= bullets <= 6, f"{bullets} bullets"),
