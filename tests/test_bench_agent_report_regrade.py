@@ -87,3 +87,13 @@ def test_a_site_429_counts_as_an_environment_error(tmp_path):
                                                  "https://shop.example/blogs/x (attempt 1)", exit_code=1)
     text = _report(tmp_path, [_run_dir(tmp_path, "r", "q", [rec])])
     assert "1 of 1 (1 environment" in text
+
+
+def test_split_runs_with_no_shared_task_does_not_crash(tmp_path):
+    # 2026-10-14: a webhard run and a research run in one --split-runs report
+    # share no task, and the "only tasks every model ran" row divided by zero.
+    a = _run_dir(tmp_path, "20261014-150000-qwen35lm-webhard", "qwen35lm",
+                 [{**_rec("qwen35lm", "x", True), "task": "wh_mercury_day", "cat": "webhard"}])
+    b = _run_dir(tmp_path, "20261014-160000-qwen35lm-research", "qwen35lm", [_rec("qwen35lm", TOWERS_OK, True)])
+    text = _report(tmp_path, [a, b], split_runs=True)
+    assert "| Tasks passed — only tasks every model ran | – | – |" in text
