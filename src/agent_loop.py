@@ -5049,7 +5049,12 @@ async def stream_agent_loop(
         )
         _approved_result_injected = True
 
-    for round_num in range(1, max_rounds + 1):
+    # One round past the cap, only for a forced tool-free answer (budget or
+    # loop-breaker set on the last round; src/budget_answer.py).
+    for round_num in range(1, max_rounds + 2):
+        if not budget_answer.round_allowed(round_num, max_rounds, _force_answer):
+            _exhausted_rounds = True
+            break
         round_response = ""
         round_reasoning = ""  # reasoning_content deltas (DeepSeek-thinking, vLLM --reasoning-parser)
         native_tool_calls = []  # populated if model uses function calling
@@ -6642,12 +6647,10 @@ async def stream_agent_loop(
         # Budget hit: one tool-free round to answer from what was gathered
         # (src/budget_answer.py), else stop.
         if budget_hit:
-            if not budget_answer.should_answer(_force_answer, round_num, max_rounds):
-                logger.info("[agent] tool budget (%d) reached on round %d of %d — no answer round left",
-                            max_tool_calls, round_num, max_rounds)
+            if not budget_answer.should_answer(_force_answer):
                 break
-            logger.info("[agent] tool budget (%d) reached on round %d — one tool-free round to answer",
-                        max_tool_calls, round_num)
+            logger.info("[agent] tool budget (%d) reached on round %d of %d — one tool-free round to answer",
+                        max_tool_calls, round_num, max_rounds)
             _append_tool_results(messages, round_response, converted_calls, tool_results,
                                  budget_answer.pad_results(len(converted_calls), tool_result_texts),
                                  used_native, round_num, round_reasoning=round_reasoning,
